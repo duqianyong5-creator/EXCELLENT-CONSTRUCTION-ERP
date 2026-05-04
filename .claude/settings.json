@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(netstat -ano)",
+      "PowerShell(cd \"c:\\\\Users\\\\DQY\\\\Desktop\\\\货车系统开发\\\\backend\"; node -e \"const bcrypt = require\\('bcrypt'\\); bcrypt.compare\\('Admin@123456', '\\\\$2b\\\\$12\\\\$LQv3c1yqBWVHxkd0LHAkCOYz6TiGVJGYzqLgHh8FbP.RlVGHmVW2C'\\).then\\(r => console.log\\('match:', r\\)\\);\")",
+      "PowerShell(head -50)",
+      "PowerShell(Get-Process -Name \"node\")",
+      "PowerShell(cd \"c:\\\\Users\\\\DQY\\\\Desktop\\\\货车系统开发\\\\frontend\"; $job = Start-Job -ScriptBlock { cd \"c:\\\\Users\\\\DQY\\\\Desktop\\\\货车系统开发\\\\frontend\"; npm run dev 2>&1 }; Start-Sleep -Seconds 8; Receive-Job $job; Stop-Job $job; Remove-Job $job)",
+      "PowerShell(\\(Get-ChildItem \"c:\\\\Users\\\\DQY\\\\Desktop\\\\货车系统开发\\\\frontend\\\\node_modules\" -Directory | Measure-Object\\).Count)",
+      "PowerShell(Get-Process -Id 45992 -ErrorAction SilentlyContinue)",
+      "PowerShell(Start-Process cmd -ArgumentList \"/k cd /d `\"c:\\\\Users\\\\DQY\\\\Desktop\\\\����ϵͳ����\\\\frontend`\" && npm run dev\" -WindowStyle Normal)",
+      "PowerShell(Stop-Process -Id 24200 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 48936 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 57784 -ErrorAction SilentlyContinue)",
+      "PowerShell(node --version)",
+      "PowerShell(npx expo --version 2>$null)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\DQY\\Desktop\\����ϵͳ����\\backend"
+    ]
+  }
+}

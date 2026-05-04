@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "货车司机",
+    "slug": "truck-driver-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1677ff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.internal.truckdriver",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "任务进行中需要上报GPS位置",
+        "NSLocationAlwaysUsageDescription": "任务进行中需要后台上报GPS位置",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "任务进行中需要上报GPS位置",
+        "NSCameraUsageDescription": "完成任务时需要拍摄工作照片",
+        "NSPhotoLibraryUsageDescription": "完成任务时需要选择工作照片"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1677ff"
+      },
+      "package": "com.internal.truckdriver",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "任务进行中需要上报GPS位置",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "完成任务时需要拍摄工作照片"
+        }
+      ]
+    ],
+    "scheme": "truckdriver"
+  }
+}
