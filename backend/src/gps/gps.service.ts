@@ -181,7 +181,6 @@ export class GpsService {
     });
     const taskIds = inProgress.map((t) => t.id);
     if (taskIds.length === 0) {
-      this.logger.log('getLatestPositions: 0 in-progress tasks');
       return [];
     }
     // 用数据库自身时钟比对"新鲜度"，避免本机时钟与云数据库(Supabase)时钟不一致导致全被过滤
@@ -191,9 +190,7 @@ export class GpsService {
       .andWhere(`g.timestamp > NOW() - (:windowSec * INTERVAL '1 second')`, { windowSec: ONLINE_POSITION_WINDOW_SECONDS })
       .orderBy('g.timestamp', 'DESC')
       .getMany();
-    const result = this.attachDriverNames(this.dedupeLatestByDriver(logs), inProgress);
-    this.logger.log(`getLatestPositions: ${taskIds.length} in-progress task(s), ${logs.length} fresh point(s) (<${ONLINE_POSITION_WINDOW_SECONDS}s), ${result.length} on map`);
-    return result;
+    return this.attachDriverNames(this.dedupeLatestByDriver(logs), inProgress);
   }
 
   async getDriverLatestPosition(driverId: string): Promise<GpsLog | null> {

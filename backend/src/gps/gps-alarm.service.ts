@@ -41,10 +41,6 @@ export class GpsAlarmService {
         relations: ['driver'],
       });
 
-      this.logger.log(
-        `checkStationary: min=${stationaryMin} radius=${Math.round(radiusKm * 1000)}m repeat=${repeat}; ${tasks.length} in-progress task(s)`,
-      );
-
       for (const task of tasks) {
         if (!task.driverId) continue;
         await this.evaluateTask(task, stationaryMin, repeat, delayMin, radiusKm);
@@ -78,19 +74,11 @@ export class GpsAlarmService {
     });
 
     const stationary = this.isStationary(logs, stationaryMin, radiusKm);
-    const spanSec = logs.length >= 2
-      ? Math.round((logs[logs.length - 1].timestamp.getTime() - logs[0].timestamp.getTime()) / 1000)
-      : 0;
-    this.logger.log(
-      `  task=${String(task.id).slice(0, 8)} driver=${String(task.driverId).slice(0, 8)}: ` +
-      `${logs.length} pts in ${stationaryMin}min window, span=${spanSec}s, stationary=${stationary}, openAlarm=${!!open}`,
-    );
 
     // 已恢复移动：自动结案已存在的静止报警
     if (!stationary) {
       if (open) {
         await this.anomalyRepo.update(open.id, { resolved: true, resolvedAt: new Date() });
-        this.logger.log(`  -> resolved open alarm (driver moved / insufficient data)`);
       }
       return;
     }
