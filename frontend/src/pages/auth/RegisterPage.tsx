@@ -61,7 +61,7 @@ export default function RegisterPage() {
       <div className="reg-card">
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <img
-            src="/log.png"
+            src="./log.png"
             alt="Excellent Construction Ltd"
             style={{
               width: 88, height: 88, borderRadius: '50%', objectFit: 'cover',

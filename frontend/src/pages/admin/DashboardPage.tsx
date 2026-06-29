@@ -405,7 +405,7 @@ export default function DashboardPage() {
                   width: 44, height: 44,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <img src="/log.png" alt="logo" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${AMBER}40` }} />
+                  <img src="./log.png" alt="logo" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${AMBER}40` }} />
                 </div>
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 16, color: '#1a1a1a' }}>实时位置监控</span>

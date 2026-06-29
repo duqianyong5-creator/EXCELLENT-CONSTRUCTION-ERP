@@ -91,7 +91,7 @@ export default function AdminLayout() {
           padding: collapsed ? '0 16px' : '0 14px',
         }}>
           <img
-            src="/log.png"
+            src="./log.png"
             alt="logo"
             style={{
               width: 40, height: 40, borderRadius: '50%', objectFit: 'cover',

@@ -44,7 +44,7 @@ export default function LoginPage() {
       <div className="login-card">
         {/* ===== 左侧：品牌信息 ===== */}
         <div className="login-left">
-          <img src="/log.png" alt="Excellent Construction Ltd" className="login-logo" />
+          <img src="./log.png" alt="Excellent Construction Ltd" className="login-logo" />
 
           <div className="brand-name">
             EXCELLENT<br />

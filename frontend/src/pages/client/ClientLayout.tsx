@@ -62,7 +62,7 @@ export default function ClientLayout() {
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           padding: '0 16px', gap: 10,
         }}>
-          <img src="/log.png" alt="logo" style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'contain' }} />
+          <img src="./log.png" alt="logo" style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'contain' }} />
           <div>
             <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.3 }}>
               Excellent Construction
@@ -109,7 +109,7 @@ export default function ClientLayout() {
           position: 'sticky', top: 0, zIndex: 99, height: 56,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src="/log.png" alt="logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain' }} />
+            <img src="./log.png" alt="logo" style={{ width: 28, height: 28, borderRadius: 7, objectFit: 'contain' }} />
             <Text strong style={{ fontSize: 14 }}>Excellent Construction Ltd</Text>
           </div>
           <Dropdown menu={userMenu} placement="bottomRight">
