@@ -29,9 +29,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Editor folders
+# Editor / local tooling folders
 .vscode/
 .idea/
+.claude/
+.agents/
+.sixth/
 *.suo
 *.ntvs*
 *.njsproj
