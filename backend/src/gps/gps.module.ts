@@ -4,14 +4,21 @@ import { GpsLog } from './gps-log.entity';
 import { GpsAnomaly } from './gps-anomaly.entity';
 import { GpsController } from './gps.controller';
 import { GpsService } from './gps.service';
+import { GpsAlarmService } from './gps-alarm.service';
+import { GpsCleanupService } from './gps-cleanup.service';
 import { AnomaliesController } from './anomalies.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SystemSettingsModule } from '../system-settings/system-settings.module';
 import { Task } from '../tasks/task.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GpsLog, GpsAnomaly, Task]), NotificationsModule],
+  imports: [
+    TypeOrmModule.forFeature([GpsLog, GpsAnomaly, Task]),
+    NotificationsModule,
+    SystemSettingsModule,
+  ],
   controllers: [GpsController, AnomaliesController],
-  providers: [GpsService],
+  providers: [GpsService, GpsAlarmService, GpsCleanupService],
   exports: [GpsService],
 })
 export class GpsModule {}

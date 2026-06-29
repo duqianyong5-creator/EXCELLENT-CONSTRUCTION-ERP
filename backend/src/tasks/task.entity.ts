@@ -37,7 +37,7 @@ export class Task {
   @Column({ length: 256 })
   title: string;
 
-  @Column({ name: 'start_location', length: 512 })
+  @Column({ name: 'start_location', length: 512, nullable: true })
   startLocation: string;
 
   @Column({ name: 'end_location', length: 512 })
@@ -69,6 +69,9 @@ export class Task {
 
   @Column({ nullable: true, type: 'text' })
   notes: string;
+
+  @Column({ name: 'vehicle_plate', length: 32, nullable: true })
+  vehiclePlate: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

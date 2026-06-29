@@ -5,6 +5,7 @@ import { Task, TaskStatus } from './task.entity';
 import { WorkRecord } from '../work-records/work-record.entity';
 import { GpsLog } from '../gps/gps-log.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { OperationLogsService } from '../operation-logs/operation-logs.service';
 import { UserRole } from '../users/user.entity';
 
 @Injectable()
@@ -14,7 +15,16 @@ export class TasksService {
     @InjectRepository(WorkRecord) private workRepo: Repository<WorkRecord>,
     @InjectRepository(GpsLog) private gpsRepo: Repository<GpsLog>,
     private notifService: NotificationsService,
+    private operationLogs: OperationLogsService,
   ) {}
+
+  private actorId(actor: any): string {
+    return typeof actor === 'string' ? actor : actor?.id;
+  }
+
+  private actorName(actor: any): string {
+    return typeof actor === 'string' ? actor : (actor?.fullName || actor?.username || actor?.email || actor?.id);
+  }
 
   async findAll(user: any) {
     const qb = this.taskRepo
@@ -58,8 +68,8 @@ export class TasksService {
     return task;
   }
 
-  async create(data: Partial<Task>, creatorId: string): Promise<Task> {
-    const task = this.taskRepo.create({ ...data, dispatcherId: creatorId });
+  async create(data: Partial<Task>, actor: any): Promise<Task> {
+    const task = this.taskRepo.create({ ...data, dispatcherId: this.actorId(actor) });
     const saved = await this.taskRepo.save(task);
 
     if (saved.driverId) {
@@ -82,16 +92,42 @@ export class TasksService {
       });
     }
 
+    await this.operationLogs.record({
+      actorId: this.actorId(actor),
+      actorName: this.actorName(actor),
+      action: 'tasks.create',
+      targetType: 'task',
+      targetId: saved.id,
+      description: `Created task ${saved.title}`,
+      details: {
+        clientId: saved.clientId,
+        driverId: saved.driverId ?? null,
+        status: saved.status,
+      },
+    });
+
     return saved;
   }
 
-  async update(id: string, data: Partial<Task>): Promise<Task> {
+  async update(id: string, data: Partial<Task>, actor?: any): Promise<Task> {
     const task = await this.findById(id);
     Object.assign(task, data);
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+    if (actor) {
+      await this.operationLogs.record({
+        actorId: this.actorId(actor),
+        actorName: this.actorName(actor),
+        action: 'tasks.update',
+        targetType: 'task',
+        targetId: saved.id,
+        description: `Updated task ${saved.title}`,
+        details: { fields: Object.keys(data) },
+      });
+    }
+    return saved;
   }
 
-  async assign(taskId: string, driverId: string): Promise<Task> {
+  async assign(taskId: string, driverId: string, actor?: any): Promise<Task> {
     const task = await this.findById(taskId);
     task.driverId = driverId;
     task.status = TaskStatus.ASSIGNED;
@@ -104,15 +140,28 @@ export class TasksService {
       meta: { taskId: saved.id },
     });
 
+    if (actor) {
+      await this.operationLogs.record({
+        actorId: this.actorId(actor),
+        actorName: this.actorName(actor),
+        action: 'tasks.assign',
+        targetType: 'task',
+        targetId: saved.id,
+        description: `Assigned task ${saved.title}`,
+        details: { driverId },
+      });
+    }
+
     return saved;
   }
 
-  async startTask(taskId: string, driverId: string): Promise<WorkRecord> {
+  async startTask(taskId: string, driverId: string, vehiclePlate?: string): Promise<WorkRecord> {
     const task = await this.findById(taskId);
     if (task.driverId !== driverId) throw new ForbiddenException('无权操作此任务');
     if (task.status !== TaskStatus.ASSIGNED) throw new ForbiddenException('任务状态不正确');
 
     task.status = TaskStatus.IN_PROGRESS;
+    if (vehiclePlate && vehiclePlate.trim()) task.vehiclePlate = vehiclePlate.trim();
     await this.taskRepo.save(task);
 
     const record = this.workRepo.create({
@@ -157,20 +206,43 @@ export class TasksService {
     return saved;
   }
 
-  async cancel(id: string): Promise<Task> {
+  async cancel(id: string, actor?: any): Promise<Task> {
     const task = await this.findById(id);
     if (task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CANCELLED) {
       throw new BadRequestException('已完成或已取消的任务无法取消');
     }
     task.status = TaskStatus.CANCELLED;
-    return this.taskRepo.save(task);
+    const saved = await this.taskRepo.save(task);
+    if (actor) {
+      await this.operationLogs.record({
+        actorId: this.actorId(actor),
+        actorName: this.actorName(actor),
+        action: 'tasks.cancel',
+        targetType: 'task',
+        targetId: saved.id,
+        description: `Cancelled task ${saved.title}`,
+        details: { status: saved.status },
+      });
+    }
+    return saved;
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, actor?: any): Promise<void> {
     const task = await this.findById(id);
     await this.gpsRepo.delete({ taskId: id });
     await this.workRepo.delete({ taskId: id });
     await this.taskRepo.remove(task);
+    if (actor) {
+      await this.operationLogs.record({
+        actorId: this.actorId(actor),
+        actorName: this.actorName(actor),
+        action: 'tasks.delete',
+        targetType: 'task',
+        targetId: id,
+        description: `Deleted task ${task.title}`,
+        details: { status: task.status },
+      });
+    }
   }
 
   async getStats() {

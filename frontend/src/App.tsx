@@ -26,6 +26,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from './store';
 import { setUnread } from './store/slices/notifSlice';
 import { useSocket } from './hooks/useSocket';
+import { useIdleLogout } from './hooks/useIdleLogout';
 import { notificationsApi } from './api';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
@@ -47,6 +48,7 @@ function RoleRouter() {
   switch (user.role) {
     case 'admin':
     case 'dispatcher':
+    case 'monitor':
       return <Navigate to="/admin/dashboard" replace />;
     case 'driver':
       return <Navigate to="/driver/tasks" replace />;
@@ -61,6 +63,7 @@ export default function App() {
   const { token } = useSelector((s: RootState) => s.auth);
   const dispatch = useDispatch();
   useSocket(token);
+  useIdleLogout();
 
   useEffect(() => {
     if (token) {
@@ -82,7 +85,7 @@ export default function App() {
         <Route
           path="/admin/*"
           element={
-            <RequireAuth roles={['admin', 'dispatcher']}>
+            <RequireAuth roles={['admin', 'dispatcher', 'monitor']}>
               <AdminLayout />
             </RequireAuth>
           }

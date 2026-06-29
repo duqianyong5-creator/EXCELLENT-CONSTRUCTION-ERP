@@ -20,9 +20,29 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         locale={zhCN}
         theme={{
           token: {
-            colorPrimary: '#1677ff',
-            borderRadius: 8,
-            fontFamily: "'PingFang SC', 'Microsoft YaHei', sans-serif",
+            colorPrimary: '#F59E0B',
+            colorInfo: '#F59E0B',
+            borderRadius: 10,
+            controlHeight: 38,
+            colorBgLayout: '#f6f8fb',
+            colorTextHeading: '#0f172a',
+            fontFamily: "'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+          },
+          components: {
+            Modal: { borderRadiusLG: 16, titleFontSize: 17, paddingContentHorizontalLG: 24 },
+            Form: { itemMarginBottom: 16, verticalLabelPadding: '0 0 4px' },
+            Table: {
+              headerBg: '#f8fafc',
+              headerColor: '#475569',
+              headerSplitColor: 'transparent',
+              borderColor: '#eef2f7',
+              rowHoverBg: '#f8fafc',
+              cellPaddingBlock: 12,
+              headerBorderRadius: 12,
+            },
+            Button: { primaryShadow: 'none', fontWeight: 600 },
+            Card: { borderRadiusLG: 14 },
+            Segmented: { borderRadius: 8 },
           },
         }}
       >

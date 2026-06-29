@@ -78,6 +78,12 @@ export class UsersService {
     return this.repo.save(user);
   }
 
+  async updateUser(id: string, data: Partial<User>): Promise<User> {
+    const user = await this.findById(id);
+    Object.assign(user, data);
+    return this.repo.save(user);
+  }
+
   async updateProfile(id: string, data: Partial<User>): Promise<User> {
     const user = await this.findById(id);
     Object.assign(user, data);

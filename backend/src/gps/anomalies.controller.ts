@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -12,7 +12,7 @@ import { UserRole } from '../users/user.entity';
 @ApiTags('异常管理 / Anomalies')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.DISPATCHER)
+@Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR)
 @Controller('anomalies')
 export class AnomaliesController {
   constructor(
@@ -40,11 +40,32 @@ export class AnomaliesController {
 
   @Patch(':id/resolve')
   @ApiOperation({ summary: '标记异常已处理' })
-  async resolve(@Param('id') id: string, @CurrentUser() user: any) {
+  resolve(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.markResolved(id, user.id);
+  }
+
+  @Patch(':id/ignore')
+  @ApiOperation({ summary: '忽略报警（结案）' })
+  ignore(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.markResolved(id, user.id);
+  }
+
+  private async markResolved(id: string, resolvedBy: string) {
     await this.repo.update(id, {
       resolved: true,
       resolvedAt: new Date(),
-      resolvedBy: user.id,
+      resolvedBy,
+      snoozeUntil: null as any,
+    });
+    return this.repo.findOne({ where: { id }, relations: ['driver'] });
+  }
+
+  @Patch(':id/snooze')
+  @ApiOperation({ summary: '延时报警：延后 N 分钟后若仍未移动则再次报警' })
+  async snooze(@Param('id') id: string, @Body('minutes') minutes: number) {
+    const delay = Number(minutes) > 0 ? Number(minutes) : 10;
+    await this.repo.update(id, {
+      snoozeUntil: new Date(Date.now() + delay * 60 * 1000),
     });
     return this.repo.findOne({ where: { id }, relations: ['driver'] });
   }

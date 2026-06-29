@@ -1,28 +1,27 @@
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module';
-import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { join } from 'path';
 import * as os from 'os';
+import { AppModule } from './app.module';
+import { createCorsOriginResolver } from './config/security.config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const configService = app.get(ConfigService);
+  const isProd = process.env.NODE_ENV === 'production';
 
-  // 请求日志中间件
-  app.use((req, res, next) => {
-    logger.log(`Incoming Request: ${req.method} ${req.url}`);
-    next();
-  });
+  // 部署在 Railway/Render 等反向代理后面：信任第一跳代理，拿到真实客户端 IP（限流按 IP 才准）
+  app.set('trust proxy', 1);
 
-app.enableCors({
-    origin: (origin, callback) => {
-      // 允许所有来源（开发模式下反射 origin）
-      callback(null, true);
-    },
+  app.enableCors({
+    origin: createCorsOriginResolver(configService),
     credentials: true,
   });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -35,28 +34,32 @@ app.enableCors({
     prefix: '/uploads',
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('货车调度管理系统 API')
-    .setDescription('Truck Dispatch Management System API Documentation')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger 仅在非生产环境暴露，避免线上泄露完整 API 结构
+  if (!isProd) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Truck Dispatch Management System API')
+      .setDescription('Truck Dispatch Management System API Documentation')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
-  
+
   const nets = os.networkInterfaces();
-  console.log(`🚀 Server running on:`);
-  console.log(`   - Local:   http://localhost:${port}`);
+  logger.log('Server running on:');
+  logger.log(`Local: http://localhost:${port}`);
   for (const name of Object.keys(nets)) {
-    for (const net of nets[name]!) {
+    for (const net of nets[name] ?? []) {
       if (net.family === 'IPv4' && !net.internal) {
-        console.log(`   - Network: http://${net.address}:${port}`);
+        logger.log(`Network: http://${net.address}:${port}`);
       }
     }
   }
-  console.log(`📚 API Docs: http://localhost:${port}/api/docs`);
+  logger.log(`API Docs: http://localhost:${port}/api/docs`);
 }
+
 bootstrap();

@@ -15,6 +15,10 @@ import { UserRole } from '../users/user.entity';
 export class AdjustmentsController {
   constructor(private service: AdjustmentsService) {}
 
+  private actorName(user: any): string {
+    return user?.fullName || user?.username || user?.email || user?.id;
+  }
+
   @Post()
   @ApiOperation({ summary: '调整工时 (+30min / +60min)' })
   addAdjustment(
@@ -27,7 +31,7 @@ export class AdjustmentsController {
     },
     @CurrentUser() user: any,
   ) {
-    return this.service.addAdjustment({ ...body, operatorId: user.id });
+    return this.service.addAdjustment({ ...body, operatorId: user.id, operatorName: this.actorName(user) });
   }
 
   @Post('set-final')
@@ -36,7 +40,7 @@ export class AdjustmentsController {
     @Body() body: { workRecordId: string; finalMinutes: number },
     @CurrentUser() user: any,
   ) {
-    return this.service.setFinalDuration(body.workRecordId, body.finalMinutes, user.id);
+    return this.service.setFinalDuration(body.workRecordId, body.finalMinutes, user.id, this.actorName(user));
   }
 
   @Get('logs')

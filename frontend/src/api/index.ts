@@ -37,6 +37,7 @@ export const usersApi = {
   clients: () => api.get('/users/clients'),
   get: (id: string) => api.get(`/users/${id}`),
   create: (data: any) => api.post('/users', data),
+  update: (id: string, data: any) => api.patch(`/users/${id}`, data),
   approve: (id: string) => api.patch(`/users/${id}/approve`),
   reject: (id: string) => api.patch(`/users/${id}/reject`),
   disable: (id: string) => api.patch(`/users/${id}/disable`),
@@ -63,7 +64,6 @@ export const tasksApi = {
     }),
   cancel: (id: string) => api.patch(`/tasks/${id}/cancel`),
   delete: (id: string) => api.delete(`/tasks/${id}`),
-  sendEmail: (id: string) => api.post(`/tasks/${id}/send-email`),
 };
 
 export const gpsApi = {
@@ -71,6 +71,10 @@ export const gpsApi = {
   track: (taskId: string) => api.get(`/gps/track/${taskId}`),
   positions: () => api.get('/gps/positions'),
   driverPosition: (driverId: string) => api.get(`/gps/driver/${driverId}/position`),
+};
+
+export const driverPresenceApi = {
+  online: () => api.get('/driver-presence/online'),
 };
 
 export const workRecordsApi = {
@@ -90,6 +94,22 @@ export const anomaliesApi = {
   list: () => api.get('/anomalies'),
   unresolved: () => api.get('/anomalies/unresolved'),
   resolve: (id: string) => api.patch(`/anomalies/${id}/resolve`),
+  ignore: (id: string) => api.patch(`/anomalies/${id}/ignore`),
+  snooze: (id: string, minutes: number) => api.patch(`/anomalies/${id}/snooze`, { minutes }),
+};
+
+export const announcementsApi = {
+  list: () => api.get('/announcements'),
+  feed: () => api.get('/announcements/feed'),
+  create: (data: { title: string; content: string; targetRole: string }) => api.post('/announcements', data),
+  setActive: (id: string, active: boolean) => api.patch(`/announcements/${id}/active`, { active }),
+  delete: (id: string) => api.delete(`/announcements/${id}`),
+};
+
+export const systemSettingsApi = {
+  get: () => api.get('/system-settings'),
+  update: (data: Record<string, string>) => api.put('/system-settings', data),
+  clearData: (password: string) => api.post('/system-settings/clear-data', { password }),
 };
 
 export const notificationsApi = {
@@ -97,6 +117,10 @@ export const notificationsApi = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch('/notifications/read-all'),
+};
+
+export const operationLogsApi = {
+  list: (params?: { limit?: number }) => api.get('/operation-logs', { params }),
 };
 
 export default api;

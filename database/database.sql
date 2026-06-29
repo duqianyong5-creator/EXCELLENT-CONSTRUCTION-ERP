@@ -1,13 +1,12 @@
 -- ============================================================
--- 货车司机调度与管理系统 - Supabase 迁移脚本
--- 在 Supabase Dashboard → SQL Editor 中执行此文件
+-- 货车司机调度与管理系统 - 统一数据库脚本
+-- PostgreSQL 15+ / Supabase SQL Editor
 -- ============================================================
 
--- Supabase 默认已启用 uuid-ossp，无需手动启用
--- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";  -- Supabase 已内置
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
--- ENUM 类型（先清理再创建，避免重复执行报错）
+-- ENUM 类型
 -- ============================================================
 DO $$ BEGIN
   CREATE TYPE user_role AS ENUM ('admin', 'dispatcher', 'driver', 'client');
@@ -157,7 +156,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
 
 -- ============================================================
--- 自动更新 updated_at 触发器
+-- 自动更新 updated_at
 -- ============================================================
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -167,7 +166,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 使用 DO 块避免重复创建触发器（不触发 Supabase 破坏性操作警告）
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_users_updated_at') THEN
     CREATE TRIGGER trg_users_updated_at
@@ -190,8 +188,9 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
--- Row Level Security（RLS）- Supabase 安全层
--- 注意：后端使用 Service Role Key 时自动绕过 RLS
+-- Supabase 行级安全（Row Level Security）
+-- 后端使用 service_role key 访问时会绕过 RLS。
+-- 如需前端直连 Supabase，应按业务角色另行添加访问策略。
 -- ============================================================
 ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks         ENABLE ROW LEVEL SECURITY;
@@ -199,27 +198,111 @@ ALTER TABLE gps_logs      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_records  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- Service Role 绕过所有 RLS（后端使用 service_role key 访问，无需额外策略）
--- 如需前端直连 Supabase（不推荐），需另配各表的 SELECT/INSERT/UPDATE 策略
-
 -- ============================================================
--- 初始管理员账户
--- 密码: Admin@123456（bcrypt hash，上线后必须修改）
+-- 默认管理员账号
+-- 邮箱: admin@trucksystem.com
+-- 初始密码: admin888（下方以 bcrypt 哈希形式存储）
+-- 上线前请立即修改默认密码。
 -- ============================================================
 INSERT INTO users (username, email, password, role, status, full_name, approved_at)
 VALUES (
     'admin',
     'admin@trucksystem.com',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TiGVJGYzqLgHh8FbP.RlVGHmVW2C',
+    '$2b$12$r2Ms3P63.DtdHMVee9b//ejvkNLVUlviWiMcqxxnnjmQBC1kIp30O',
     'admin',
     'active',
     '系统管理员',
     NOW()
 ) ON CONFLICT (email) DO NOTHING;
 
+
 -- ============================================================
--- 完成！请在 Supabase Dashboard 中验证表是否已创建
+-- 操作审计日志
 -- ============================================================
-SELECT table_name FROM information_schema.tables
+CREATE TABLE IF NOT EXISTS operation_logs (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+    actor_name   VARCHAR(128),
+    action       VARCHAR(96) NOT NULL,
+    target_type  VARCHAR(64),
+    target_id    VARCHAR(128),
+    description  TEXT NOT NULL,
+    details      JSONB,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_actor ON operation_logs(actor_id);
+ALTER TABLE operation_logs ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- 增量迁移：本期新增功能（公告 / 系统设置 / 车牌 / GPS 静止报警）
+-- 整个脚本可重复执行，已存在的对象会被跳过。
+-- ============================================================
+
+-- 公告目标人群枚举
+DO $$ BEGIN
+  CREATE TYPE announcement_target AS ENUM ('all', 'client', 'driver');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 给用户角色补充「监控（大屏）」值（自动适配该列实际使用的枚举类型名）
+DO $$
+DECLARE enum_type text;
+BEGIN
+  SELECT udt_name INTO enum_type
+  FROM information_schema.columns
+  WHERE table_name = 'users' AND column_name = 'role';
+  IF enum_type IS NOT NULL THEN
+    EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, 'monitor');
+  END IF;
+END $$;
+
+-- 给 GPS 异常类型补充「静止报警」值（自动适配该列实际使用的枚举类型名）
+DO $$
+DECLARE enum_type text;
+BEGIN
+  SELECT udt_name INTO enum_type
+  FROM information_schema.columns
+  WHERE table_name = 'gps_anomalies' AND column_name = 'anomaly_type';
+  IF enum_type IS NOT NULL THEN
+    EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, 'stationary');
+  END IF;
+END $$;
+
+-- 任务表：车牌 + 起点地址改为可空
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32);
+ALTER TABLE tasks ALTER COLUMN start_location DROP NOT NULL;
+
+-- GPS 异常：报警升级所需字段
+ALTER TABLE gps_anomalies ADD COLUMN IF NOT EXISTS alarm_count  INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE gps_anomalies ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMPTZ;
+
+-- 系统设置（键值表：清空数据密码、GPS 报警参数等）
+CREATE TABLE IF NOT EXISTS system_settings (
+    key        VARCHAR(64) PRIMARY KEY,
+    value      TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 公告表
+CREATE TABLE IF NOT EXISTS announcements (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title       VARCHAR(200) NOT NULL,
+    content     TEXT NOT NULL,
+    target_role announcement_target NOT NULL DEFAULT 'all',
+    active      BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(active, target_role);
+
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements   ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- 验证表是否创建完成
+-- ============================================================
+SELECT table_name
+FROM information_schema.tables
 WHERE table_schema = 'public'
 ORDER BY table_name;

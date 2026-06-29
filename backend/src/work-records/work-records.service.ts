@@ -15,6 +15,7 @@ export class WorkRecordsService {
       .createQueryBuilder('wr')
       .leftJoinAndSelect('wr.driver', 'driver')
       .leftJoinAndSelect('wr.task', 'task')
+      .leftJoinAndSelect('task.client', 'client')
       .orderBy('wr.createdAt', 'DESC');
 
     if (user.role === UserRole.DRIVER) {

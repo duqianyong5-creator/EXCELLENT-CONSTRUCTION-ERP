@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdjustmentLog } from './adjustment-log.entity';
 import { WorkRecordsService } from '../work-records/work-records.service';
+import { OperationLogsService } from '../operation-logs/operation-logs.service';
 
 @Injectable()
 export class AdjustmentsService {
   constructor(
     @InjectRepository(AdjustmentLog) private repo: Repository<AdjustmentLog>,
     private workService: WorkRecordsService,
+    private operationLogs: OperationLogsService,
   ) {}
 
   async addAdjustment(data: {
@@ -18,6 +20,7 @@ export class AdjustmentsService {
     addedMinutes: number;
     reason?: string;
     operatorId: string;
+    operatorName?: string;
   }): Promise<AdjustmentLog> {
     await this.workService.applyAdjustment(data.workRecordId, data.addedMinutes);
 
@@ -29,10 +32,25 @@ export class AdjustmentsService {
       reason: data.reason,
       operatorId: data.operatorId,
     });
-    return this.repo.save(log);
+    const saved = await this.repo.save(log);
+    await this.operationLogs.record({
+      actorId: data.operatorId,
+      actorName: data.operatorName || data.operatorId,
+      action: 'work-records.adjust',
+      targetType: 'work_record',
+      targetId: data.workRecordId,
+      description: `Adjusted work record by ${data.addedMinutes} minutes`,
+      details: {
+        taskId: data.taskId,
+        driverId: data.driverId,
+        addedMinutes: data.addedMinutes,
+        reason: data.reason || null,
+      },
+    });
+    return saved;
   }
 
-  async setFinalDuration(workRecordId: string, finalMinutes: number, operatorId: string) {
+  async setFinalDuration(workRecordId: string, finalMinutes: number, operatorId: string, operatorName?: string) {
     const record = await this.workService.findById(workRecordId);
     const diff = finalMinutes - record.systemDuration;
     await this.workService.setFinalDuration(workRecordId, finalMinutes);
@@ -45,7 +63,22 @@ export class AdjustmentsService {
       reason: '手动覆盖最终工时',
       operatorId,
     });
-    return this.repo.save(log);
+    const saved = await this.repo.save(log);
+    await this.operationLogs.record({
+      actorId: operatorId,
+      actorName: operatorName || operatorId,
+      action: 'work-records.set-final',
+      targetType: 'work_record',
+      targetId: workRecordId,
+      description: `Set final work duration to ${finalMinutes} minutes`,
+      details: {
+        taskId: record.taskId,
+        driverId: record.driverId,
+        finalMinutes,
+        diff,
+      },
+    });
+    return saved;
   }
 
   async getLogs(taskId?: string, driverId?: string): Promise<AdjustmentLog[]> {

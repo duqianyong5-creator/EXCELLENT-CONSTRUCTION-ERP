@@ -8,6 +8,7 @@ export enum UserRole {
   DISPATCHER = 'dispatcher',
   DRIVER = 'driver',
   CLIENT = 'client',
+  MONITOR = 'monitor', // 大屏监控账号：只看地图/轨迹/异常，不被闲置登出，仅网页端
 }
 
 export enum UserStatus {

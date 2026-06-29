@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Card, Tag, Button, Space, Badge, Typography, Tooltip, message } from 'antd';
-import { WarningOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Table, Card, Tag, Button, Space, Badge, Typography, Tooltip, Modal, InputNumber, Switch, message } from 'antd';
+import { WarningOutlined, CheckCircleOutlined, ReloadOutlined, SoundOutlined, ClockCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import api from '../../api';
+import api, { anomaliesApi } from '../../api';
+import { isAnomalySoundOn, setAnomalySoundOn } from '../../hooks/useAnomalyAlarm';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const anomalyLabels: Record<string, { label: string; color: string }> = {
   gps_disconnect:      { label: 'GPS断连',    color: 'volcano' },
   speed_anomaly:       { label: '速度异常',    color: 'red' },
   teleport:            { label: '瞬移异常',    color: 'magenta' },
   time_inconsistency:  { label: '时间不一致',  color: 'orange' },
+  stationary:          { label: 'GPS静止',     color: 'red' },
 };
 
 export default function AnomaliesPage() {
@@ -19,21 +21,47 @@ export default function AnomaliesPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  // 声音开关与全局报警提示音（useAnomalyAlarm）共用 localStorage 标志；
+  // 实际的「检测到新静止报警就响」由 AdminLayout 里的全局 hook 负责，任意页面都会响。
+  const [soundOn, setSoundOn] = useState(isAnomalySoundOn());
+  const [snoozeFor, setSnoozeFor] = useState<any>(null);
+  const [snoozeMinutes, setSnoozeMinutes] = useState(10);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data: any = await api.get(showAll ? '/anomalies' : '/anomalies/unresolved');
-      setItems(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setItems(list);
     } catch { setItems([]); }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => { load(); }, [showAll]);
 
+  // 每 15 秒自动刷新（用于静止报警实时提醒）
+  useEffect(() => {
+    const timer = setInterval(() => load(true), 15000);
+    return () => clearInterval(timer);
+  }, [showAll]);
+
+  const ignore = async (id: string) => {
+    await anomaliesApi.ignore(id);
+    message.success('已忽略');
+    load();
+  };
+
   const resolve = async (id: string) => {
-    await api.patch(`/anomalies/${id}/resolve`);
+    await anomaliesApi.resolve(id);
     message.success('已标记为已处理');
+    load();
+  };
+
+  const doSnooze = async () => {
+    if (!snoozeFor) return;
+    await anomaliesApi.snooze(snoozeFor.id, snoozeMinutes);
+    message.success(`已延时 ${snoozeMinutes} 分钟，若仍未移动将再次报警`);
+    setSnoozeFor(null);
     load();
   };
 
@@ -42,9 +70,14 @@ export default function AnomaliesPage() {
   const columns = [
     {
       title: '异常类型', dataIndex: 'anomalyType', key: 'anomalyType',
-      render: (v: string) => {
+      render: (v: string, r: any) => {
         const info = anomalyLabels[v] || { label: v, color: 'default' };
-        return <Tag color={info.color} icon={<WarningOutlined />}>{info.label}</Tag>;
+        return (
+          <Space size={4}>
+            <Tag color={info.color} icon={<WarningOutlined />}>{info.label}</Tag>
+            {v === 'stationary' && r.alarmCount > 1 && <Tag color="red">第{r.alarmCount}次</Tag>}
+          </Space>
+        );
       },
     },
     {
@@ -56,8 +89,8 @@ export default function AnomaliesPage() {
       render: (_: any, r: any) => r.task?.title || '-',
     },
     {
-      title: '速度', dataIndex: 'speed', key: 'speed',
-      render: (v: number) => v ? `${Number(v).toFixed(1)} km/h` : '-',
+      title: '说明', dataIndex: 'description', key: 'description', ellipsis: true,
+      render: (v: string) => v ? <Text type="secondary">{v}</Text> : '-',
     },
     {
       title: '坐标', key: 'coords',
@@ -72,14 +105,24 @@ export default function AnomaliesPage() {
     },
     {
       title: '状态', dataIndex: 'resolved', key: 'resolved',
-      render: (v: boolean) => v
-        ? <Tag color="green" icon={<CheckCircleOutlined />}>已处理</Tag>
-        : <Badge status="error" text="未处理" />,
+      render: (v: boolean, r: any) => {
+        if (v) return <Tag color="green" icon={<CheckCircleOutlined />}>已处理</Tag>;
+        if (r.snoozeUntil && new Date(r.snoozeUntil).getTime() > Date.now()) {
+          return <Tag color="gold" icon={<ClockCircleOutlined />}>延时至 {dayjs(r.snoozeUntil).format('HH:mm')}</Tag>;
+        }
+        return <Badge status="error" text="未处理" />;
+      },
     },
     {
-      title: '操作', key: 'actions',
-      render: (_: any, r: any) => !r.resolved && (
-        <Button size="small" type="primary" onClick={() => resolve(r.id)}>标记已处理</Button>
+      title: '操作', key: 'actions', width: 200,
+      render: (_: any, r: any) => r.resolved ? null : (
+        <Space size="small">
+          {r.anomalyType === 'stationary' && (
+            <Button size="small" icon={<ClockCircleOutlined />} onClick={() => { setSnoozeFor(r); setSnoozeMinutes(10); }}>延时</Button>
+          )}
+          <Button size="small" icon={<StopOutlined />} onClick={() => ignore(r.id)}>忽略</Button>
+          <Button size="small" type="primary" onClick={() => resolve(r.id)}>已处理</Button>
+        </Space>
       ),
     },
   ];
@@ -92,13 +135,19 @@ export default function AnomaliesPage() {
           {unresolvedCount > 0 && <Badge count={unresolvedCount} style={{ backgroundColor: '#ff4d4f' }} />}
         </Space>
         <Space>
+          <Tooltip title="报警声音提醒">
+            <Space size={4}>
+              <SoundOutlined style={{ color: soundOn ? '#F59E0B' : '#bbb' }} />
+              <Switch size="small" checked={soundOn} onChange={(v) => { setSoundOn(v); setAnomalySoundOn(v); }} />
+            </Space>
+          </Tooltip>
           <Button
             type={showAll ? 'default' : 'primary'}
             onClick={() => setShowAll(!showAll)}
           >
             {showAll ? '只看未处理' : '查看全部'}
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => load()}>刷新</Button>
         </Space>
       </div>
 
@@ -110,9 +159,26 @@ export default function AnomaliesPage() {
           loading={loading}
           pagination={{ pageSize: 20 }}
           rowClassName={(r) => !r.resolved ? 'ant-table-row-selected' : ''}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1000 }}
         />
       </Card>
+
+      <Modal
+        title={<span><ClockCircleOutlined /> 延时报警</span>}
+        open={!!snoozeFor}
+        onCancel={() => setSnoozeFor(null)}
+        onOk={doSnooze}
+        okText="确认延时"
+        cancelText="取消"
+        centered
+        width={420}
+        destroyOnClose
+      >
+        <Text>延后多久后若司机仍未移动则再次报警：</Text>
+        <div style={{ marginTop: 12 }}>
+          <InputNumber min={1} max={120} value={snoozeMinutes} onChange={(v) => setSnoozeMinutes(Number(v) || 10)} addonAfter="分钟" style={{ width: 160 }} />
+        </div>
+      </Modal>
     </div>
   );
 }

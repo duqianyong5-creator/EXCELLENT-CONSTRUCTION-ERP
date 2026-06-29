@@ -2,6 +2,7 @@ import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './notification.entity';
+import { NotificationsGateway } from './notifications.gateway';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 
@@ -10,6 +11,7 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification) private repo: Repository<Notification>,
     @Inject(forwardRef(() => UsersService)) private usersService: UsersService,
+    private gateway: NotificationsGateway,
   ) {}
 
   async create(
@@ -26,7 +28,10 @@ export class NotificationsService {
 
     if (userId) {
       const notif = this.repo.create({ userId, ...data });
-      saved.push(await this.repo.save(notif));
+      const savedNotif = await this.repo.save(notif);
+      saved.push(savedNotif);
+      // Real-time push so the web/app update instantly (no polling delay).
+      this.gateway.sendToUser(userId, 'notification:new', savedNotif);
     }
 
     if (data.notifyAdmins) {
@@ -39,11 +44,17 @@ export class NotificationsService {
           type: data.type,
           meta: data.meta,
         });
-        saved.push(await this.repo.save(notif));
+        const savedNotif = await this.repo.save(notif);
+        saved.push(savedNotif);
+        this.gateway.sendToUser(admin.id, 'notification:new', savedNotif);
       }
     }
 
     return saved;
+  }
+
+  broadcastGpsUpdate(driverId: string, gpsData: any) {
+    this.gateway.broadcastGpsUpdate(driverId, gpsData);
   }
 
   async findForUser(userId: string): Promise<Notification[]> {

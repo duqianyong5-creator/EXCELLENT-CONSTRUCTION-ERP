@@ -6,15 +6,22 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EnvironmentOutlined, CarOutlined, UserOutlined,
-  EyeOutlined, DeleteOutlined, MailOutlined, PictureOutlined,
+  EyeOutlined, DeleteOutlined, PictureOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { tasksApi, usersApi, workRecordsApi } from '../../api';
+import * as XLSX from 'xlsx';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+
+const compactModalStyles = {
+  header: { padding: '14px 18px' },
+  body: { padding: '14px 18px 18px' },
+};
+const compactFormItemStyle = { marginBottom: 10 };
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'default', assigned: 'blue', in_progress: 'orange',
@@ -43,37 +50,52 @@ export default function TasksPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [workRecord, setWorkRecord] = useState<any>(null);
-  const [emailLoading, setEmailLoading] = useState(false);
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
 
   const loadData = async () => {
     setLoading(true);
-    try {
-      const [taskList, driverList, clientList]: any = await Promise.all([
-        tasksApi.list(), usersApi.drivers(), usersApi.clients(),
-      ]);
-      setTasks(taskList || []);
-      setDrivers(driverList || []);
-      setClients(clientList || []);
-    } finally {
-      setLoading(false);
-    }
+    // 各自独立：某个接口失败也不影响任务列表刷新（任务列表用于生成序号）
+    const [taskR, driverR, clientR] = await Promise.allSettled([
+      tasksApi.list(), usersApi.drivers(), usersApi.clients(),
+    ]);
+    if (taskR.status === 'fulfilled') setTasks((taskR.value as any) || []);
+    if (driverR.status === 'fulfilled') setDrivers((driverR.value as any) || []);
+    if (clientR.status === 'fulfilled') setClients((clientR.value as any) || []);
+    setLoading(false);
   };
 
   useEffect(() => { loadData(); }, []);
 
-  const handleClientChange = (clientId: string) => {
-    const client = clients.find((c: any) => c.id === clientId);
-    if (client) {
-      const name = client.fullName || client.username;
-      form.setFieldValue('title', `${name}的运输任务`);
-    }
+  // 任务名 = 客户名-年月日-当日序号（如 test1-20260627-001）。
+  // 序号按「同一客户 + 今天日期」单独递增：不同客户各自从 001 开始。
+  // 例：test1-20260628-001、test2-20260628-001。前缀含 -日期- 分隔，避免 test 与 test1 互相命中。
+  const genTaskTitle = (clientName: string) => {
+    const datePart = dayjs().format('YYYYMMDD');
+    const prefix = `${clientName}-${datePart}-`;
+    const sameCustomerDay = tasks.filter(
+      (t: any) => typeof t?.title === 'string' && t.title.startsWith(prefix),
+    ).length;
+    return `${prefix}${String(sameCustomerDay + 1).padStart(3, '0')}`;
+  };
+
+  const openCreate = () => {
+    form.resetFields();
+    setCreateOpen(true);
   };
 
   const handleCreate = async (values: any) => {
     try {
-      await tasksApi.create({ ...values, scheduledAt: values.scheduledAt?.toISOString() });
+      const { scheduledAt, ...payload } = values;
+      const client = clients.find((c: any) => c.id === values.clientId);
+      const clientName = client ? (client.fullName || client.username) : '客户';
+      await tasksApi.create({
+        ...payload,
+        title: genTaskTitle(clientName),
+        startLocation: '-',
+        scheduledAt: scheduledAt?.toISOString(),
+      });
       message.success('任务已创建');
       setCreateOpen(false);
       form.resetFields();
@@ -129,42 +151,24 @@ export default function TasksPage() {
     }
   };
 
-  const handleSendEmail = async () => {
-    if (!selectedTask) return;
-    setEmailLoading(true);
-    try {
-      const res: any = await tasksApi.sendEmail(selectedTask.id);
-      if (res?.success) {
-        message.success(res.message || '邮件已发送');
-      } else {
-        message.warning(res?.message || '发送失败');
-      }
-    } catch (err: any) {
-      message.error(err?.message || '发送邮件失败');
-    } finally {
-      setEmailLoading(false);
-    }
-  };
 
   const columns = [
     {
-      title: '任务名称', dataIndex: 'title', key: 'title', width: 160,
+      title: '任务名称', dataIndex: 'title', key: 'title',
       render: (v: string) => <Text strong style={{ fontSize: 13 }}>{v}</Text>,
     },
     {
-      title: '路线', key: 'route', width: 220,
+      title: '终点地址', key: 'route',
       render: (_: any, r: any) => (
-        <Tooltip title={`${r.startLocation} → ${r.endLocation}`}>
+        <Tooltip title={r.endLocation}>
           <div style={{ fontSize: 12 }}>
-            <div><EnvironmentOutlined style={{ color: '#52c41a', marginRight: 4 }} />{r.startLocation}</div>
-            <div style={{ color: '#bbb', margin: '2px 0 2px 4px' }}>↓</div>
             <div><EnvironmentOutlined style={{ color: '#ff4d4f', marginRight: 4 }} />{r.endLocation}</div>
           </div>
         </Tooltip>
       ),
     },
     {
-      title: '客户', key: 'client', width: 110,
+      title: '客户', key: 'client',
       render: (_: any, r: any) => (
         <Space size={4}>
           <UserOutlined style={{ color: '#722ed1' }} />
@@ -173,7 +177,7 @@ export default function TasksPage() {
       ),
     },
     {
-      title: '司机', key: 'driver', width: 110,
+      title: '司机', key: 'driver',
       render: (_: any, r: any) => r.driver ? (
         <Space size={4}>
           <CarOutlined style={{ color: '#1677ff' }} />
@@ -181,19 +185,19 @@ export default function TasksPage() {
         </Space>
       ) : <Tag>未分配</Tag>,
     },
-    { title: '货物', dataIndex: 'cargo', key: 'cargo', width: 100, render: (v: string) => v || '-' },
+    { title: '货物', dataIndex: 'cargo', key: 'cargo', render: (v: string) => v || '-' },
     {
-      title: '计划时间', dataIndex: 'scheduledAt', key: 'scheduledAt', width: 100,
+      title: '计划开始时间', dataIndex: 'scheduledAt', key: 'scheduledAt',
       render: (v: string) => v ? dayjs(v).format('MM-DD HH:mm') : '-',
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 90,
+      title: '状态', dataIndex: 'status', key: 'status',
       render: (s: string) => <Tag color={STATUS_COLOR[s]}>{STATUS_LABEL[s]}</Tag>,
     },
     {
-      title: '操作', key: 'actions', fixed: 'right' as const, width: 220,
+      title: '操作', key: 'actions', width: 240,
       render: (_: any, record: any) => (
-        <Space size={4} wrap>
+        <Space size={20} wrap>
           <Button
             size="small" icon={<EyeOutlined />}
             onClick={() => openDetail(record)}
@@ -230,21 +234,63 @@ export default function TasksPage() {
     },
   ];
 
+  const filteredTasks = tasks.filter((tk: any) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    return [
+      tk.title,
+      tk.client?.fullName, tk.client?.username, tk.client?.email,
+      tk.driver?.fullName, tk.driver?.username,
+      tk.endLocation, tk.cargo,
+      tk.scheduledAt ? dayjs(tk.scheduledAt).format('YYYY-MM-DD') : '',
+      tk.createdAt ? dayjs(tk.createdAt).format('YYYY-MM-DD') : '',
+    ].some((v) => String(v || '').toLowerCase().includes(q));
+  });
+
+  const exportTasks = () => {
+    const rows = filteredTasks.map((tk: any) => ({
+      任务: tk.title,
+      客户: tk.client?.fullName || tk.client?.username || '-',
+      司机: tk.driver?.fullName || tk.driver?.username || '未分配',
+      终点: tk.endLocation || '-',
+      货物: tk.cargo || '-',
+      '重量(吨)': tk.cargoWeight ?? '-',
+      计划开始时间: tk.scheduledAt ? dayjs(tk.scheduledAt).format('YYYY-MM-DD HH:mm') : '-',
+      状态: STATUS_LABEL[tk.status] || tk.status,
+      创建时间: tk.createdAt ? dayjs(tk.createdAt).format('YYYY-MM-DD HH:mm') : '-',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '任务列表');
+    XLSX.writeFile(wb, `任务列表_${dayjs().format('YYYYMMDD')}.xlsx`);
+  };
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <Title level={4} style={{ margin: 0 }}>任务管理</Title>
-          <Text type="secondary" style={{ fontSize: 13 }}>选择客户后任务名称自动填写</Text>
+          <Text type="secondary" style={{ fontSize: 13 }}>任务名称自动按「客户-年月日-序号」生成（如 test1-20260627-001）</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>创建任务</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>创建任务</Button>
       </div>
+
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Input.Search
+          placeholder="搜索 客户 / 司机 / 任务 / 终点 / 日期(2026-06-27)"
+          allowClear
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ width: 360 }}
+        />
+        <Button icon={<DownloadOutlined />} onClick={exportTasks}>导出 Excel</Button>
+      </Space>
 
       <Card bordered={false} styles={{ body: { padding: 0 } }} style={{ borderRadius: 12, overflow: 'hidden' }}>
         <Table
-          columns={columns} dataSource={tasks} rowKey="id"
+          columns={columns} dataSource={filteredTasks} rowKey="id"
           loading={loading} pagination={{ pageSize: 15 }}
-          scroll={{ x: 1100 }} size="middle"
+          size="middle"
           locale={{ emptyText: <Empty description="暂无任务" /> }}
         />
       </Card>
@@ -254,22 +300,9 @@ export default function TasksPage() {
         title="任务详情"
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
-        width={700}
-        footer={
-          <Space>
-            <Button onClick={() => setDetailOpen(false)}>关闭</Button>
-            {selectedTask?.status === 'completed' && (
-              <Button
-                type="primary"
-                icon={<MailOutlined />}
-                loading={emailLoading}
-                onClick={handleSendEmail}
-              >
-                发送邮件给客户
-              </Button>
-            )}
-          </Space>
-        }
+        centered
+        width={680}
+        footer={<Button onClick={() => setDetailOpen(false)}>关闭</Button>}
         destroyOnClose
       >
         {selectedTask && (
@@ -297,11 +330,7 @@ export default function TasksPage() {
               <Descriptions.Item label="状态">
                 <Tag color={STATUS_COLOR[selectedTask.status]}>{STATUS_LABEL[selectedTask.status]}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="起点" span={2}>
-                <EnvironmentOutlined style={{ color: '#52c41a', marginRight: 4 }} />
-                {selectedTask.startLocation}
-              </Descriptions.Item>
-              <Descriptions.Item label="终点" span={2}>
+              <Descriptions.Item label="终点地址" span={2}>
                 <EnvironmentOutlined style={{ color: '#ff4d4f', marginRight: 4 }} />
                 {selectedTask.endLocation}
               </Descriptions.Item>
@@ -312,7 +341,7 @@ export default function TasksPage() {
                 <Descriptions.Item label="重量">{selectedTask.cargoWeight} 吨</Descriptions.Item>
               )}
               {selectedTask.scheduledAt && (
-                <Descriptions.Item label="计划时间" span={2}>
+                <Descriptions.Item label="计划开始时间" span={2}>
                   {dayjs(selectedTask.scheduledAt).format('YYYY-MM-DD HH:mm')}
                 </Descriptions.Item>
               )}
@@ -395,15 +424,14 @@ export default function TasksPage() {
 
       {/* 创建任务 */}
       <Modal title="创建任务" open={createOpen} onCancel={() => { setCreateOpen(false); form.resetFields(); }}
-        footer={null} width={560} destroyOnClose>
-        <Form form={form} onFinish={handleCreate} layout="vertical" style={{ paddingTop: 8 }}>
+        footer={null} width={520} centered styles={compactModalStyles} destroyOnClose>
+        <Form form={form} onFinish={handleCreate} layout="vertical" size="small" style={{ paddingTop: 0 }}>
 
-          <Form.Item name="clientId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
+          <Form.Item name="clientId" label="客户" style={compactFormItemStyle} rules={[{ required: true, message: '请选择客户' }]}>
             <Select
               showSearch
               placeholder="输入姓名搜索客户"
               optionFilterProp="label"
-              onChange={handleClientChange}
               notFoundContent={<Empty description="无客户账户，请先创建" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
               options={clients.map((c: any) => ({
                 value: c.id,
@@ -419,12 +447,12 @@ export default function TasksPage() {
             />
           </Form.Item>
 
-          {/* 任务名称隐藏字段，由客户选择自动填写 */}
-          <Form.Item name="title" hidden rules={[{ required: true }]}>
+          {/* 任务名称在提交时按「客户-年月日-序号」自动生成，无需校验 */}
+          <Form.Item name="title" hidden>
             <Input />
           </Form.Item>
 
-          <Form.Item name="driverId" label="司机" rules={[{ required: true, message: '请选择司机' }]}>
+          <Form.Item name="driverId" label="司机" style={compactFormItemStyle} rules={[{ required: true, message: '请选择司机' }]}>
             <Select
               showSearch
               placeholder="输入姓名搜索司机"
@@ -443,40 +471,37 @@ export default function TasksPage() {
             />
           </Form.Item>
 
-          <Form.Item name="startLocation" label="起点地址" rules={[{ required: true }]}>
-            <Input placeholder="如：广州白云区仓库" prefix={<EnvironmentOutlined style={{ color: '#52c41a' }} />} />
-          </Form.Item>
-          <Form.Item name="endLocation" label="终点地址" rules={[{ required: true }]}>
+          <Form.Item name="endLocation" label="终点地址" style={compactFormItemStyle} rules={[{ required: true }]}>
             <Input placeholder="如：深圳罗湖区客户仓" prefix={<EnvironmentOutlined style={{ color: '#ff4d4f' }} />} />
           </Form.Item>
 
-          <Space style={{ width: '100%' }}>
-            <Form.Item name="cargo" label="货物描述" style={{ flex: 1, marginBottom: 12 }}>
+          <Space size={8} style={{ width: '100%' }}>
+            <Form.Item name="cargo" label="货物描述" style={{ flex: 1, marginBottom: 10 }}>
               <Input placeholder="货物类型" />
             </Form.Item>
-            <Form.Item name="cargoWeight" label="重量（吨）" style={{ width: 130, marginBottom: 12 }}>
+            <Form.Item name="cargoWeight" label="重量（吨）" style={{ width: 120, marginBottom: 10 }}>
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
           </Space>
 
-          <Form.Item name="scheduledAt" label="计划执行时间">
+          <Form.Item name="scheduledAt" label="计划开始时间" style={compactFormItemStyle}>
             <DatePicker showTime style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="notes" label="备注">
+          <Form.Item name="notes" label="备注" style={compactFormItemStyle}>
             <TextArea rows={2} />
           </Form.Item>
 
           <div style={{ textAlign: 'right', paddingTop: 4 }}>
-            <Space>
-              <Button onClick={() => { setCreateOpen(false); form.resetFields(); }}>取消</Button>
-              <Button type="primary" htmlType="submit">创建任务</Button>
+            <Space size={8}>
+              <Button size="small" onClick={() => { setCreateOpen(false); form.resetFields(); }}>取消</Button>
+              <Button size="small" type="primary" htmlType="submit">创建任务</Button>
             </Space>
           </div>
         </Form>
       </Modal>
 
       {/* 分配司机 */}
-      <Modal title="分配司机" open={assignOpen} onCancel={() => setAssignOpen(false)} footer={null} destroyOnClose width={400}>
+      <Modal title="分配司机" open={assignOpen} onCancel={() => setAssignOpen(false)} footer={null} destroyOnClose centered width={420}>
         <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f5f5f5', borderRadius: 8 }}>
           <Text type="secondary">任务：</Text>
           <Text strong>{selectedTask?.title}</Text>

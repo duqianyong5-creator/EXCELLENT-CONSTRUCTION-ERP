@@ -1,77 +1,73 @@
-# 部署说明
+﻿# 閮ㄧ讲璇存槑
 
-## 方式一：本地开发（推荐先行）
-
-### 前置要求
+## 鏂瑰紡涓€锛氭湰鍦板紑鍙戯紙鎺ㄨ崘鍏堣锛?
+### 鍓嶇疆瑕佹眰
 - Node.js 20+
 - PostgreSQL 15+
-- npm 或 pnpm
+- npm 鎴?pnpm
 
-### 1. 初始化数据库
+### 1. 鍒濆鍖栨暟鎹簱
 
 ```bash
-# 创建数据库
-psql -U postgres -c "CREATE DATABASE truck_dispatch;"
+# 鍒涘缓鏁版嵁搴?psql -U postgres -c "CREATE DATABASE truck_dispatch;"
 
-# 执行 Schema
-psql -U postgres -d truck_dispatch -f database/schema.sql
+# 鎵ц Schema
+psql -U postgres -d truck_dispatch -f database/database.sql
 ```
 
-### 2. 启动后端
+### 2. 鍚姩鍚庣
 
 ```bash
 cd backend
 
-# 复制配置文件
+# 澶嶅埗閰嶇疆鏂囦欢
 copy .env.example .env
-# 编辑 .env，填写数据库密码、JWT_SECRET、Google Maps Key
+# 缂栬緫 .env锛屽～鍐欐暟鎹簱瀵嗙爜銆丣WT_SECRET銆丟oogle Maps Key
 
-# 安装依赖
+# 瀹夎渚濊禆
 npm install
 
-# 开发模式
-npm run start:dev
-# 后端运行在 http://localhost:3000
-# API 文档：http://localhost:3000/api/docs
+# 寮€鍙戞ā寮?npm run start:dev
+# 鍚庣杩愯鍦?http://localhost:3000
+# API 鏂囨。锛歨ttp://localhost:3000/api/docs
 ```
 
-### 3. 启动前端
+### 3. 鍚姩鍓嶇
 
 ```bash
 cd frontend
 
-# 复制配置文件
+# 澶嶅埗閰嶇疆鏂囦欢
 copy .env.example .env.local
-# 填写 VITE_GOOGLE_MAPS_KEY
+# 濉啓 VITE_GOOGLE_MAPS_KEY
 
-# 安装依赖
+# 瀹夎渚濊禆
 npm install
 
-# 开发模式
-npm run dev
-# 前端运行在 http://localhost:5173
+# 寮€鍙戞ā寮?npm run dev
+# 鍓嶇杩愯鍦?http://localhost:5173
 ```
 
-### 4. 登录测试
+### 4. 鐧诲綍娴嬭瘯
 
-默认管理员账户：
-- 邮箱：admin@trucksystem.com
-- 密码：Admin@123456
+榛樿绠＄悊鍛樿处鎴凤細
+- 閭锛歛dmin@trucksystem.com
+- 瀵嗙爜锛欰dmin@123456
 
-⚠️ **上线前必须修改默认密码！**
+鈿狅笍 **Production must use a strong admin password after first login**
 
 ---
 
-## 方式二：Docker Compose 部署
+## 鏂瑰紡浜岋細Docker Compose 閮ㄧ讲
 
-### 前置要求
+### 鍓嶇疆瑕佹眰
 - Docker 24+
 - Docker Compose 2.20+
 
-### 1. 配置环境变量
+### 1. 閰嶇疆鐜鍙橀噺
 
 ```bash
-# 项目根目录创建 .env 文件
+# 椤圭洰鏍圭洰褰曞垱寤?.env 鏂囦欢
 cat > .env << EOF
 DB_PASSWORD=YourStrongPassword@2024
 JWT_SECRET=your-256bit-secret-key-here
@@ -79,37 +75,33 @@ GOOGLE_MAPS_API_KEY=AIza...
 EOF
 ```
 
-### 2. 一键启动
-
+### 2. 涓€閿惎鍔?
 ```bash
 docker compose up -d
 ```
 
-启动后：
-- 前端：http://localhost
-- 后端 API：http://localhost:3000
-- API 文档：http://localhost:3000/api/docs
+鍚姩鍚庯細
+- 鍓嶇锛歨ttp://localhost
+- 鍚庣 API锛歨ttp://localhost:3000
+- API 鏂囨。锛歨ttp://localhost:3000/api/docs
 
-### 3. 查看日志
+### 3. 鏌ョ湅鏃ュ織
 
 ```bash
 docker compose logs -f backend
 docker compose logs -f postgres
 ```
 
-### 4. 停止服务
+### 4. 鍋滄鏈嶅姟
 
 ```bash
 docker compose down
-# 保留数据库数据
-docker compose down -v  # 清除所有数据（慎用）
-```
+# 淇濈暀鏁版嵁搴撴暟鎹?docker compose down -v  # 娓呴櫎鎵€鏈夋暟鎹紙鎱庣敤锛?```
 
 ---
 
-## 方式三：生产服务器部署（Ubuntu 22.04）
-
-### 1. 安装依赖
+## 鏂瑰紡涓夛細鐢熶骇鏈嶅姟鍣ㄩ儴缃诧紙Ubuntu 22.04锛?
+### 1. 瀹夎渚濊禆
 
 ```bash
 # Node.js 20
@@ -126,22 +118,22 @@ sudo apt-get install -y nginx
 npm install -g pm2
 ```
 
-### 2. PostgreSQL 配置
+### 2. PostgreSQL 閰嶇疆
 
 ```bash
 sudo -u postgres psql -c "CREATE USER truckuser WITH PASSWORD 'your_password';"
 sudo -u postgres psql -c "CREATE DATABASE truck_dispatch OWNER truckuser;"
-sudo -u postgres psql -d truck_dispatch -f /path/to/database/schema.sql
+sudo -u postgres psql -d truck_dispatch -f /path/to/database/database.sql
 ```
 
-### 3. 后端部署
+### 3. 鍚庣閮ㄧ讲
 
 ```bash
 cd /var/www/truck-dispatch/backend
 npm ci
 npm run build
 
-# 配置 .env
+# 閰嶇疆 .env
 cat > .env << EOF
 NODE_ENV=production
 DATABASE_HOST=localhost
@@ -154,22 +146,22 @@ PORT=3000
 GOOGLE_MAPS_API_KEY=your-key
 EOF
 
-# PM2 启动
+# PM2 鍚姩
 pm2 start dist/main.js --name truck-backend
 pm2 startup
 pm2 save
 ```
 
-### 4. 前端构建
+### 4. 鍓嶇鏋勫缓
 
 ```bash
 cd /var/www/truck-dispatch/frontend
 npm ci
 VITE_GOOGLE_MAPS_KEY=your-key npm run build
-# 产物在 dist/
+# 浜х墿鍦?dist/
 ```
 
-### 5. Nginx 配置
+### 5. Nginx 閰嶇疆
 
 ```nginx
 # /etc/nginx/sites-available/truck-dispatch
@@ -211,8 +203,7 @@ sudo ln -s /etc/nginx/sites-available/truck-dispatch /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 6. SSL（推荐使用 Let's Encrypt）
-
+### 6. SSL锛堟帹鑽愪娇鐢?Let's Encrypt锛?
 ```bash
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
@@ -220,74 +211,59 @@ sudo certbot --nginx -d your-domain.com
 
 ---
 
-## Google Maps API 配置
+## Google Maps API 閰嶇疆
 
-1. 访问 [Google Cloud Console](https://console.cloud.google.com/)
-2. 创建项目 → 启用 Maps JavaScript API
-3. 创建 API Key，限制到你的域名
-4. 填入 `VITE_GOOGLE_MAPS_KEY`（前端）和 `GOOGLE_MAPS_API_KEY`（后端）
+1. 璁块棶 [Google Cloud Console](https://console.cloud.google.com/)
+2. 鍒涘缓椤圭洰 鈫?鍚敤 Maps JavaScript API
+3. 鍒涘缓 API Key锛岄檺鍒跺埌浣犵殑鍩熷悕
+4. 濉叆 `VITE_GOOGLE_MAPS_KEY`锛堝墠绔級鍜?`GOOGLE_MAPS_API_KEY`锛堝悗绔級
 
 ---
 
-## 目录结构总览
+## 鐩綍缁撴瀯鎬昏
 
 ```
-货车系统开发/
-├── backend/                # NestJS 后端
-│   ├── src/
-│   │   ├── auth/          # 认证模块（JWT、登录、注册）
-│   │   ├── users/         # 用户管理（RBAC）
-│   │   ├── tasks/         # 任务管理
-│   │   ├── gps/           # GPS 追踪 + 防作弊
-│   │   ├── work-records/  # 工时记录
-│   │   ├── adjustments/   # 工时调整
-│   │   ├── notifications/ # 通知 + WebSocket 网关
-│   │   └── common/        # 公共 Guards、Decorators
-│   ├── Dockerfile
-│   └── package.json
-├── frontend/               # React 前端
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── auth/      # 登录、注册
-│   │   │   ├── admin/     # 管理员/调度员界面
-│   │   │   ├── driver/    # 司机界面
-│   │   │   └── client/    # 客户界面
-│   │   ├── store/         # Redux 状态管理
-│   │   ├── api/           # API 封装
-│   │   ├── hooks/         # useSocket 等
-│   │   └── i18n.ts        # 中英文国际化
-│   ├── Dockerfile
-│   └── package.json
-├── database/
-│   └── schema.sql          # 完整数据库结构
-├── docs/
-│   ├── API.md             # API 文档
-│   └── DEPLOY.md          # 本文件
-└── docker-compose.yml
+璐ц溅绯荤粺寮€鍙?
+鈹溾攢鈹€ backend/                # NestJS 鍚庣
+鈹?  鈹溾攢鈹€ src/
+鈹?  鈹?  鈹溾攢鈹€ auth/          # 璁よ瘉妯″潡锛圝WT銆佺櫥褰曘€佹敞鍐岋級
+鈹?  鈹?  鈹溾攢鈹€ users/         # 鐢ㄦ埛绠＄悊锛圧BAC锛?鈹?  鈹?  鈹溾攢鈹€ tasks/         # 浠诲姟绠＄悊
+鈹?  鈹?  鈹溾攢鈹€ gps/           # GPS 杩借釜 + 闃蹭綔寮?鈹?  鈹?  鈹溾攢鈹€ work-records/  # 宸ユ椂璁板綍
+鈹?  鈹?  鈹溾攢鈹€ adjustments/   # 宸ユ椂璋冩暣
+鈹?  鈹?  鈹溾攢鈹€ notifications/ # 閫氱煡 + WebSocket 缃戝叧
+鈹?  鈹?  鈹斺攢鈹€ common/        # 鍏叡 Guards銆丏ecorators
+鈹?  鈹溾攢鈹€ Dockerfile
+鈹?  鈹斺攢鈹€ package.json
+鈹溾攢鈹€ frontend/               # React 鍓嶇
+鈹?  鈹溾攢鈹€ src/
+鈹?  鈹?  鈹溾攢鈹€ pages/
+鈹?  鈹?  鈹?  鈹溾攢鈹€ auth/      # 鐧诲綍銆佹敞鍐?鈹?  鈹?  鈹?  鈹溾攢鈹€ admin/     # 绠＄悊鍛?璋冨害鍛樼晫闈?鈹?  鈹?  鈹?  鈹溾攢鈹€ driver/    # 鍙告満鐣岄潰
+鈹?  鈹?  鈹?  鈹斺攢鈹€ client/    # 瀹㈡埛鐣岄潰
+鈹?  鈹?  鈹溾攢鈹€ store/         # Redux 鐘舵€佺鐞?鈹?  鈹?  鈹溾攢鈹€ api/           # API 灏佽
+鈹?  鈹?  鈹溾攢鈹€ hooks/         # useSocket 绛?鈹?  鈹?  鈹斺攢鈹€ i18n.ts        # 涓嫳鏂囧浗闄呭寲
+鈹?  鈹溾攢鈹€ Dockerfile
+鈹?  鈹斺攢鈹€ package.json
+鈹溾攢鈹€ database/
+鈹?  鈹斺攢鈹€ database.sql        # 缁熶竴鏁版嵁搴撳垵濮嬪寲鑴氭湰
+鈹溾攢鈹€ docs/
+鈹?  鈹溾攢鈹€ API.md             # API 鏂囨。
+鈹?  鈹斺攢鈹€ DEPLOY.md          # 鏈枃浠?鈹斺攢鈹€ docker-compose.yml
 ```
 
 ---
 
-## 安全检查清单
-
-- [ ] 修改默认管理员密码
-- [ ] 设置强 JWT_SECRET（256位随机字符串）
-- [ ] 数据库使用专用用户，不使用 postgres 超级用户
-- [ ] 生产环境关闭 TypeORM synchronize（改为 migrations）
-- [ ] Nginx 配置 rate limiting
-- [ ] 上传文件大小限制（当前默认10MB）
-- [ ] HTTPS（SSL 证书）
-- [ ] Google Maps API Key 限制域名
+## 瀹夊叏妫€鏌ユ竻鍗?
+- [ ] 淇敼榛樿绠＄悊鍛樺瘑鐮?- [ ] 璁剧疆寮?JWT_SECRET锛?56浣嶉殢鏈哄瓧绗︿覆锛?- [ ] 鏁版嵁搴撲娇鐢ㄤ笓鐢ㄧ敤鎴凤紝涓嶄娇鐢?postgres 瓒呯骇鐢ㄦ埛
+- [ ] 鐢熶骇鐜鍏抽棴 TypeORM synchronize锛堟敼涓?migrations锛?- [ ] Nginx 閰嶇疆 rate limiting
+- [ ] 涓婁紶鏂囦欢澶у皬闄愬埗锛堝綋鍓嶉粯璁?0MB锛?- [ ] HTTPS锛圫SL 璇佷功锛?- [ ] Google Maps API Key 闄愬埗鍩熷悕
 
 ---
 
-## 常见问题
+## 甯歌闂
 
-**Q: 上传文件后无法访问？**  
-A: 确保 `backend/uploads/` 目录存在且有写权限。Docker 环境中已通过 volume 挂载。
-
-**Q: WebSocket 连接失败？**  
-A: 检查 Nginx location /socket.io/ 配置，需要 Upgrade 头支持。
-
-**Q: GPS 功能需要 HTTPS？**  
-A: 是的，浏览器 Geolocation API 在生产环境要求 HTTPS。本地开发 localhost 例外。
+**Q: 涓婁紶鏂囦欢鍚庢棤娉曡闂紵**  
+A: 纭繚 `backend/uploads/` 鐩綍瀛樺湪涓旀湁鍐欐潈闄愩€侱ocker 鐜涓凡閫氳繃 volume 鎸傝浇銆?
+**Q: WebSocket 杩炴帴澶辫触锛?*  
+A: 妫€鏌?Nginx location /socket.io/ 閰嶇疆锛岄渶瑕?Upgrade 澶存敮鎸併€?
+**Q: GPS 鍔熻兘闇€瑕?HTTPS锛?*  
+A: 鏄殑锛屾祻瑙堝櫒 Geolocation API 鍦ㄧ敓浜х幆澧冭姹?HTTPS銆傛湰鍦板紑鍙?localhost 渚嬪銆?

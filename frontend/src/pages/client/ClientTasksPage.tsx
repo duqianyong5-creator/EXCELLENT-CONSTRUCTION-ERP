@@ -5,16 +5,25 @@ import {
 import { EnvironmentOutlined, ClockCircleOutlined, CarOutlined, EyeOutlined, TruckOutlined } from '@ant-design/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { addBaseLayers } from '../../components/mapLayers';
 import { useTranslation } from 'react-i18next';
 import { tasksApi, gpsApi, workRecordsApi } from '../../api';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-function TrackMap({ track, driverPos, status }: {
+// 转义，防止司机昵称把 HTML 注入到 Leaflet 弹窗
+function escClient(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string),
+  );
+}
+
+function TrackMap({ track, driverPos, status, driverName }: {
   track: [number, number][];
   driverPos: { lat: number; lng: number } | null;
   status: string;
+  driverName?: string;
 }) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -23,9 +32,7 @@ function TrackMap({ track, driverPos, status }: {
     if (!divRef.current) return;
     const map = L.map(divRef.current, { center: [22.3193, 114.1694], zoom: 10 });
     mapRef.current = map;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(map);
+    addBaseLayers(map);
 
     if (track.length > 1) {
       L.polyline(track, { color: '#1677ff', weight: 3, opacity: 0.8 }).addTo(map);
@@ -37,7 +44,7 @@ function TrackMap({ track, driverPos, status }: {
       L.marker(track[track.length - 1], { icon: L.divIcon({ className: '', html: `<div style="width:14px;height:14px;background:#ef4444;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(map).bindPopup('终点');
     }
     if (driverPos && status === 'in_progress') {
-      L.marker([driverPos.lat, driverPos.lng], { icon: L.divIcon({ className: '', html: `<div style="background:#F59E0B;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff">🚛</div>`, iconSize: [32, 32], iconAnchor: [16, 16] }) }).addTo(map).bindPopup('司机当前位置');
+      L.marker([driverPos.lat, driverPos.lng], { icon: L.divIcon({ className: '', html: `<div style="background:#F59E0B;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff">🚛</div>`, iconSize: [32, 32], iconAnchor: [16, 16] }) }).addTo(map).bindPopup(driverName ? `司机：${escClient(driverName)}` : '司机当前位置');
     }
 
     const allPoints: [number, number][] = [...track];
@@ -202,7 +209,7 @@ export default function ClientTasksPage() {
       >
         {/* Map */}
         <div style={{ marginBottom: 16 }}>
-          <TrackMap track={trackPath} driverPos={driverPos} status={selected?.status} />
+          <TrackMap track={trackPath} driverPos={driverPos} status={selected?.status} driverName={selected?.driver?.fullName || selected?.driver?.username} />
         </div>
 
         {/* Work Record Info */}

@@ -10,6 +10,7 @@ export enum AnomalyType {
   SPEED_ANOMALY = 'speed_anomaly',
   TELEPORT = 'teleport',
   TIME_INCONSISTENCY = 'time_inconsistency',
+  STATIONARY = 'stationary', // GPS 长时间不动
 }
 
 @Entity('gps_anomalies')
@@ -57,4 +58,11 @@ export class GpsAnomaly {
 
   @Column({ name: 'resolved_by', nullable: true })
   resolvedBy: string;
+
+  // 报警升级：已报警次数（含首次）与下次报警最早时间
+  @Column({ name: 'alarm_count', type: 'int', default: 1 })
+  alarmCount: number;
+
+  @Column({ name: 'snooze_until', type: 'timestamp', nullable: true })
+  snoozeUntil: Date;
 }

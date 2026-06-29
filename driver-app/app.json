@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "货车司机",
+    "name": "ECT Technician",
     "slug": "truck-driver-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/log.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/log.png",
       "resizeMode": "contain",
       "backgroundColor": "#1677ff"
     },
@@ -19,16 +19,16 @@
         "NSLocationAlwaysUsageDescription": "任务进行中需要后台上报GPS位置",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "任务进行中需要上报GPS位置",
         "NSCameraUsageDescription": "完成任务时需要拍摄工作照片",
-        "NSPhotoLibraryUsageDescription": "完成任务时需要选择工作照片"
+        "NSPhotoLibraryUsageDescription": "完成任务时需要选择工作照片",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/log.png",
         "backgroundColor": "#1677ff"
       },
       "package": "com.internal.truckdriver",
-      "usesCleartextTraffic": true,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -56,7 +56,17 @@
         {
           "cameraPermission": "完成任务时需要拍摄工作照片"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-font",
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "truckdriver"
   }

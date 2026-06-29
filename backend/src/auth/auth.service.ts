@@ -4,12 +4,14 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { UserRole, UserStatus } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
+import { OperationLogsService } from '../operation-logs/operation-logs.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private operationLogs: OperationLogsService,
   ) {}
 
   async validateUser(identifier: string, password: string) {
@@ -35,6 +37,15 @@ export class AuthService {
 
   async login(user: any) {
     const payload = { sub: user.id, role: user.role, username: user.username };
+    await this.operationLogs.record({
+      actorId: user.id,
+      actorName: user.fullName || user.username || user.email || user.id,
+      action: 'auth.login',
+      targetType: 'user',
+      targetId: user.id,
+      description: 'User logged in',
+      details: { role: user.role },
+    });
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -56,7 +67,7 @@ export class AuthService {
     const existingUsername = await this.usersService.findByEmailOrUsername(dto.username);
     if (existingUsername) throw new BadRequestException('用户名已被使用');
 
-    if (dto.role === UserRole.ADMIN || dto.role === UserRole.DISPATCHER) {
+    if (dto.role === UserRole.ADMIN || dto.role === UserRole.DISPATCHER || dto.role === UserRole.MONITOR) {
       throw new BadRequestException('无法自行注册该角色');
     }
 

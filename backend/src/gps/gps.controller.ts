@@ -32,13 +32,14 @@ export class GpsController {
   }
 
   @Get('track/:taskId')
-  @ApiOperation({ summary: '获取任务GPS轨迹' })
-  getTrack(@Param('taskId') taskId: string) {
-    return this.service.getTrack(taskId);
+  @Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR, UserRole.CLIENT, UserRole.DRIVER)
+  @ApiOperation({ summary: '获取任务GPS轨迹（按归属鉴权）' })
+  getTrack(@Param('taskId') taskId: string, @CurrentUser() user: any) {
+    return this.service.getTrackForUser(taskId, user);
   }
 
   @Get('positions')
-  @Roles(UserRole.ADMIN, UserRole.DISPATCHER)
+  @Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR)
   @ApiOperation({ summary: '获取所有司机最新位置（地图用）' })
   getPositions() {
     return this.service.getLatestPositions();
@@ -52,8 +53,9 @@ export class GpsController {
   }
 
   @Get('driver/:driverId/position')
-  @ApiOperation({ summary: '获取指定司机最新位置' })
-  getDriverPosition(@Param('driverId') driverId: string) {
-    return this.service.getDriverLatestPosition(driverId);
+  @Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR, UserRole.CLIENT, UserRole.DRIVER)
+  @ApiOperation({ summary: '获取指定司机最新位置（按归属鉴权）' })
+  getDriverPosition(@Param('driverId') driverId: string, @CurrentUser() user: any) {
+    return this.service.getDriverPositionForUser(driverId, user);
   }
 }

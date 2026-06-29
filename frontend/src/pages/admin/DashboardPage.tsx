@@ -1,30 +1,75 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Row, Col, Card, Typography, Spin, Button } from 'antd';
+import { Row, Col, Card, Typography, Spin, Button, Modal, Select, Empty, message } from 'antd';
 import {
   TruckOutlined, OrderedListOutlined, CheckCircleOutlined,
   ClockCircleOutlined, ReloadOutlined, CalendarOutlined, RocketOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { tasksApi, gpsApi, usersApi } from '../../api';
+import { tasksApi, gpsApi, usersApi, driverPresenceApi } from '../../api';
+import TrackMap from '../../components/TrackMap';
+import { addBaseLayers } from '../../components/mapLayers';
 import { useTranslation } from 'react-i18next';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const AMBER = '#F59E0B';
 const AMBER_DARK = '#D97706';
+const POSITION_REFRESH_MS = 10000;
+
+// 转义用户输入，防止司机昵称把 HTML/脚本注入到地图标记（Leaflet 直接渲染 HTML 字符串）
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 interface StatCardProps {
-  title: string; value: number; icon: React.ReactNode; bg: string; accent: string;
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+  gradient: string;
+  accentColor: string;
 }
-function StatCard({ title, value, icon, bg, accent }: StatCardProps) {
+function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) {
   return (
-    <div style={{ background: bg, borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 12px rgba(0,0,0,.06)', height: '100%' }}>
-      <div style={{ width: 52, height: 52, borderRadius: 14, background: accent + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: accent, flexShrink: 0 }}>
+    <div
+      style={{
+        background: gradient,
+        borderRadius: 14,
+        padding: '14px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+        height: '100%',
+        transition: 'all 0.2s ease',
+        cursor: 'default',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 8px 22px rgba(0,0,0,0.12)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)';
+      }}
+    >
+      <div style={{
+        width: 42, height: 42, borderRadius: 11,
+        background: `${accentColor}22`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 19, color: accentColor,
+        flexShrink: 0,
+      }}>
         {icon}
       </div>
-      <div>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>{title}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: accent, lineHeight: 1 }}>{value}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 2, fontWeight: 500, whiteSpace: 'nowrap' }}>{title}</div>
+        <div style={{ fontSize: 23, fontWeight: 800, color: accentColor, lineHeight: 1.1 }}>{value}</div>
       </div>
     </div>
   );
@@ -42,9 +87,7 @@ function DriverMap({ positions }: { positions: any[] }) {
       zoom: 10,
       zoomControl: true,
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(leafletMap.current);
+    addBaseLayers(leafletMap.current);
     return () => {
       leafletMap.current?.remove();
       leafletMap.current = null;
@@ -66,18 +109,27 @@ function DriverMap({ positions }: { positions: any[] }) {
       const lat = Number(pos.latitude ?? pos.g_latitude);
       const lng = Number(pos.longitude ?? pos.g_longitude);
       const speed = Number(pos.speed ?? pos.g_speed ?? 0).toFixed(1);
-      const name = pos.driver?.fullName ?? pos.driver?.username ?? `司机`;
+      // 优先用后端直接带来的司机账号名（监控/客户等拿不到司机列表的角色也能显示）
+      const name = pos.driverName ?? pos.driver?.fullName ?? pos.driver?.username ?? `司机`;
+      const safeName = escapeHtml(name);
+      const safeInitial = escapeHtml(name.charAt(0).toUpperCase());
       const icon = L.divIcon({
         className: '',
         html: `<div style="display:flex;flex-direction:column;align-items:center">
-          <div style="background:#F59E0B;color:#000;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.4);border:2px solid #fff;font-weight:700">${name.charAt(0).toUpperCase()}</div>
-          <div style="background:rgba(0,0,0,0.7);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;margin-top:2px;white-space:nowrap;max-width:72px;overflow:hidden;text-overflow:ellipsis">${name}</div>
+          <div style="background:linear-gradient(135deg,${AMBER},${AMBER_DARK});color:#000;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);border:3px solid #fff;font-weight:700">${safeInitial}</div>
+          <div style="background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin-top:4px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${safeName}</div>
         </div>`,
-        iconSize: [80, 52],
-        iconAnchor: [40, 52],
+        iconSize: [100, 60],
+        iconAnchor: [50, 60],
       });
       const marker = L.marker([lat, lng], { icon })
-        .bindPopup(`<b>${name}</b><br/>速度：${speed} km/h<br/>坐标：${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+        .bindPopup(`
+          <div style="padding:8px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:6px">${safeName}</div>
+            <div style="font-size:12px;color:#666">速度：<b style="color:${AMBER}">${speed} km/h</b></div>
+            <div style="font-size:11px;color:#999;margin-top:4px">坐标：${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+          </div>
+        `)
         .addTo(map);
       markersRef.current.push(marker);
     });
@@ -86,11 +138,11 @@ function DriverMap({ positions }: { positions: any[] }) {
       map.setView([Number(validPos[0].latitude ?? validPos[0].g_latitude), Number(validPos[0].longitude ?? validPos[0].g_longitude)], 13);
     } else if (validPos.length > 1) {
       const bounds = L.latLngBounds(validPos.map(p => [Number(p.latitude ?? p.g_latitude), Number(p.longitude ?? p.g_longitude)] as [number, number]));
-      map.fitBounds(bounds, { padding: [40, 40] });
+      map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [positions]);
 
-  return <div ref={mapRef} style={{ width: '100%', height: 440, borderRadius: 12 }} />;
+  return <div ref={mapRef} style={{ width: '100%', height: 480, borderRadius: 20 }} />;
 }
 
 export default function DashboardPage() {
@@ -98,58 +150,157 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>({});
   const [positions, setPositions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [driverCount, setDriverCount] = useState(0);
 
-  const loadData = useCallback(async () => {
+  // 轨迹回放
+  const [trackOpen, setTrackOpen] = useState(false);
+  const [trackTasks, setTrackTasks] = useState<any[]>([]);
+  const [trackTaskId, setTrackTaskId] = useState<string | undefined>();
+  const [trackPath, setTrackPath] = useState<[number, number][]>([]);
+  const [trackStatus, setTrackStatus] = useState<string>('');
+  const [trackLoading, setTrackLoading] = useState(false);
+
+  const openTrackReplay = async () => {
+    setTrackOpen(true);
+    setTrackTaskId(undefined);
+    setTrackPath([]);
     try {
-      const [taskStats, pos, drivers]: any = await Promise.all([
-        tasksApi.stats(),
-        gpsApi.positions(),
-        usersApi.drivers(),
-      ]);
-      setStats(taskStats);
-      setDriverCount(drivers?.length || 0);
-      // Build driverId → driver map for name enrichment
-      const driverMap: Record<string, any> = {};
-      (Array.isArray(drivers) ? drivers : []).forEach((d: any) => { driverMap[d.id] = d; });
-      const enriched = (Array.isArray(pos) ? pos : []).map((p: any) => {
-        const dId = p.driverId ?? p.g_driver_id ?? p.driver_id;
-        return { ...p, driver: driverMap[dId] ?? null };
-      });
-      setPositions(enriched);
-    } catch (e) {}
-    setLoading(false);
+      const list: any = await tasksApi.list();
+      const usable = (Array.isArray(list) ? list : []).filter(
+        (t: any) => t.status === 'in_progress' || t.status === 'completed',
+      );
+      setTrackTasks(usable);
+    } catch { setTrackTasks([]); }
+  };
+
+  const selectTrackTask = async (taskId: string) => {
+    setTrackTaskId(taskId);
+    setTrackLoading(true);
+    setTrackPath([]);
+    try {
+      const task = trackTasks.find((t) => t.id === taskId);
+      setTrackStatus(task?.status || '');
+      const data: any = await gpsApi.track(taskId);
+      const path: [number, number][] = (Array.isArray(data) ? data : []).map(
+        (p: any) => [Number(p.latitude), Number(p.longitude)],
+      );
+      setTrackPath(path);
+    } catch { setTrackPath([]); }
+    setTrackLoading(false);
+  };
+
+  const enrichPositions = useCallback((pos: any[], drivers: any[]) => {
+    const driverMap: Record<string, any> = {};
+    (Array.isArray(drivers) ? drivers : []).forEach((d: any) => { driverMap[d.id] = d; });
+    return (Array.isArray(pos) ? pos : []).map((p: any) => {
+      const dId = p.driverId ?? p.g_driver_id ?? p.driver_id;
+      return { ...p, driver: driverMap[dId] ?? null };
+    });
   }, []);
+
+  const refreshPositions = useCallback(async () => {
+    const [pos, drivers]: any = await Promise.all([gpsApi.positions(), usersApi.drivers()]);
+    setPositions(enrichPositions(pos, drivers));
+  }, [enrichPositions]);
+
+  const refreshOnlineDrivers = useCallback(async () => {
+    const onlineDrivers: any = await driverPresenceApi.online();
+    setDriverCount(Array.isArray(onlineDrivers) ? onlineDrivers.length : 0);
+  }, []);
+
+  const loadData = useCallback(async () => {
+    // 各数据源独立加载：任一接口出错也不会让整个仪表盘空白
+    const [statsR, posR, driversR, onlineR] = await Promise.allSettled([
+      tasksApi.stats(),
+      gpsApi.positions(),
+      usersApi.drivers(),
+      driverPresenceApi.online(),
+    ]);
+    if (statsR.status === 'fulfilled') setStats(statsR.value);
+    else console.error('[dashboard] stats failed:', statsR.reason);
+    if (onlineR.status === 'fulfilled') setDriverCount(Array.isArray(onlineR.value) ? onlineR.value.length : 0);
+    else console.error('[dashboard] online drivers failed:', onlineR.reason);
+    if (posR.status === 'fulfilled') {
+      const drivers: any = driversR.status === 'fulfilled' ? driversR.value : [];
+      setPositions(enrichPositions(posR.value as any, drivers));
+    } else {
+      console.error('[dashboard] positions failed:', posR.reason);
+    }
+    setLoading(false);
+  }, [enrichPositions]);
+
+  // 手动刷新：给按钮一个明确的加载态 + 成功提示，避免"点了没反应"的错觉
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+      message.success('数据已刷新');
+    } catch {
+      message.error('刷新失败');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
     const interval = setInterval(async () => {
       try {
-        const [pos, drivers]: any = await Promise.all([gpsApi.positions(), usersApi.drivers()]);
-        if (Array.isArray(pos)) {
-          const driverMap: Record<string, any> = {};
-          (Array.isArray(drivers) ? drivers : []).forEach((d: any) => { driverMap[d.id] = d; });
-          setPositions(pos.map((p: any) => {
-            const dId = p.driverId ?? p.g_driver_id ?? p.driver_id;
-            return { ...p, driver: driverMap[dId] ?? null };
-          }));
-        }
+        await Promise.all([refreshPositions(), refreshOnlineDrivers()]);
       } catch {}
-    }, 10000);
-    const handler = (e: any) => {
-      const { driverId, latitude, longitude } = e.detail;
-      setPositions(prev => [...prev.filter(p => (p.driverId ?? p.driver_id) !== driverId), { driverId, latitude, longitude }]);
+    }, POSITION_REFRESH_MS);
+    const gpsHandler = () => {
+      refreshPositions().catch(() => {});
     };
-    window.addEventListener('gps:update', handler);
-    return () => { clearInterval(interval); window.removeEventListener('gps:update', handler); };
-  }, [loadData]);
+    const presenceHandler = () => {
+      refreshOnlineDrivers().catch(() => {});
+    };
+    window.addEventListener('gps:update', gpsHandler);
+    window.addEventListener('driver-presence:update', presenceHandler);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('gps:update', gpsHandler);
+      window.removeEventListener('driver-presence:update', presenceHandler);
+    };
+  }, [loadData, refreshOnlineDrivers, refreshPositions]);
 
   const statCards = [
-    { title: '当日任务', value: stats.today ?? 0, icon: <CalendarOutlined />, bg: '#FFFBEB', accent: AMBER },
-    { title: '运送中', value: stats.inProgress || 0, icon: <TruckOutlined />, bg: '#FFF7ED', accent: '#F97316' },
-    { title: '已完成', value: stats.completed || 0, icon: <CheckCircleOutlined />, bg: '#F0FDF4', accent: '#22C55E' },
-    { title: '总任务', value: stats.total || 0, icon: <OrderedListOutlined />, bg: '#EFF6FF', accent: '#3B82F6' },
-    { title: '司机人数', value: driverCount, icon: <RocketOutlined />, bg: '#FAF5FF', accent: '#A855F7' },
+    {
+      title: '当日任务',
+      value: stats.today ?? 0,
+      icon: <CalendarOutlined />,
+      gradient: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+      accentColor: AMBER,
+    },
+    {
+      title: '运送中',
+      value: stats.inProgress || 0,
+      icon: <TruckOutlined />,
+      gradient: 'linear-gradient(135deg, #ffedd5, #fed7aa)',
+      accentColor: '#f97316',
+    },
+    {
+      title: '已完成',
+      value: stats.completed || 0,
+      icon: <CheckCircleOutlined />,
+      gradient: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+      accentColor: '#22c55e',
+    },
+    {
+      title: '总任务',
+      value: stats.total || 0,
+      icon: <OrderedListOutlined />,
+      gradient: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
+      accentColor: '#3b82f6',
+    },
+    {
+      title: '在线司机',
+      value: driverCount,
+      icon: <RocketOutlined />,
+      gradient: 'linear-gradient(135deg, #f3e8ff, #e9d5ff)',
+      accentColor: '#a855f7',
+    },
   ];
 
   const now = new Date();
@@ -157,50 +308,182 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 18,
+        padding: '15px 22px',
+        background: 'linear-gradient(135deg, #111827, #1f2937)',
+        borderRadius: 14,
+        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+      }}>
         <div>
-          <Title level={3} style={{ margin: 0, color: '#1a1a1a', fontWeight: 800 }}>运营概览</Title>
-          <Text style={{ color: '#999', fontSize: 13 }}>{dateStr}</Text>
+          <div style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 21, lineHeight: 1.2 }}>
+            运营概览
+          </div>
+          <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12.5, marginTop: 2, display: 'block' }}>
+            {dateStr}
+          </Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={loadData} style={{ borderColor: AMBER, color: AMBER, borderRadius: 10 }}>刷新</Button>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={handleRefresh}
+          loading={refreshing}
+          style={{
+            background: `linear-gradient(135deg, ${AMBER}, ${AMBER_DARK})`,
+            border: 'none',
+            color: '#000',
+            fontWeight: 700,
+            borderRadius: 10,
+            height: 38,
+            paddingLeft: 16,
+            paddingRight: 16,
+            boxShadow: `0 4px 14px ${AMBER}40`,
+          }}
+        >
+          刷新数据
+        </Button>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin size="large" /></div>
+        <div style={{ textAlign: 'center', padding: '100px 0' }}>
+          <div style={{
+            width: 60, height: 60, borderRadius: 16,
+            background: `linear-gradient(135deg, ${AMBER}, ${AMBER_DARK})`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }}>
+            <ReloadOutlined style={{ fontSize: 28, color: '#fff' }} />
+          </div>
+          <Text style={{ color: '#64748b', fontSize: 15 }}>加载运营数据中...</Text>
+        </div>
       ) : (
         <>
-          <Row gutter={[14, 14]} style={{ marginBottom: 24 }}>
-            {statCards.map(card => (
-              <Col xs={12} sm={8} lg={Math.floor(24 / statCards.length) as any} key={card.title}>
+          <Row gutter={[16, 16]} style={{ marginBottom: 18 }}>
+            {statCards.map((card, idx) => (
+              <Col xs={12} sm={12} md={8} lg={Math.floor(24 / statCards.length)} key={idx}>
                 <StatCard {...card} />
               </Col>
             ))}
           </Row>
 
           {(stats.pending || 0) > 0 && (
-            <div style={{ background: `linear-gradient(135deg, ${AMBER}, ${AMBER_DARK})`, borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <ClockCircleOutlined style={{ color: '#fff', fontSize: 18 }} />
-              <Text style={{ color: '#fff', fontWeight: 600, fontSize: 14 }}>有 {stats.pending} 个任务待分配司机</Text>
+            <div style={{
+              background: `linear-gradient(135deg, ${AMBER}, ${AMBER_DARK})`,
+              borderRadius: 16,
+              padding: '18px 24px',
+              marginBottom: 24,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              boxShadow: `0 4px 20px ${AMBER}30`,
+            }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: 'rgba(0,0,0,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <ClockCircleOutlined style={{ color: '#fff', fontSize: 22 }} />
+              </div>
+              <div>
+                <Text style={{ color: '#fff', fontWeight: 700, fontSize: 16, display: 'block' }}>
+                  待分配任务提醒
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
+                  有 <strong>{stats.pending}</strong> 个任务待分配司机，请及时处理
+                </Text>
+              </div>
             </div>
           )}
 
           <Card
             title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <TruckOutlined style={{ color: AMBER, fontSize: 18 }} />
-                <span style={{ fontWeight: 700 }}>实时位置监控</span>
-                <div style={{ background: positions.length > 0 ? '#22C55E' : '#d9d9d9', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
-                  {positions.length} 辆在线
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 44, height: 44,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <img src="/log.png" alt="logo" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${AMBER}40` }} />
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: '#1a1a1a' }}>实时位置监控</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: 5,
+                      background: positions.length > 0 ? '#22c55e' : '#d9d9d9',
+                      boxShadow: positions.length > 0 ? '0 0 8px #22c55e' : 'none',
+                    }} />
+                    <span style={{ fontSize: 13, color: '#64748b' }}>
+                      {positions.length > 0 ? `${positions.length} 辆运输中` : '暂无运输中车辆'}
+                    </span>
+                  </div>
                 </div>
               </div>
             }
+            extra={
+              <Button icon={<EnvironmentOutlined />} onClick={openTrackReplay}>
+                轨迹回放
+              </Button>
+            }
             bordered={false}
-            style={{ borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}
+            style={{
+              borderRadius: 20,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+              overflow: 'hidden',
+            }}
+            styles={{ body: { padding: 0 } }}
           >
             <DriverMap positions={positions} />
           </Card>
         </>
       )}
+
+      <Modal
+        title="轨迹回放"
+        open={trackOpen}
+        onCancel={() => setTrackOpen(false)}
+        footer={null}
+        centered
+        width={760}
+        destroyOnClose
+      >
+        <Select
+          showSearch
+          allowClear
+          style={{ width: '100%', marginBottom: 12 }}
+          placeholder="搜索任务名 / 客户 / 司机，选择查看行驶轨迹"
+          optionFilterProp="label"
+          filterOption={(input, option) =>
+            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+          }
+          value={trackTaskId}
+          onChange={selectTrackTask}
+          options={trackTasks.map((t) => ({
+            value: t.id,
+            label: `${t.title}（${t.status === 'in_progress' ? '运送中' : '已完成'}）${t.client ? ' · ' + (t.client.fullName || t.client.username) : ''}${t.driver ? ' · ' + (t.driver.fullName || t.driver.username) : ''}`,
+          }))}
+        />
+        {trackLoading ? (
+          <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin /></div>
+        ) : trackTaskId ? (
+          trackPath.length > 0 ? (
+            <TrackMap track={trackPath} status={trackStatus} height={420} />
+          ) : (
+            <Empty description="该任务暂无 GPS 轨迹（可能已超出保留期被清理）" style={{ padding: '60px 0' }} />
+          )
+        ) : (
+          <Empty description="请选择一个任务" style={{ padding: '60px 0' }} />
+        )}
+      </Modal>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(0.95); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -14,9 +14,12 @@ export function useSocket(token: string | null) {
     if (!token) return;
 
     if (!socketInstance) {
+      // 先 polling 再升级 websocket：通过 Vite /socket.io 代理更稳，
+      // 避免与 Vite HMR 的 websocket 冲突导致连接失败。
       socketInstance = io('/', {
         auth: { token },
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'],
+        reconnection: true,
       });
     }
 
@@ -32,9 +35,14 @@ export function useSocket(token: string | null) {
       window.dispatchEvent(new CustomEvent('gps:update', { detail: data }));
     });
 
+    socketInstance.on('driver-presence:update', (data: any) => {
+      window.dispatchEvent(new CustomEvent('driver-presence:update', { detail: data }));
+    });
+
     return () => {
       socketInstance?.off('notification');
       socketInstance?.off('gps:update');
+      socketInstance?.off('driver-presence:update');
     };
   }, [token, dispatch]);
 

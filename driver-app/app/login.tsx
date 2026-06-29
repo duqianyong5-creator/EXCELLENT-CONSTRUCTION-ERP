@@ -1,44 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useDispatch } from 'react-redux';
 import * as SecureStore from 'expo-secure-store';
 import { authApi, getBaseUrl } from '../src/api';
 import { setCredentials } from '../src/store/authSlice';
+import { useLang } from '../src/i18n';
+import { showAppAlert } from '../src/AppDialog';
+
+const AMBER = '#F59E0B';
+const AMBER_DARK = '#D97706';
+const MUTED = '#6b7280';
 
 export default function LoginScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
+  const { t, lang, toggle } = useLang();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [serverIp, setServerIp] = useState('192.168.1.108');
-  const [showIpConfig, setShowIpConfig] = useState(false);
-
-  useEffect(() => {
-    // 初始化加载保存的 IP
-    SecureStore.getItemAsync('server_ip').then(ip => {
-      if (ip) setServerIp(ip);
-    });
-  }, []);
-
-  const saveIp = async () => {
-    await SecureStore.setItemAsync('server_ip', serverIp);
-    Alert.alert('已保存', `服务器 IP 已更新为: ${serverIp}`);
-    setShowIpConfig(false);
-  };
+  const [showPassword, setShowPassword] = useState(false);
+  const [focused, setFocused] = useState<'id' | 'pw' | null>(null);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
-      Alert.alert('提示', '请填写账号和密码');
+      showAppAlert(t('login.notice'), t('login.enterBoth'));
       return;
     }
     try {
       setLoading(true);
       const res: any = await authApi.login({ identifier: identifier.trim(), password });
+      // 监控（大屏）账号仅限网页端使用，App 不允许登录
+      if (res.user?.role === 'monitor') {
+        showAppAlert(t('login.loginFailed'), '该账号为网页端监控账号，请在电脑网页端登录');
+        return;
+      }
       await SecureStore.setItemAsync('token', res.access_token);
       await SecureStore.setItemAsync('user', JSON.stringify(res.user));
       dispatch(setCredentials({ token: res.access_token, user: res.user }));
@@ -47,8 +47,12 @@ export default function LoginScreen() {
       console.error('Login Error:', err);
       const currentUrl = await getBaseUrl();
       const detail = JSON.stringify(err, null, 2);
-      const errorMsg = `无法连接到服务器: ${currentUrl}\n\n详情: ${err.message}\n\nJSON: ${detail.substring(0, 100)}`;
-      Alert.alert('登录失败', errorMsg);
+      const msg = typeof err?.message === 'string'
+        ? err.message
+        : (typeof err?.message === 'object' ? JSON.stringify(err.message) : String(err?.message ?? 'Unknown error'));
+      const code = err?.statusCode ?? err?.status ?? err?.response?.status;
+      const errorMsg = `Server: ${currentUrl}\nStatus: ${code ?? '-'}\n\nDetail: ${msg}\n\nRaw: ${detail.substring(0, 500)}`;
+      showAppAlert(t('login.loginFailed'), errorMsg);
     } finally {
       setLoading(false);
     }
@@ -59,129 +63,264 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity 
-          onLongPress={() => setShowIpConfig(true)}
-          activeOpacity={1}
-          style={styles.logoBox}
-        >
-          <Text style={styles.logoIcon}>🚛</Text>
-          <Text style={styles.logoTitle}>货车司机</Text>
-          <Text style={styles.logoSub}>Truck Driver App</Text>
-        </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={styles.inner}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header decoration */}
+        <View style={styles.topDecoration}>
+          <View style={styles.decorCircle1} />
+          <View style={styles.decorCircle2} />
+        </View>
 
-        {showIpConfig && (
-          <View style={[styles.card, { marginBottom: 20, borderColor: '#ff4d4f', borderWidth: 1 }]}>
-            <Text style={[styles.label, { color: '#ff4d4f' }]}>高级设置：服务器 IP 地址</Text>
+        {/* Logo area */}
+        <View style={styles.logoBox}>
+          <View style={styles.logoIconContainer}>
+            <Image source={require('../assets/log.png')} style={styles.logoImage} resizeMode="contain" />
+          </View>
+          <Text style={styles.logoTitle}>Excellent Construction</Text>
+          <Text style={styles.logoSub}>{t('login.portal')}</Text>
+        </View>
+
+        {/* Login card */}
+        <View style={styles.card}>
+          <Text style={styles.label}>{t('login.account')}</Text>
+          <View style={[styles.inputContainer, focused === 'id' && styles.inputContainerFocused]}>
+            <Ionicons name="person-outline" size={20} color={focused === 'id' ? AMBER : MUTED} />
             <TextInput
               style={styles.input}
-              placeholder="例如: 192.168.1.108"
-              value={serverIp}
-              onChangeText={setServerIp}
+              placeholder={t('login.accountPh')}
+              value={identifier}
+              onChangeText={setIdentifier}
+              onFocus={() => setFocused('id')}
+              onBlur={() => setFocused(null)}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              returnKeyType="next"
+              placeholderTextColor={MUTED}
             />
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#ff4d4f' }]} onPress={saveIp}>
-              <Text style={styles.btnText}>保存并应用 IP</Text>
+          </View>
+
+          <Text style={styles.label}>{t('login.password')}</Text>
+          <View style={[styles.inputContainer, focused === 'pw' && styles.inputContainerFocused]}>
+            <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? AMBER : MUTED} />
+            <TextInput
+              style={styles.input}
+              placeholder={t('login.passwordPh')}
+              value={password}
+              onChangeText={setPassword}
+              onFocus={() => setFocused('pw')}
+              onBlur={() => setFocused(null)}
+              secureTextEntry={!showPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              placeholderTextColor={MUTED}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(v => !v)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={MUTED} />
             </TouchableOpacity>
           </View>
-        )}
-
-        <View style={styles.card}>
-          <Text style={{ fontSize: 12, color: '#999', marginBottom: 10, textAlign: 'center' }}>
-            当前服务器: {serverIp}:3000
-          </Text>
-          <Text style={styles.label}>账号（邮箱或用户名）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="请输入账号"
-            value={identifier}
-            onChangeText={setIdentifier}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            returnKeyType="next"
-          />
-
-          <Text style={styles.label}>密码</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="请输入密码"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={handleLogin}
-          />
 
           <TouchableOpacity
-            style={[styles.btn, loading && styles.btnDisabled]}
+            style={[styles.btn, styles.loginBtn, loading && styles.btnDisabled]}
             onPress={handleLogin}
             disabled={loading}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.btnText}>登 录</Text>
-            }
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#52c41a', marginTop: 12 }]}
-            onPress={async () => {
-              try {
-                const url = await getBaseUrl();
-                const res = await fetch(`${url}/ping`);
-                const data = await res.json();
-                Alert.alert('连接成功', `服务器响应正常\n状态: ${data.status}\n地址: ${url}`);
-              } catch (err: any) {
-                const url = await getBaseUrl();
-                Alert.alert('连接失败', `无法连接到: ${url}\n\n请长按上方图标修改 IP 或检查网络。\n\n错误: ${err.message}`);
-              }
-            }}
-          >
-            <Text style={styles.btnText}>检查服务器连接</Text>
+            {loading ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.loginBtnText}>{t('login.login')}</Text>
+            )}
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.tip}>如需注册账号，请联系管理员 (长按图标设置IP)</Text>
+        <View style={styles.registerRow}>
+          <Text style={styles.tip}>{t('login.noAccount')}</Text>
+          <TouchableOpacity onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.registerLink}>{t('login.register')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggle} style={styles.langBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.langBtnText}>{lang === 'zh' ? 'EN' : 'CN'}</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.version}>v1.0.0</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1677ff' },
-  inner: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  logoBox: { alignItems: 'center', marginBottom: 36 },
-  logoIcon: { fontSize: 64, marginBottom: 8 },
-  logoTitle: { fontSize: 26, fontWeight: '700', color: '#fff' },
-  logoSub: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+  container: {
+    flex: 1,
+    backgroundColor: '#0B0F1A',
+  },
+  inner: {
+    flexGrow: 1,
+    justifyContent: 'center',
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+  },
+  topDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 300,
+    overflow: 'hidden',
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -100,
+    right: -100,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: '#fff',
+    opacity: 0.08,
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: -50,
+    left: -100,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: AMBER_DARK,
+    opacity: 0.05,
+  },
+  logoBox: {
+    alignItems: 'center',
+    marginBottom: 36,
+  },
+  logoIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+    shadowColor: AMBER,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 22,
+  },
+  logoTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  logoSub: {
+    fontSize: 12,
+    color: AMBER,
+    letterSpacing: 3,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  card: {
+    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  label: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 18,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  inputContainerFocused: {
+    borderColor: AMBER,
+    backgroundColor: '#0d1424',
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 15,
+    fontSize: 16,
+    color: '#fff',
+  },
+  btn: {
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  loginBtn: {
+    backgroundColor: AMBER,
+    marginTop: 8,
+    shadowColor: AMBER,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
     shadowRadius: 12,
     elevation: 8,
   },
-  label: { fontSize: 14, color: '#666', marginBottom: 6, marginTop: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
-    backgroundColor: '#fafafa',
-    color: '#1a1a1a',
+  loginBtnText: {
+    color: '#1a1206',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
-  btn: {
-    backgroundColor: '#1677ff',
-    borderRadius: 10,
-    padding: 16,
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 24,
   },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  tip: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', marginTop: 24, fontSize: 13 },
+  tip: {
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 13,
+  },
+  registerLink: {
+    color: AMBER,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  langBtn: {
+    marginLeft: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.5)',
+  },
+  langBtnText: {
+    color: AMBER,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  version: {
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.15)',
+    marginTop: 8,
+    fontSize: 11,
+  },
 });

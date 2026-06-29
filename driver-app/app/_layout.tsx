@@ -8,6 +8,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setCredentials } from '../src/store/authSlice';
 import type { RootState } from '../src/store';
 import { View, ActivityIndicator } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { LangProvider } from '../src/i18n';
+import AppDialog from '../src/AppDialog';
+import '../src/backgroundLocation'; // 注册后台定位任务
+import { registerTaskNotifications, checkAndNotify, checkAnnouncementsAndNotify } from '../src/notifications';
+import { connectSocket, disconnectSocket } from '../src/socket';
 
 function AuthGuard() {
   const router = useRouter();
@@ -32,13 +38,38 @@ function AuthGuard() {
 
   useEffect(() => {
     if (checking) return;
-    const inAuth = segments[0] === 'login';
+    const inAuth = segments[0] === 'login' || segments[0] === 'register';
     if (!isAuthenticated && !inAuth) {
       router.replace('/login');
     } else if (isAuthenticated && inAuth) {
       router.replace('/(tabs)/tasks');
     }
   }, [isAuthenticated, checking, segments]);
+
+  // Task notifications: register background fetch, poll while foregrounded,
+  // and open the related task when a notification is tapped.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      disconnectSocket();
+      return;
+    }
+    registerTaskNotifications();
+    checkAndNotify();
+    checkAnnouncementsAndNotify();
+    connectSocket();
+    const interval = setInterval(() => {
+      checkAndNotify();
+      checkAnnouncementsAndNotify();
+    }, 30000);
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const taskId = (response.notification.request.content.data as any)?.taskId;
+      if (taskId) router.push(`/task/${taskId}`);
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [isAuthenticated]);
 
   if (checking) {
     return (
@@ -53,12 +84,16 @@ function AuthGuard() {
 export default function RootLayout() {
   return (
     <Provider store={store}>
-      <AuthGuard />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="task/[id]" />
-      </Stack>
+      <LangProvider>
+        <AuthGuard />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="task/[id]" />
+        </Stack>
+        <AppDialog />
+      </LangProvider>
     </Provider>
   );
 }
