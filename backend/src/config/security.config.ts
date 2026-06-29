@@ -38,7 +38,9 @@ export function createCorsOriginResolver(config: ConfigService) {
       .filter(Boolean);
     const allowedOrigins = new Set([...configuredOrigins, ...localOrigins]);
 
-    if (!origin || allowedOrigins.has(origin)) {
+    // 移动端(无 Origin)与桌面端 Electron(file:// 发出的 Origin 为字符串 'null')
+    // 都是受信任的一方客户端，仍需 JWT 鉴权，放行 CORS。
+    if (!origin || origin === 'null' || allowedOrigins.has(origin)) {
       callback(null, true);
       return;
     }

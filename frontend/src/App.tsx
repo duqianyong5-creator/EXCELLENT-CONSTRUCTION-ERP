@@ -21,7 +21,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: an
     return this.props.children;
   }
 }
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from './store';
 import { setUnread } from './store/slices/notifSlice';
@@ -75,7 +75,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -114,7 +114,7 @@ export default function App() {
         <Route path="/unauthorized" element={<div style={{ padding: 40, textAlign: 'center', fontSize: 24 }}>无权访问</div>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
     </ErrorBoundary>
   );
 }

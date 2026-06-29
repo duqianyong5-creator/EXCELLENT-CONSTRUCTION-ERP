@@ -19,7 +19,9 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      // reload 后应用重新初始化（无 token → 路由跳登录）。
+      // 不用 href='/login'：在 Electron 的 file:// 下会失效。
+      window.location.reload();
     }
     return Promise.reject(err.response?.data || err);
   },

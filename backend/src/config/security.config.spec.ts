@@ -41,6 +41,17 @@ describe('security config', () => {
       expect(callback).toHaveBeenCalledWith(null, true);
     });
 
+    it("allows the desktop app's 'null' origin (Electron file://)", () => {
+      const resolver = createCorsOriginResolver(
+        new ConfigService({ FRONTEND_URL: 'https://dispatch.example.com' }),
+      );
+      const callback = jest.fn();
+
+      resolver('null', callback);
+
+      expect(callback).toHaveBeenCalledWith(null, true);
+    });
+
     it('rejects unconfigured credentialed origins', () => {
       const resolver = createCorsOriginResolver(
         new ConfigService({ FRONTEND_URL: 'https://dispatch.example.com' }),

@@ -2,11 +2,14 @@
   "name": "truck-dispatch-frontend",
   "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "electron:dev": "electron .",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.0",
@@ -32,7 +35,37 @@
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.3.3",
     "vite": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.ect.erp",
+    "productName": "ECT ERP",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/log.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ECT ERP",
+      "uninstallDisplayName": "ECT ERP"
+    }
   }
 }
