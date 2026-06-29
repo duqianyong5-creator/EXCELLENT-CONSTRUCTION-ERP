@@ -1,70 +1,109 @@
-import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
+import BackgroundGeolocation from 'react-native-background-geolocation';
 import * as SecureStore from 'expo-secure-store';
 import { gpsApi } from './api';
 
-const BG_TASK = 'gps-bg-location';
-const ACTIVE_KEY = 'gps_active_task_id';
+// 用 Transistorsoft 的原生定位引擎:熄屏/切后台/被杀都靠原生层持续追踪,
+// 不依赖 JS 一直醒着(这正是 expo-location 熄屏掉点的原因)。
+// 注:该库 5.2 的 TS 类型定义不全,运行期 API 稳定且有官方文档,这里用宽松别名调用。
+const BG: any = BackgroundGeolocation;
 
-// 后台定位任务：手机锁屏/App 切后台也会触发，持续上传 GPS。
-TaskManager.defineTask(BG_TASK, async ({ data, error }: any) => {
-  if (error) return;
-  const loc = data?.locations?.[data.locations.length - 1];
-  if (!loc) return;
-  let taskId: string | null = null;
-  try { taskId = await SecureStore.getItemAsync(ACTIVE_KEY); } catch { /* ignore */ }
-  if (!taskId) return;
+const ACTIVE_KEY = 'gps_active_task_id';
+let configured = false;
+let currentTaskId: string | null = null;
+
+async function uploadFromLocation(location: any): Promise<void> {
+  let taskId = currentTaskId;
+  if (!taskId) {
+    try { taskId = await SecureStore.getItemAsync(ACTIVE_KEY); } catch { taskId = null; }
+  }
+  const c = location?.coords;
+  if (!taskId || !c) return;
   try {
     await gpsApi.upload({
       taskId,
-      latitude: loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      speed: Math.max(0, (loc.coords.speed ?? 0) * 3.6),
-      heading: loc.coords.heading ?? undefined,
-      accuracy: loc.coords.accuracy ?? undefined,
+      latitude: c.latitude,
+      longitude: c.longitude,
+      speed: Math.max(0, (c.speed ?? 0) * 3.6), // m/s → km/h，与原有口径一致
+      heading: typeof c.heading === 'number' && c.heading >= 0 ? c.heading : undefined,
+      accuracy: c.accuracy ?? undefined,
     });
-  } catch { /* 单次失败下一轮继续 */ }
-});
+  } catch { /* 单次失败,引擎下一轮继续 */ }
+}
 
-// 启动后台定位。返回 true 表示后台服务已接管（前后台都会上报）；
-// false 表示当前环境不支持后台定位（如 Expo Go），调用方应回退到前台定时上报。
+// App 被系统杀死后仍上报(stopOnTerminate:false / startOnBoot 时生效)。
+// 必须在模块顶层注册(本文件在 _layout 里被 import)。
+const HeadlessTask = async (event: any) => {
+  if (event?.name === 'location') {
+    await uploadFromLocation(event.params);
+  } else if (event?.name === 'heartbeat') {
+    try {
+      const loc = await BG.getCurrentPosition({ samples: 1, persist: false });
+      await uploadFromLocation(loc);
+    } catch { /* ignore */ }
+  }
+};
+BG.registerHeadlessTask(HeadlessTask);
+
+async function ensureConfigured(): Promise<void> {
+  if (configured) return;
+
+  BG.onLocation(
+    (location: any) => { uploadFromLocation(location); },
+    () => { /* 定位错误,忽略 */ },
+  );
+  // 静止时也定期上报一个点,保证仪表盘不掉线
+  BG.onHeartbeat(async () => {
+    try {
+      const loc = await BG.getCurrentPosition({ samples: 1, persist: false });
+      await uploadFromLocation(loc);
+    } catch { /* ignore */ }
+  });
+
+  await BG.ready({
+    desiredAccuracy: BG.DESIRED_ACCURACY_HIGH,
+    distanceFilter: 10,
+    locationUpdateInterval: 10000,
+    fastestLocationUpdateInterval: 5000,
+    stopTimeout: 5,
+    heartbeatInterval: 60,
+    stopOnTerminate: false,
+    startOnBoot: true,
+    enableHeadless: true,
+    foregroundService: true,
+    backgroundPermissionRationale: {
+      title: '允许「始终」后台定位',
+      message: '任务进行中需要持续上报 GPS 位置,请选择「始终允许」',
+      positiveAction: '去设置',
+    },
+    notification: {
+      title: '运输任务进行中',
+      text: '正在上传 GPS 位置',
+    },
+    logLevel: BG.LOG_LEVEL_OFF,
+  });
+  configured = true;
+}
+
+// 返回 true 表示后台定位已接管(前后台/熄屏都上报)。
 export async function startBackgroundGps(taskId: string): Promise<boolean> {
-  try { await SecureStore.setItemAsync(ACTIVE_KEY, taskId); } catch { /* ignore */ }
-
-  const fg = await Location.requestForegroundPermissionsAsync();
-  if (fg.status !== 'granted') return false;
-  // 后台权限拿不到也不阻断（至少前台能上报）
-  try { await Location.requestBackgroundPermissionsAsync(); } catch { /* ignore */ }
-
   try {
-    const running = await Location.hasStartedLocationUpdatesAsync(BG_TASK).catch(() => false);
-    if (running) return true;
-    await Location.startLocationUpdatesAsync(BG_TASK, {
-      // High(GPS)在熄屏时仍持续更新；Balanced 会被安卓在熄屏/Doze 下大幅批处理导致掉点
-      accuracy: Location.Accuracy.High,
-      timeInterval: 10000,
-      distanceInterval: 0,
-      deferredUpdatesInterval: 0, // 不批处理，定位立即下发
-      activityType: Location.ActivityType.AutomotiveNavigation, // 车辆持续导航场景
-      showsBackgroundLocationIndicator: true,
-      pausesUpdatesAutomatically: false,
-      foregroundService: {
-        notificationTitle: '运输任务进行中',
-        notificationBody: '正在上传 GPS 位置',
-        killServiceOnDestroy: false, // App 被系统回收也尽量保活
-      },
-    });
+    currentTaskId = taskId;
+    try { await SecureStore.setItemAsync(ACTIVE_KEY, taskId); } catch { /* ignore */ }
+    await ensureConfigured();
+    const state = await BG.getState();
+    if (!state.enabled) {
+      await BG.start();
+    }
+    // 立刻进入「移动」状态,不必等检测到运动,确保马上有点
+    BG.changePace(true).catch(() => {});
     return true;
   } catch {
-    // Expo Go / 不支持后台定位 → 让调用方回退前台
     return false;
   }
 }
 
 export async function stopBackgroundGps(): Promise<void> {
+  currentTaskId = null;
   try { await SecureStore.deleteItemAsync(ACTIVE_KEY); } catch { /* ignore */ }
-  try {
-    const running = await Location.hasStartedLocationUpdatesAsync(BG_TASK).catch(() => false);
-    if (running) await Location.stopLocationUpdatesAsync(BG_TASK);
-  } catch { /* ignore */ }
+  try { await BG.stop(); } catch { /* ignore */ }
 }
