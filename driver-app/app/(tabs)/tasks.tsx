@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Modal, TextInput, ScrollView, Image,
-  DeviceEventEmitter,
+  DeviceEventEmitter, AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -218,6 +218,18 @@ export default function TasksScreen() {
       status: 'in_progress',
     }));
     startGpsUpload(active.id);
+  }, [tasks, role]);
+
+  // 回到前台时,若有进行中任务,确保后台定位仍在跑。
+  // 这样「定位卡住时重进 App 即可恢复」——不必重新登录(startBackgroundGps 幂等,在跑则不重复启动)。
+  useEffect(() => {
+    if (role !== 'driver') return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      const active = tasks.find((tk: any) => tk.status === 'in_progress');
+      if (active) startBackgroundGps(active.id);
+    });
+    return () => sub.remove();
   }, [tasks, role]);
 
   const openAcceptTask = (task: any) => {
