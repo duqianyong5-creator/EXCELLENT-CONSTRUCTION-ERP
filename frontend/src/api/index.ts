@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// 生产：VITE_API_URL 指向线上后端(Railway)，直接访问后端根路径(/auth、/gps...)。
+// 开发：留空，走 Vite 代理 /api（代理会把 /api 前缀去掉转给本地后端）。
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
 });
 

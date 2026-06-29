@@ -1,7 +1,8 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const DEFAULT_BASE_URL = 'http://192.168.1.113:3000';
+// 生产后端(Railway)。本地联调时可在 App 内「服务器地址」填局域网 IP 覆盖。
+const DEFAULT_BASE_URL = 'https://backend-production-ff66.up.railway.app';
 
 export async function getBaseUrl(): Promise<string> {
   try {

@@ -14,9 +14,9 @@ export function useSocket(token: string | null) {
     if (!token) return;
 
     if (!socketInstance) {
-      // 先 polling 再升级 websocket：通过 Vite /socket.io 代理更稳，
-      // 避免与 Vite HMR 的 websocket 冲突导致连接失败。
-      socketInstance = io('/', {
+      // 生产连线上后端(VITE_API_URL)，开发走 Vite /socket.io 代理。
+      // 先 polling 再升级 websocket：更稳，避免与 Vite HMR 的 websocket 冲突。
+      socketInstance = io(import.meta.env.VITE_API_URL || '/', {
         auth: { token },
         transports: ['polling', 'websocket'],
         reconnection: true,
