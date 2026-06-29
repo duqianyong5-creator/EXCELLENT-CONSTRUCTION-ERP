@@ -40,14 +40,18 @@ export async function startBackgroundGps(taskId: string): Promise<boolean> {
     const running = await Location.hasStartedLocationUpdatesAsync(BG_TASK).catch(() => false);
     if (running) return true;
     await Location.startLocationUpdatesAsync(BG_TASK, {
-      accuracy: Location.Accuracy.Balanced,
+      // High(GPS)在熄屏时仍持续更新；Balanced 会被安卓在熄屏/Doze 下大幅批处理导致掉点
+      accuracy: Location.Accuracy.High,
       timeInterval: 10000,
       distanceInterval: 0,
+      deferredUpdatesInterval: 0, // 不批处理，定位立即下发
+      activityType: Location.ActivityType.AutomotiveNavigation, // 车辆持续导航场景
       showsBackgroundLocationIndicator: true,
       pausesUpdatesAutomatically: false,
       foregroundService: {
         notificationTitle: '运输任务进行中',
         notificationBody: '正在上传 GPS 位置',
+        killServiceOnDestroy: false, // App 被系统回收也尽量保活
       },
     });
     return true;

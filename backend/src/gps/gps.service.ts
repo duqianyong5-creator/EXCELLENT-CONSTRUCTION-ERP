@@ -12,7 +12,7 @@ type RequestUser = { id: string; role: UserRole };
 const MAX_SPEED_KMH = 140;
 const TELEPORT_THRESHOLD_KM = 10;
 const GPS_TIMEOUT_SECONDS = 60;
-const ONLINE_POSITION_WINDOW_SECONDS = 90;
+const ONLINE_POSITION_WINDOW_SECONDS = 180; // 司机最近多少秒内有点就算在线（给熄屏偶尔稀疏上报留缓冲）
 
 @Injectable()
 export class GpsService {
