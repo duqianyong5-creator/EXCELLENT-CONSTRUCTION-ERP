@@ -57,8 +57,16 @@ function buildHtml(topInset: number, bottomInset: number): string {
     markers = {};
     var pts = [];
     list.forEach(function (p) {
-      var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div style="font-size:26px;line-height:1">🚛</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) });
-      m.bindPopup('<b>' + p.name + '</b>' + (p.speed != null ? '<br>速度: ' + p.speed + ' km/h' : ''));
+      var label = '<div style="display:flex;flex-direction:column;align-items:center">'
+        + '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">🚛</div>'
+        + '<div style="margin-top:2px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(17,24,39,0.88);color:#fff;border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">' + p.name + '</div>'
+        + '</div>';
+      var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [130, 48], iconAnchor: [65, 16] }) });
+      m.bindPopup(
+        '<div style="font-weight:700;font-size:14px;margin-bottom:4px">' + p.name + '</div>'
+        + '<div style="font-size:12px;color:#444">速度: <b style="color:#d97706">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
+        + '<div style="font-size:11px;color:#888;margin-top:2px">坐标: ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</div>'
+      );
       m.addTo(map);
       markers[p.id] = m;
       pts.push([p.lat, p.lng]);

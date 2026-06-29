@@ -40,6 +40,7 @@ export default function TrackingScreen() {
         if (Array.isArray(data)) {
           setPositions(data.map((p) => ({
             driverId: p.driver_id ?? p.driverId ?? '',
+            driverName: p.driverName ?? p.driver_name ?? '司机', // 后端已带账户名
             latitude: parseFloat(p.latitude),
             longitude: parseFloat(p.longitude),
             speed: p.speed,
@@ -181,16 +182,17 @@ export default function TrackingScreen() {
                   selected?.driverId === item.driverId && styles.driverCardActive,
                 ]}
                 onPress={() => focusDriver(item)}
+                activeOpacity={0.85}
               >
                 <Text style={styles.driverCardIcon}>🚛</Text>
-                <Text style={styles.driverCardName} numberOfLines={1}>
-                  {item.driverName || '司机'}
-                </Text>
-                {item.speed != null && (
-                  <Text style={styles.driverCardSpeed}>
-                    {Math.round(item.speed)} km/h
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.driverCardName} numberOfLines={1}>
+                    {item.driverName || '司机'}
                   </Text>
-                )}
+                  <Text style={styles.driverCardSpeed}>
+                    {item.speed != null ? `${Math.round(item.speed)} km/h` : '—'}
+                  </Text>
+                </View>
               </TouchableOpacity>
             )}
           />
@@ -321,12 +323,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   driverCard: {
-    backgroundColor: 'rgba(13,19,32,0.92)',
-    borderRadius: 14,
-    padding: 12,
-    marginHorizontal: 6,
+    flexDirection: 'row',
     alignItems: 'center',
-    minWidth: 84,
+    gap: 9,
+    backgroundColor: 'rgba(13,19,32,0.92)',
+    borderRadius: 13,
+    paddingVertical: 10,
+    paddingHorizontal: 13,
+    marginHorizontal: 6,
+    minWidth: 150,
+    maxWidth: 210,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     shadowColor: '#000',
@@ -339,9 +345,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: AMBER,
   },
-  driverCardIcon: { fontSize: 22, marginBottom: 4 },
-  driverCardName: { fontSize: 12, color: '#f1f5f9', fontWeight: '700', maxWidth: 72 },
-  driverCardSpeed: { fontSize: 11, color: '#4ade80', marginTop: 2, fontWeight: '700' },
+  driverCardIcon: { fontSize: 24 },
+  driverCardName: { fontSize: 13.5, color: '#f1f5f9', fontWeight: '800' },
+  driverCardSpeed: { fontSize: 11.5, color: '#4ade80', marginTop: 2, fontWeight: '700' },
   emptyOverlay: {
     position: 'absolute',
     top: '40%',
