@@ -43,7 +43,14 @@ export class UsersService {
 
   async create(data: Partial<User>): Promise<User> {
     const user = this.repo.create(data);
-    return this.repo.save(user);
+    try {
+      return await this.repo.save(user);
+    } catch (e: any) {
+      if (e?.code === '23505') {
+        throw new BadRequestException('用户名或邮箱已被占用');
+      }
+      throw e;
+    }
   }
 
   async approve(id: string, operatorId: string): Promise<User> {
@@ -80,8 +87,31 @@ export class UsersService {
 
   async updateUser(id: string, data: Partial<User>): Promise<User> {
     const user = await this.findById(id);
+
+    // 唯一性预检：邮箱/用户名不能与「其他」账户重复，给出明确提示而不是 500
+    if (data.email && data.email !== user.email) {
+      const existing = await this.repo.findOne({ where: { email: data.email } });
+      if (existing && existing.id !== id) {
+        throw new BadRequestException('该邮箱已被其他账户使用');
+      }
+    }
+    if (data.username && data.username !== user.username) {
+      const existing = await this.repo.findOne({ where: { username: data.username } });
+      if (existing && existing.id !== id) {
+        throw new BadRequestException('该用户名已被占用');
+      }
+    }
+
     Object.assign(user, data);
-    return this.repo.save(user);
+    try {
+      return await this.repo.save(user);
+    } catch (e: any) {
+      // 兜底：数据库唯一约束冲突(Postgres 23505)→ 明确报错
+      if (e?.code === '23505') {
+        throw new BadRequestException('用户名或邮箱已被占用');
+      }
+      throw e;
+    }
   }
 
   async updateProfile(id: string, data: Partial<User>): Promise<User> {
