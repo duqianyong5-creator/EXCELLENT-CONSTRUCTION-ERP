@@ -71,6 +71,8 @@ export default function TasksScreen() {
   const gpsResumedFor = useRef<string | null>(null);
 
   const load = useCallback(async () => {
+    // 已退出登录(无角色)就别再拉取，否则会因没有 token 失败、在登录页弹「加载失败」
+    if (!role) { setLoading(false); setRefreshing(false); return; }
     try {
       const data: any = await tasksApi.list();
       setTasks(Array.isArray(data) ? data : []);
