@@ -130,7 +130,7 @@ export default function TrackingScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.driverTodayEmpty}>
-              <Text style={styles.driverTodayEmptyIcon}>📋</Text>
+              <Ionicons name="clipboard-outline" size={40} color="rgba(245,158,11,0.85)" style={{ marginBottom: 4 }} />
               <Text style={styles.driverTodayEmptyTitle}>今日暂无任务</Text>
               <Text style={styles.driverTodayEmptySub}>下拉任务页刷新试试</Text>
             </View>

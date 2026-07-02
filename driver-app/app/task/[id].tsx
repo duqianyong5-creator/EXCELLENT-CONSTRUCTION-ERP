@@ -109,7 +109,7 @@ export default function TaskDetailScreen() {
             dispatch(setActiveTask({ id, title: task.title, startLocation: task.startLocation, endLocation: task.endLocation, status: 'in_progress' }));
             await startGpsUpload();
             await loadTask();
-            showAppAlert('✅ ' + t('td.started'), t('td.startedMsg'));
+            showAppAlert(t('td.started'), t('td.startedMsg'));
           } catch (err: any) {
             showAppAlert(t('common.fail'), err.message || t('td.startFailed'));
           } finally {
@@ -178,7 +178,7 @@ export default function TaskDetailScreen() {
             if (notes) formData.append('completionNotes', notes);
             await tasksApi.complete(id, formData);
             dispatch(setActiveTask(null));
-            showAppAlert('✅ ' + t('td.completed'), t('td.completedMsg'), [
+            showAppAlert(t('td.completed'), t('td.completedMsg'), [
               { text: t('common.back'), onPress: () => router.back() },
             ]);
           } catch (err: any) {
@@ -213,6 +213,7 @@ export default function TaskDetailScreen() {
       {/* 顶部 */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={16} color={AMBER} />
           <Text style={styles.backText}>{t('td.backBtn')}</Text>
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>{task.title}</Text>
@@ -250,7 +251,12 @@ export default function TaskDetailScreen() {
         >
           {starting
             ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.actionBtnText}>{t('td.startBtn')}</Text>
+            : (
+              <View style={styles.actionBtnRow}>
+                <Ionicons name="play-circle" size={20} color="#0B0F1A" />
+                <Text style={styles.actionBtnText}>{t('td.startBtn')}</Text>
+              </View>
+            )
           }
         </TouchableOpacity>
       )}
@@ -268,7 +274,7 @@ export default function TaskDetailScreen() {
                     style={styles.photoDelete}
                     onPress={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
                   >
-                    <Text style={styles.photoDeleteText}>✕</Text>
+                    <Ionicons name="close" size={13} color="#fff" />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -289,7 +295,12 @@ export default function TaskDetailScreen() {
           >
             {completing
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.actionBtnText}>{t('td.completeBtn')}</Text>
+              : (
+                <View style={styles.actionBtnRow}>
+                  <Ionicons name="checkmark-done-circle" size={20} color="#0B0F1A" />
+                  <Text style={styles.actionBtnText}>{t('td.completeBtn')}</Text>
+                </View>
+              )
             }
           </TouchableOpacity>
         </>
@@ -389,9 +400,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(245,158,11,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(245,158,11,0.32)',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   backText: { color: AMBER, fontSize: 14, fontWeight: '800' },
   topTitle: { flex: 1, color: '#fff', fontSize: 18, fontWeight: '800' },
@@ -439,6 +453,7 @@ const styles = StyleSheet.create({
     shadowColor: '#22c55e', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
   btnDisabled: { opacity: 0.6 },
+  actionBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   actionBtnText: { color: '#0B0F1A', fontSize: 17, fontWeight: '800' },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   photoWrap: { position: 'relative' },

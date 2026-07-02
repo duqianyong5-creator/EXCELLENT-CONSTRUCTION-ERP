@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { usersApi } from '../../src/api';
 import { logout, updateUser } from '../../src/store/authSlice';
@@ -39,7 +40,7 @@ export default function ProfileScreen() {
         const u = JSON.parse(stored);
         await SecureStore.setItemAsync('user', JSON.stringify({ ...u, fullName, phone, email }));
       }
-      showAppAlert('✅ ' + t('profile.saved'));
+      showAppAlert(t('profile.saved'));
     } catch (err: any) {
       showAppAlert(t('common.fail'), err.message || t('profile.saveFailed'));
     } finally {
@@ -61,7 +62,7 @@ export default function ProfileScreen() {
       await usersApi.changePassword({ oldPassword: oldPwd, newPassword: newPwd });
       setOldPwd('');
       setNewPwd('');
-      showAppAlert('✅ ' + t('profile.pwChanged'), t('profile.reLogin'));
+      showAppAlert(t('profile.pwChanged'), t('profile.reLogin'));
       handleLogout();
     } catch (err: any) {
       showAppAlert(t('common.fail'), err.message || t('profile.pwChangeFailed'));
@@ -92,10 +93,18 @@ export default function ProfileScreen() {
           <View style={styles.decorCircle1} />
           <View style={styles.decorCircle2} />
         </View>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {String(user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.statusIndicator} />
+        </View>
         <Text style={styles.name}>{user?.fullName || user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.roleBadge}>
-          <Text style={styles.roleIcon}>🚛</Text>
+          <Ionicons name="id-card-outline" size={14} color={AMBER} style={{ marginRight: 6 }} />
           <Text style={styles.roleText}>{t('role.' + (user?.role || 'driver'))}</Text>
         </View>
       </View>
@@ -103,7 +112,9 @@ export default function ProfileScreen() {
       {/* 基本信息 */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>👤</Text>
+          <View style={styles.sectionIconBox}>
+            <Ionicons name="person-outline" size={15} color={AMBER} />
+          </View>
           <Text style={styles.sectionTitle}>{t('profile.basicInfo')}</Text>
         </View>
 
@@ -160,7 +171,9 @@ export default function ProfileScreen() {
       {/* 修改密码 */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>🔐</Text>
+          <View style={styles.sectionIconBox}>
+            <Ionicons name="lock-closed-outline" size={15} color={AMBER} />
+          </View>
           <Text style={styles.sectionTitle}>{t('profile.changePw')}</Text>
         </View>
 
@@ -208,6 +221,7 @@ export default function ProfileScreen() {
         onPress={confirmLogout}
         activeOpacity={0.8}
       >
+        <Ionicons name="log-out-outline" size={18} color="#ef4444" />
         <Text style={styles.logoutText}>{t('profile.logout')}</Text>
       </TouchableOpacity>
 
@@ -337,6 +351,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginRight: 8,
   },
+  sectionIconBox: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+  },
   sectionTitle: {
     fontSize: 17,
     fontWeight: '700',
@@ -382,6 +405,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
   },

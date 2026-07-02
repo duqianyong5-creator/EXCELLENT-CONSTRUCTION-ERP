@@ -43,6 +43,7 @@ export default function TasksScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [pickOpen, setPickOpen] = useState<null | 'client' | 'driver'>(null);
+  const [pickSearch, setPickSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [endLocation, setEndLocation] = useState('');
@@ -455,6 +456,24 @@ export default function TasksScreen() {
     ].some((value) => String(value || '').toLowerCase().includes(q));
   });
 
+  // 发布任务表单:必填是否齐全(控制按钮态) + 自动任务名预览(客户-年月日-序号)
+  const createFormValid = !!(selectedClient?.id && selectedDriver?.id && endLocation.trim() && cargo.trim() && cargoWeight.trim() && scheduledAt);
+  const taskNamePreview = (() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const sameDay = tasks.filter((tk: any) => typeof tk?.title === 'string' && tk.title.includes(`-${ymd}-`)).length;
+    const clientName = selectedClient ? (selectedClient.fullName || selectedClient.username) : (lang === 'zh' ? '客户' : 'Client');
+    return `${lang === 'zh' ? '任务名' : 'Task'}: ${clientName}-${ymd}-${String(sameDay + 1).padStart(3, '0')}`;
+  })();
+
+  // 选择器列表:支持按姓名/账号/邮箱搜索
+  const pickList = (pickOpen === 'client' ? clients : drivers).filter((it: any) => {
+    const q = pickSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [it.fullName, it.username, it.email].some((v) => String(v || '').toLowerCase().includes(q));
+  });
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -515,7 +534,7 @@ export default function TasksScreen() {
               </ScrollView>
 
               <View style={styles.driverSearchBox}>
-                <Text style={styles.driverSearchIcon}>⌕</Text>
+                <Ionicons name="search" size={17} color="rgba(148,163,184,0.8)" style={{ marginRight: 10 }} />
                 <TextInput
                   value={searchText}
                   onChangeText={setSearchText}
@@ -544,7 +563,7 @@ export default function TasksScreen() {
           ListEmptyComponent={
             <View style={styles.driverEmptyBox}>
               <View style={styles.driverEmptyIcon}>
-                <Text style={styles.driverEmptyIconText}>📋</Text>
+                <Ionicons name="clipboard-outline" size={38} color={AMBER} />
               </View>
               <Text style={styles.driverEmptyTitle}>{t('d.emptyTitle')}</Text>
               <Text style={styles.driverEmptySub}>{t('d.emptySub')}</Text>
@@ -629,7 +648,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('d.acceptConfirm')}</Text>
                 <TouchableOpacity onPress={() => setAcceptTask(null)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Text style={styles.modalCloseText}>X</Text>
+                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
               </View>
               {acceptTask && (
@@ -689,7 +708,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('d.plateTitle')}</Text>
                 <TouchableOpacity onPress={() => setPlateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Text style={styles.modalCloseText}>X</Text>
+                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
               </View>
               <View style={styles.acceptContent}>
@@ -730,7 +749,7 @@ export default function TasksScreen() {
                   style={styles.modalClose}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.modalCloseText}>X</Text>
+                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
               </View>
               <View style={styles.acceptContent}>
@@ -746,13 +765,13 @@ export default function TasksScreen() {
                         onPress={() => setCompletePhotos(prev => prev.filter((_, i) => i !== index))}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.completePhotoRemoveText}>X</Text>
+                        <Ionicons name="close" size={13} color="#fff" />
                       </TouchableOpacity>
                     </View>
                   ))}
                   {completePhotos.length < 5 && (
                     <TouchableOpacity style={styles.completePhotoAdd} onPress={handleTakeCompletePhoto} activeOpacity={0.85}>
-                      <Text style={styles.completePhotoAddIcon}>📷</Text>
+                      <Ionicons name="camera-outline" size={26} color="rgba(226,232,240,0.8)" style={{ marginBottom: 6 }} />
                       <Text style={styles.completePhotoAddText}>{t('d.takePhoto')}</Text>
                     </TouchableOpacity>
                   )}
@@ -779,7 +798,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('tasks.notifTitle0')}</Text>
                 <TouchableOpacity onPress={() => setNotificationsOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Text style={styles.modalCloseText}>X</Text>
+                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -815,8 +834,15 @@ export default function TasksScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{title}</Text>
-        <Text style={styles.headerSub}>{getToday()}</Text>
+        <View style={styles.headerTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>{title}</Text>
+            <Text style={styles.headerSub}>{getToday()}</Text>
+          </View>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={load} activeOpacity={0.8}>
+            <Ionicons name="refresh" size={19} color={AMBER} />
+          </TouchableOpacity>
+        </View>
 
         <View style={[styles.driverStatsGrid, { marginTop: 16, marginBottom: 0 }]}>
           <TouchableOpacity
@@ -837,39 +863,31 @@ export default function TasksScreen() {
           </View>
         </View>
         {canManage && (
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.headerBtn}
-              onPress={async () => {
-                try {
-                  const [c, d]: any = await Promise.all([usersApi.clients(), usersApi.drivers()]);
-                  setClients(Array.isArray(c) ? c : []);
-                  setDrivers(Array.isArray(d) ? d : []);
-                } catch {
-                  setClients([]);
-                  setDrivers([]);
-                }
-                setSelectedClient(null);
-                setSelectedDriver(null);
-                setEndLocation('');
-                setCargo('');
-                setCargoWeight('');
-                setNotes('');
-                setScheduledAt(null);
-                setCreateOpen(true);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.headerBtnText}>{t('tasks.createTask')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.headerBtn, styles.headerBtnGhost]}
-              onPress={load}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.headerBtnText, styles.headerBtnGhostText]}>{t('tasks.refresh')}</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.createBtn}
+            onPress={async () => {
+              try {
+                const [c, d]: any = await Promise.all([usersApi.clients(), usersApi.drivers()]);
+                setClients(Array.isArray(c) ? c : []);
+                setDrivers(Array.isArray(d) ? d : []);
+              } catch {
+                setClients([]);
+                setDrivers([]);
+              }
+              setSelectedClient(null);
+              setSelectedDriver(null);
+              setEndLocation('');
+              setCargo('');
+              setCargoWeight('');
+              setNotes('');
+              setScheduledAt(null);
+              setCreateOpen(true);
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add-circle" size={19} color="#000" />
+            <Text style={styles.createBtnText}>{t('tasks.createTask')}</Text>
+          </TouchableOpacity>
         )}
         <ScrollView
           horizontal
@@ -892,7 +910,7 @@ export default function TasksScreen() {
           })}
         </ScrollView>
         <View style={[styles.driverSearchBox, { marginBottom: 0 }]}>
-          <Text style={styles.driverSearchIcon}>⌕</Text>
+          <Ionicons name="search" size={17} color="rgba(148,163,184,0.8)" style={{ marginRight: 10 }} />
           <TextInput
             value={searchText}
             onChangeText={setSearchText}
@@ -919,7 +937,7 @@ export default function TasksScreen() {
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <View style={styles.emptyIconContainer}>
-              <Text style={styles.emptyIcon}>📋</Text>
+              <Ionicons name="clipboard-outline" size={36} color={AMBER} />
             </View>
             <Text style={styles.emptyText}>{t('tasks.emptyTitle')}</Text>
             <Text style={styles.emptySub}>{t('tasks.emptySub')}</Text>
@@ -953,14 +971,30 @@ export default function TasksScreen() {
               </View>
 
               <View style={styles.destRow}>
-                <View style={[styles.routeDot, { backgroundColor: '#ef4444' }]} />
-                <Text style={styles.destLabel}>{t('tasks.to')}</Text>
+                <Ionicons name="location" size={15} color="#ef4444" />
                 <Text style={styles.destText} numberOfLines={1}>{item.endLocation}</Text>
+              </View>
+
+              <View style={styles.cardMetaGrid}>
+                <View style={styles.cardMetaItem}>
+                  <Ionicons name="business-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Text style={styles.cardMetaText} numberOfLines={1}>{getPersonName(item.client)}</Text>
+                </View>
+                <View style={styles.cardMetaItem}>
+                  <Ionicons name="person-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Text style={styles.cardMetaText} numberOfLines={1}>{getPersonName(item.driver)}</Text>
+                </View>
+                <View style={[styles.cardMetaItem, { flexBasis: '100%' }]}>
+                  <Ionicons name="time-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Text style={styles.cardMetaText} numberOfLines={1}>
+                    {item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : (lang === 'zh' ? '未排期' : 'Unscheduled')}
+                  </Text>
+                </View>
               </View>
 
               {item.cargo && (
                 <View style={styles.cargoContainer}>
-                  <Text style={styles.cargoIcon}>📦</Text>
+                  <Ionicons name="cube-outline" size={15} color={AMBER} style={{ marginRight: 8 }} />
                   <Text style={styles.cargoText}>
                     {item.cargo}
                     {item.cargoWeight ? ` · ${item.cargoWeight} ${t('tasks.ton')}` : ''}
@@ -985,6 +1019,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
+                      <Ionicons name="person-add-outline" size={14} color={AMBER} />
                       <Text style={styles.smallBtnTextPrimary}>{t('tasks.assignDriver')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1008,6 +1043,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
+                      <Ionicons name="close-circle-outline" size={14} color="#ef4444" />
                       <Text style={styles.smallBtnTextDanger}>{t('tasks.cancel')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1031,6 +1067,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
+                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
                       <Text style={styles.smallBtnTextDanger}>{t('tasks.delete')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1068,11 +1105,11 @@ export default function TasksScreen() {
                   <Text style={styles.footerText}>{t('d.viewTask')}</Text>
                   {item.vehiclePlate ? (
                     <View style={styles.plateChip}>
-                      <Text style={styles.plateChipIcon}>🚚</Text>
+                      <Ionicons name="car-outline" size={14} color={AMBER} />
                       <Text style={styles.plateChipText}>{item.vehiclePlate}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.viewChevron}>›</Text>
+                    <Ionicons name="chevron-forward" size={18} color="rgba(245,158,11,0.6)" />
                   )}
                 </View>
               )}
@@ -1087,7 +1124,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('d.acceptConfirm')}</Text>
               <TouchableOpacity onPress={() => setAcceptTask(null)} style={styles.modalClose} activeOpacity={0.8}>
-                <Text style={styles.modalCloseText}>X</Text>
+                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
             {acceptTask && (
@@ -1147,7 +1184,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('d.plateTitle')}</Text>
               <TouchableOpacity onPress={() => setPlateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Text style={styles.modalCloseText}>X</Text>
+                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
             <View style={styles.acceptContent}>
@@ -1181,7 +1218,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('tasks.notifTitle0')}</Text>
               <TouchableOpacity onPress={() => setNotificationsOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Text style={styles.modalCloseText}>X</Text>
+                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -1214,40 +1251,95 @@ export default function TasksScreen() {
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('tasks.createTaskTitle')}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>{t('tasks.createTaskTitle')}</Text>
+                <Text style={styles.modalSubtitle}>{taskNamePreview}</Text>
+              </View>
               <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <TouchableOpacity style={styles.pickField} onPress={() => setPickOpen('client')} activeOpacity={0.85}>
-                <Text style={styles.pickLabel}>{t('tasks.client')}</Text>
-                <Text style={styles.pickValue} numberOfLines={1}>
-                  {selectedClient ? (selectedClient.fullName || selectedClient.username || selectedClient.email) : t('tasks.selectClient')}
-                </Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* 第 1 步 客户与司机 */}
+              <View style={styles.formSectionHead}>
+                <View style={styles.formSectionBar} />
+                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '客户与司机' : 'Client & Driver'}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.selectRow, selectedClient && styles.selectRowFilled]}
+                onPress={() => { setPickSearch(''); setPickOpen('client'); }}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.selectAvatar, selectedClient && styles.selectAvatarFilled]}>
+                  {selectedClient
+                    ? <Text style={styles.selectAvatarText}>{String(selectedClient.fullName || selectedClient.username || '?').slice(0, 1).toUpperCase()}</Text>
+                    : <Ionicons name="business-outline" size={18} color="rgba(148,163,184,0.9)" />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectRowLabel}>{t('tasks.client')} <Text style={styles.requiredMark}>*</Text></Text>
+                  <Text style={[styles.selectRowValue, !selectedClient && styles.selectRowPlaceholder]} numberOfLines={1}>
+                    {selectedClient ? (selectedClient.fullName || selectedClient.username || selectedClient.email) : t('tasks.selectClient')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={17} color="rgba(148,163,184,0.6)" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.pickField} onPress={() => setPickOpen('driver')} activeOpacity={0.85}>
-                <Text style={styles.pickLabel}>{t('tasks.driver')}</Text>
-                <Text style={styles.pickValue} numberOfLines={1}>
-                  {selectedDriver ? (selectedDriver.fullName || selectedDriver.username || selectedDriver.email) : t('tasks.selectDriver')}
-                </Text>
+              <TouchableOpacity
+                style={[styles.selectRow, selectedDriver && styles.selectRowFilled]}
+                onPress={() => { setPickSearch(''); setPickOpen('driver'); }}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.selectAvatar, selectedDriver && styles.selectAvatarFilled]}>
+                  {selectedDriver
+                    ? <Text style={styles.selectAvatarText}>{String(selectedDriver.fullName || selectedDriver.username || '?').slice(0, 1).toUpperCase()}</Text>
+                    : <Ionicons name="person-outline" size={18} color="rgba(148,163,184,0.9)" />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectRowLabel}>{t('tasks.driver')} <Text style={styles.requiredMark}>*</Text></Text>
+                  <Text style={[styles.selectRowValue, !selectedDriver && styles.selectRowPlaceholder]} numberOfLines={1}>
+                    {selectedDriver ? (selectedDriver.fullName || selectedDriver.username || selectedDriver.email) : t('tasks.selectDriver')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={17} color="rgba(148,163,184,0.6)" />
               </TouchableOpacity>
 
-              <Text style={styles.formLabel}>{t('tasks.endAddr')}</Text>
-              <TextInput value={endLocation} onChangeText={setEndLocation} style={styles.formInput} placeholder={t('tasks.endAddrPh')} placeholderTextColor="#6b7280" />
-              <Text style={styles.formLabel}>{t('tasks.cargo')}</Text>
-              <TextInput value={cargo} onChangeText={setCargo} style={styles.formInput} placeholder={t('tasks.cargoPh')} placeholderTextColor="#6b7280" />
-              <Text style={styles.formLabel}>{t('tasks.weight')}</Text>
-              <TextInput value={cargoWeight} onChangeText={setCargoWeight} style={styles.formInput} placeholder={t('tasks.weightPh')} placeholderTextColor="#6b7280" keyboardType="numeric" />
-              <Text style={styles.formLabel}>{t('tasks.scheduledTime')}</Text>
+              {/* 第 2 步 运输信息 */}
+              <View style={styles.formSectionHead}>
+                <View style={styles.formSectionBar} />
+                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '运输信息' : 'Shipment'}</Text>
+              </View>
+              <Text style={styles.formLabel}>{t('tasks.endAddr')} <Text style={styles.requiredMark}>*</Text></Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="location-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
+                <TextInput value={endLocation} onChangeText={setEndLocation} style={styles.inputRowField} placeholder={t('tasks.endAddrPh')} placeholderTextColor="#6b7280" />
+              </View>
+              <Text style={styles.formLabel}>{t('tasks.cargo')} <Text style={styles.requiredMark}>*</Text></Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="cube-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
+                <TextInput value={cargo} onChangeText={setCargo} style={styles.inputRowField} placeholder={t('tasks.cargoPh')} placeholderTextColor="#6b7280" />
+              </View>
+              <Text style={styles.formLabel}>{t('tasks.weight')} <Text style={styles.requiredMark}>*</Text></Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="scale-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
+                <TextInput value={cargoWeight} onChangeText={setCargoWeight} style={styles.inputRowField} placeholder={t('tasks.weightPh')} placeholderTextColor="#6b7280" keyboardType="numeric" />
+                <Text style={styles.inputSuffix}>{t('tasks.ton')}</Text>
+              </View>
+
+              {/* 第 3 步 时间与备注 */}
+              <View style={styles.formSectionHead}>
+                <View style={styles.formSectionBar} />
+                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '时间与备注' : 'Schedule & Notes'}</Text>
+              </View>
+              <Text style={styles.formLabel}>{t('tasks.scheduledTime')} <Text style={styles.requiredMark}>*</Text></Text>
               <TouchableOpacity
-                style={styles.formInput}
+                style={styles.inputRow}
                 onPress={() => { setTempDate(scheduledAt || new Date()); setPicker('date'); }}
                 activeOpacity={0.85}
               >
-                <Text style={{ color: scheduledAt ? '#fff' : '#6b7280', fontSize: 15 }}>
+                <Ionicons name="calendar-outline" size={17} color={scheduledAt ? AMBER : 'rgba(148,163,184,0.75)'} style={styles.inputRowIcon} />
+                <Text style={[styles.inputRowField, { color: scheduledAt ? '#fff' : '#6b7280', paddingVertical: 13 }]}>
                   {scheduledAt ? formatDriverDateTime(scheduledAt.toISOString()) : t('tasks.pickTime')}
                 </Text>
+                <Ionicons name="chevron-down" size={15} color="rgba(148,163,184,0.6)" />
               </TouchableOpacity>
               {picker && (
                 <DateTimePicker
@@ -1261,7 +1353,7 @@ export default function TasksScreen() {
               <TextInput value={notes} onChangeText={setNotes} style={[styles.formInput, styles.formTextarea]} placeholder={t('common.optional')} placeholderTextColor="#6b7280" multiline />
 
               <TouchableOpacity
-                style={[styles.modalBtn, saving && styles.btnDisabled]}
+                style={[styles.modalBtn, styles.modalBtnRow, (saving || !createFormValid) && styles.btnDisabled]}
                 onPress={async () => {
                   if (!selectedClient?.id || !selectedDriver?.id || !endLocation.trim() || !cargo.trim() || !cargoWeight.trim() || !scheduledAt) {
                     showAppAlert(t('common.notice'), t('tasks.fillRequired'));
@@ -1302,7 +1394,12 @@ export default function TasksScreen() {
                 disabled={saving}
                 activeOpacity={0.85}
               >
-                {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnText}>{t('tasks.createDispatch')}</Text>}
+                {saving ? <ActivityIndicator color="#000" /> : (
+                  <>
+                    <Ionicons name="paper-plane" size={17} color="#000" />
+                    <Text style={styles.modalBtnText}>{t('tasks.createDispatch')}</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1315,44 +1412,66 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{pickOpen === 'client' ? t('tasks.selectClient') : t('tasks.selectDriver')}</Text>
               <TouchableOpacity onPress={() => { setPickOpen(null); setAssigningTask(null); }} style={styles.modalClose} activeOpacity={0.8}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
               </TouchableOpacity>
             </View>
+            <View style={styles.pickSearchBox}>
+              <Ionicons name="search" size={16} color="rgba(148,163,184,0.8)" />
+              <TextInput
+                value={pickSearch}
+                onChangeText={setPickSearch}
+                style={styles.pickSearchInput}
+                placeholder={t('d.search')}
+                placeholderTextColor="rgba(148,163,184,0.6)"
+              />
+            </View>
             <FlatList
-              data={pickOpen === 'client' ? clients : drivers}
+              data={pickList}
               keyExtractor={(it: any) => it.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.pickItem}
-                  onPress={async () => {
-                    if (pickOpen === 'client') {
-                      setSelectedClient(item);
-                      setPickOpen(null);
-                      return;
-                    }
-                    if (assigningTask) {
-                      try {
-                        await tasksApi.assign(assigningTask.id, item.id);
-                        setAssigningTask(null);
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const selected = pickOpen === 'client' ? selectedClient?.id === item.id : (!assigningTask && selectedDriver?.id === item.id);
+                return (
+                  <TouchableOpacity
+                    style={[styles.pickItem, selected && styles.pickItemSelected]}
+                    onPress={async () => {
+                      if (pickOpen === 'client') {
+                        setSelectedClient(item);
                         setPickOpen(null);
-                        load();
-                        showAppAlert(t('common.success'), t('tasks.driverAssigned'));
-                      } catch (e: any) {
-                        showAppAlert(t('common.fail'), e?.message || t('tasks.assignFailed'));
+                        return;
                       }
-                      return;
-                    }
-                    setSelectedDriver(item);
-                    setPickOpen(null);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.pickItemTitle} numberOfLines={1}>
-                    {item.fullName || item.username || item.email}
-                  </Text>
-                  <Text style={styles.pickItemSub} numberOfLines={1}>{item.email}</Text>
-                </TouchableOpacity>
-              )}
+                      if (assigningTask) {
+                        try {
+                          await tasksApi.assign(assigningTask.id, item.id);
+                          setAssigningTask(null);
+                          setPickOpen(null);
+                          load();
+                          showAppAlert(t('common.success'), t('tasks.driverAssigned'));
+                        } catch (e: any) {
+                          showAppAlert(t('common.fail'), e?.message || t('tasks.assignFailed'));
+                        }
+                        return;
+                      }
+                      setSelectedDriver(item);
+                      setPickOpen(null);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.selectAvatar, styles.selectAvatarFilled, { marginRight: 12 }]}>
+                      <Text style={styles.selectAvatarText}>
+                        {String(item.fullName || item.username || '?').slice(0, 1).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pickItemTitle} numberOfLines={1}>
+                        {item.fullName || item.username || item.email}
+                      </Text>
+                      <Text style={styles.pickItemSub} numberOfLines={1}>{item.email}</Text>
+                    </View>
+                    {selected && <Ionicons name="checkmark-circle" size={21} color={AMBER} />}
+                  </TouchableOpacity>
+                );
+              }}
               ListEmptyComponent={
                 <View style={{ padding: 20 }}>
                   <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>{t('common.noData')}</Text>
@@ -1986,6 +2105,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     fontWeight: '600',
+    marginLeft: 8,
   },
   routeContainer: {
     backgroundColor: 'rgba(0,0,0,0.2)',
@@ -2054,6 +2174,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   smallBtnPrimary: {
     backgroundColor: `${AMBER}20`,
@@ -2343,6 +2466,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   pickItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -2357,5 +2482,191 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
     fontSize: 12,
     marginTop: 4,
+  },
+  // ===== 商用化改版新增样式 =====
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: AMBER,
+    borderRadius: 13,
+    height: 46,
+    marginTop: 14,
+    shadowColor: AMBER,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  createBtnText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    color: 'rgba(245,158,11,0.85)',
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  formSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  formSectionBar: {
+    width: 3.5,
+    height: 15,
+    borderRadius: 2,
+    backgroundColor: AMBER,
+    marginRight: 8,
+  },
+  formSectionTitle: {
+    color: 'rgba(226,232,240,0.92)',
+    fontSize: 14.5,
+    fontWeight: '800',
+  },
+  requiredMark: {
+    color: '#ef4444',
+    fontWeight: '900',
+  },
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    marginBottom: 10,
+  },
+  selectRowFilled: {
+    borderColor: 'rgba(245,158,11,0.4)',
+    backgroundColor: 'rgba(245,158,11,0.06)',
+  },
+  selectAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(148,163,184,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectAvatarFilled: {
+    backgroundColor: 'rgba(245,158,11,0.18)',
+  },
+  selectAvatarText: {
+    color: AMBER,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  selectRowLabel: {
+    color: 'rgba(148,163,184,0.85)',
+    fontSize: 11.5,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  selectRowValue: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  selectRowPlaceholder: {
+    color: 'rgba(148,163,184,0.55)',
+    fontWeight: '600',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 13,
+    marginBottom: 12,
+  },
+  inputRowIcon: {
+    marginRight: 9,
+  },
+  inputRowField: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+  inputSuffix: {
+    color: 'rgba(148,163,184,0.8)',
+    fontSize: 14,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 7,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  cardMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexBasis: '50%',
+    paddingRight: 8,
+  },
+  cardMetaText: {
+    color: 'rgba(203,213,225,0.88)',
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  pickSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+    paddingHorizontal: 12,
+    marginHorizontal: 14,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  pickSearchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14.5,
+    paddingVertical: 10,
+  },
+  pickItemSelected: {
+    backgroundColor: 'rgba(245,158,11,0.08)',
   },
 });
