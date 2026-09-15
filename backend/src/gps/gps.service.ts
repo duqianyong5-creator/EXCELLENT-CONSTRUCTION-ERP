@@ -30,15 +30,20 @@ export class GpsService {
     speed: number;
     heading?: number;
     accuracy?: number;
+    /** 点位时间：手机端不传（= 服务器收到时刻）；车载设备传终端定位时间（盲区补报会是过去的时间） */
+    timestamp?: Date;
+    /** 'app' 手机 App | 'device' 车载 JT808 定位器 */
+    source?: 'app' | 'device';
   }): Promise<{ log: GpsLog; anomalies: string[] }> {
     const anomalies: string[] = [];
+    const pointTime = data.timestamp ?? new Date();
 
     // Check speed anomaly
     if (data.speed > MAX_SPEED_KMH) {
       anomalies.push('speed_anomaly');
     }
 
-    // Check teleport
+    // Check teleport（补报的历史点时间早于最近一点时不比较，否则必然误判）
     const lastLog = await this.repo.findOne({
       where: { driverId, taskId },
       order: { timestamp: 'DESC' },
@@ -49,10 +54,10 @@ export class GpsService {
         Number(lastLog.latitude), Number(lastLog.longitude),
         data.latitude, data.longitude,
       );
-      const timeDiff = (Date.now() - lastLog.timestamp.getTime()) / 1000;
+      const timeDiff = (pointTime.getTime() - lastLog.timestamp.getTime()) / 1000;
       const expectedMaxDist = (MAX_SPEED_KMH / 3600) * timeDiff;
 
-      if (dist > TELEPORT_THRESHOLD_KM && dist > expectedMaxDist * 1.5) {
+      if (timeDiff > 0 && dist > TELEPORT_THRESHOLD_KM && dist > expectedMaxDist * 1.5) {
         anomalies.push('teleport');
       }
     }
@@ -60,7 +65,13 @@ export class GpsService {
     const log = this.repo.create({
       driverId,
       taskId,
-      ...data,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      speed: data.speed,
+      heading: data.heading,
+      accuracy: data.accuracy,
+      source: data.source ?? 'app',
+      ...(data.timestamp ? { timestamp: data.timestamp } : {}),
       isAnomaly: anomalies.length > 0,
     });
     const saved = await this.repo.save(log);

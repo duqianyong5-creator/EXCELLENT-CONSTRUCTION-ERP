@@ -48,3 +48,6 @@ dist_electron/
 # OS folders
 .DS_Store
 Thumbs.db
+
+# Firecrawl scratch output
+.firecrawl/

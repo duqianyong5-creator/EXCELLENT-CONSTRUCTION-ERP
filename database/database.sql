@@ -300,6 +300,32 @@ ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements   ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
+-- 车载 JT808 GPS 定位器（设备号 ↔ 车牌）
+-- ============================================================
+ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'app';
+
+CREATE TABLE IF NOT EXISTS gps_devices (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    device_no       VARCHAR(32) NOT NULL UNIQUE,
+    vehicle_plate   VARCHAR(32),
+    name            VARCHAR(128),
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    last_seen_at    TIMESTAMPTZ,
+    last_latitude   DECIMAL(10, 7),
+    last_longitude  DECIMAL(10, 7),
+    last_speed      DECIMAL(6, 2),
+    last_fix_at     TIMESTAMPTZ,
+    battery_percent INT,
+    external_power  BOOLEAN,
+    signal_percent  INT,
+    last_task_id    UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_gps_devices_plate ON gps_devices(vehicle_plate);
+ALTER TABLE gps_devices ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
 -- 验证表是否创建完成
 -- ============================================================
 SELECT table_name

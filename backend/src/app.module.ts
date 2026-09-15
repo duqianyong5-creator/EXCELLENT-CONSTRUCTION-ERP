@@ -15,6 +15,7 @@ import { StorageModule } from './common/services/storage.module';
 import { DriverPresenceModule } from './driver-presence/driver-presence.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { GpsDeviceModule } from './gps-device/gps-device.module';
 import { getConfig } from './config/security.config';
 
 @Controller()
@@ -61,6 +62,7 @@ class AppController {
     DriverPresenceModule,
     SystemSettingsModule,
     AnnouncementsModule,
+    GpsDeviceModule,
   ],
   controllers: [AppController],
 })

@@ -38,6 +38,10 @@ export class GpsLog {
   @Column({ name: 'is_anomaly', default: false })
   isAnomaly: boolean;
 
+  /** 'app' 手机 App 上报 | 'device' 车载 JT808 定位器上报 */
+  @Column({ length: 16, default: 'app' })
+  source: string;
+
   @CreateDateColumn({ name: 'timestamp' })
   timestamp: Date;
 }
