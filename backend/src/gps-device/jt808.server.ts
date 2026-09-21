@@ -102,6 +102,14 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       this.logger.log('JT808 gateway disabled (set JT808_PORT to enable)');
       return;
     }
+    // Railway 配了 TCP Proxy 后会把 PORT 顶成代理的目标端口。网关的 onModuleInit 先跑，
+    // 抢到端口后 app.listen 才报 EADDRINUSE —— 整个进程崩溃重启，API 一起宕。宁可不开网关。
+    const httpPort = Number(this.config.get<string>('PORT') || 3000);
+    if (port === httpPort) {
+      this.startError = `JT808_PORT (${port}) is the same as the HTTP port — gateway not started`;
+      this.logger.error(`${this.startError}. Set JT808_PORT and PORT to different ports.`);
+      return;
+    }
     // 定位器网关起不来（端口被占、权限不足）不应该连带把后台、司机 App、客户端一起拖下线，
     // 设备页顶部的告警条会显示网关未运行。
     try {

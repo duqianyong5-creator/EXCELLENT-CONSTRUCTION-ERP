@@ -41,10 +41,16 @@ Railway 的 HTTP 域名只转发 HTTP，设备走原始 TCP，需要 **TCP Proxy
 1. Railway → 后端 service → **Settings → Networking → TCP Proxy → Add**
 2. 内部端口填 `JT808_PORT` 的值（如 `5023`）
 3. Railway 会分配一个 `xxx.proxy.rlwy.net:NNNNN` 形式的 **域名 + 端口** —— 这就是要写进设备的服务器地址
-4. Variables 里加 `JT808_PORT=5023`（以及可选的 `JT808_DEVICE_TZ_OFFSET_HOURS`），重新部署
-5. 部署日志应出现 `JT808 gateway listening on 0.0.0.0:5023`
+4. Variables 里加 `JT808_PORT=5023`（以及可选的 `JT808_DEVICE_TZ_OFFSET_HOURS`）
+5. ⚠️ **Variables 里必须再显式加一个 `PORT`**，值取服务域名的 target port（本项目是 `8080`，
+   在 Railway → Settings → Networking 的域名那一行能看到）。
+   加了 TCP Proxy 之后 Railway 会把 `PORT` 自动顶成 TCP 目标端口（5023），HTTP 服务就会和网关抢同一个端口：
+   网关先启动占住 5023，随后 `app.listen` 报 `EADDRINUSE`，**整个后端崩溃重启循环、API 全线 502**。
+6. 重新部署，日志应同时出现
+   `JT808 gateway listening on 0.0.0.0:5023` 和 `Local: http://localhost:8080`
 
-每个 service 只能有一个 TCP Proxy；HTTP 端口 `$PORT` 不受影响，同一服务同时提供 API 和 TCP 网关。
+每个 service 只能有一个 TCP Proxy。同一服务可以同时跑 API 和 TCP 网关，但两个端口必须不同，
+且 `PORT` 必须显式写死。代码里也加了兜底：两个端口相同时只关掉网关、不拖垮 API，设备页会显示网关未运行。
 
 ## 4. 设备侧配置（发给厂家的信息）
 
@@ -125,7 +131,8 @@ JT808 协议本身没有真正的身份认证：**设备号既是身份、又是
 
 | 现象 | 看什么 |
 |---|---|
-| 页面显示「网关未启动」 | 后端没设 `JT808_PORT` |
+| 页面显示「网关未启动」 | 后端没设 `JT808_PORT`；或 `JT808_PORT` 与 `PORT` 相同（见 §3 第 5 条），日志有 `same as the HTTP port` |
+| API 全线 502、后端反复重启 | 日志搜 `EADDRINUSE`。多半是 `PORT` 没显式设置，被 TCP Proxy 顶成了 `JT808_PORT` |
 | 设备一直不出现在「未登记」里 | 设备服务器地址 / 端口没改对；Railway TCP Proxy 端口与 `JT808_PORT` 不一致；SIM 无数据 |
 | 已登记但地图不显示 | 车牌与司机接单填写的不一致；或该司机没有进行中任务（看设备列表的「最后位置」是否在更新） |
 | 时间差 8 小时 / 12 小时 | 检查 `JT808_DEVICE_TZ_OFFSET_HOURS`，或下发一次实时模式（会同步设备时区） |

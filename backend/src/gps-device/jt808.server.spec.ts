@@ -438,3 +438,26 @@ describe('Jt808Server (TCP gateway)', () => {
     await until(() => closed, 2000, 'flood connection to be dropped');
   });
 });
+
+describe('Jt808Server startup guards', () => {
+  const build = (env: Record<string, string | undefined>) =>
+    new Jt808Server({ get: (k: string) => env[k] } as any, {} as any);
+
+  it('does not bind when JT808_PORT equals the HTTP port', async () => {
+    // Railway 加 TCP Proxy 后会把 PORT 顶成代理目标端口：网关先占住它，
+    // 随后 app.listen 报 EADDRINUSE，整个进程崩溃重启，API 一起宕。
+    const s = build({ JT808_PORT: '8080', PORT: '8080' });
+    await s.onModuleInit();
+    expect(s.getPort()).toBeNull();
+    expect(s.getStartError()).toMatch(/same as the HTTP port/);
+    await s.stop();
+  });
+
+  it('starts when the ports differ', async () => {
+    const s = build({ JT808_PORT: '0', PORT: '8080' });
+    await s.onModuleInit();
+    // JT808_PORT=0 被当成"未配置"，网关不启动且不算错误
+    expect(s.getStartError()).toBeNull();
+    await s.stop();
+  });
+});
