@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Table, Card, Button, Tag, Space, Modal, Typography, Form, Input, Switch,
-  Popconfirm, message, Tooltip, Alert, Badge,
+  Popconfirm, message, Tooltip, Alert, Badge, Segmented,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, AimOutlined,
   PoweroffOutlined, ThunderboltOutlined, EnvironmentOutlined, ApiOutlined,
+  DisconnectOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,7 @@ type Device = {
   lastSeenAt?: string | null; lastFixAt?: string | null; lastLatitude?: number | null; lastLongitude?: number | null;
   lastSpeed?: number | null; batteryPercent?: number | null; externalPower?: boolean | null; signalPercent?: number | null;
   online: boolean; connection?: { addr: string; connectedAt: string; tzOffset: number } | null;
+  currentTask?: { id: string; title: string; driverName: string } | null;
 };
 
 type Gateway = {
@@ -47,6 +49,7 @@ export default function DevicesPage() {
 
   const [list, setList] = useState<Device[]>([]);
   const [gateway, setGateway] = useState<Gateway | null>(null);
+  const [filter, setFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Device | null>(null);
@@ -188,6 +191,19 @@ export default function DevicesPage() {
       ) : <Text type="secondary">—</Text>,
     },
     {
+      title: zh ? '当前任务' : 'Current task', key: 'currentTask', width: 170,
+      render: (_: any, r: Device) => r.currentTask ? (
+        <Space direction="vertical" size={0}>
+          <Text style={{ fontSize: 13 }}><UserOutlined style={{ marginRight: 4, color: '#16a34a' }} />{r.currentTask.driverName}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{r.currentTask.title}</Text>
+        </Space>
+      ) : (
+        <Tooltip title={zh ? '没有车牌与之匹配的进行中任务。设备在跑却显示这个，多半是司机接单时车牌输错了' : 'No in-progress task matches this plate'}>
+          <Text type="secondary" style={{ fontSize: 12 }}>{zh ? '无进行中任务' : 'No active task'}</Text>
+        </Tooltip>
+      ),
+    },
+    {
       title: zh ? '电量 / 信号' : 'Battery / Signal', key: 'power', width: 140,
       render: (_: any, r: Device) => (
         <Space size={6}>
@@ -243,6 +259,11 @@ export default function DevicesPage() {
   ];
 
   const onlineCount = list.filter((d) => d.online).length;
+  // 「哪台设备 / 哪辆车不在线」：停用的设备不算掉线
+  const offlineDevices = list.filter((d) => d.enabled && !d.online);
+  const visibleList = filter === 'online' ? list.filter((d) => d.online)
+    : filter === 'offline' ? list.filter((d) => !d.online)
+      : list;
 
   return (
     <div>
@@ -301,10 +322,58 @@ export default function DevicesPage() {
         </Card>
       )}
 
+      {offlineDevices.length > 0 && (
+        <Card
+          size="small" bordered={false}
+          style={{ marginBottom: 16, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca' }}
+          title={
+            <span style={{ color: '#b91c1c' }}>
+              <DisconnectOutlined style={{ marginRight: 8 }} />
+              {zh
+                ? `以下 ${offlineDevices.length} 辆车的 GPS 设备不在线`
+                : `${offlineDevices.length} vehicle(s) have an offline GPS device`}
+            </span>
+          }
+        >
+          <Space wrap size={[8, 8]}>
+            {offlineDevices.map((d) => (
+              <Tag key={d.id} color="red" style={{ padding: '5px 10px', fontSize: 13, margin: 0 }}>
+                <Text strong style={{ letterSpacing: 0.5 }}>
+                  {d.vehiclePlate || (zh ? '未绑定车牌' : 'No plate')}
+                </Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontFamily: 'monospace' }}>{d.deviceNo}</Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                  {d.lastSeenAt ? (zh ? `已离线 ${ago(d.lastSeenAt, zh).replace('前', '')}` : `offline ${ago(d.lastSeenAt, zh)}`)
+                    : (zh ? '从未连接' : 'never connected')}
+                </Text>
+              </Tag>
+            ))}
+          </Space>
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {zh
+                ? '车辆熄火停放、设备休眠或断电都会离线；长时间离线请检查设备供电与 SIM 卡流量。'
+                : 'Parked, sleeping or unpowered devices show as offline.'}
+            </Text>
+          </div>
+        </Card>
+      )}
+
       <Card bordered={false} style={{ borderRadius: 12 }}>
+        <div style={{ marginBottom: 12 }}>
+          <Segmented
+            value={filter}
+            onChange={(v) => setFilter(v as 'all' | 'online' | 'offline')}
+            options={[
+              { label: `${zh ? '全部' : 'All'} ${list.length}`, value: 'all' },
+              { label: `${zh ? '在线' : 'Online'} ${onlineCount}`, value: 'online' },
+              { label: `${zh ? '离线' : 'Offline'} ${list.length - onlineCount}`, value: 'offline' },
+            ]}
+          />
+        </div>
         <Table
-          columns={columns} dataSource={list} rowKey="id" loading={loading}
-          pagination={{ pageSize: 20 }} scroll={{ x: 1000 }}
+          columns={columns} dataSource={visibleList} rowKey="id" loading={loading}
+          pagination={{ pageSize: 20 }} scroll={{ x: 1180 }}
           locale={{ emptyText: zh ? '还没有登记设备。设备接线开机后会出现在上方「未登记设备」里，点一下即可登记。' : 'No devices yet.' }}
         />
       </Card>

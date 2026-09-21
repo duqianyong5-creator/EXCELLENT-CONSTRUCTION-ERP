@@ -20,15 +20,22 @@ export class GpsDeviceController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR)
-  @ApiOperation({ summary: '车载定位器列表（含在线状态）' })
+  @ApiOperation({ summary: '车载定位器列表（含在线状态与当前任务）' })
   async list() {
-    const [devices, online] = [await this.service.list(), this.server.getOnline()];
+    const [devices, online] = [await this.service.listWithTasks(), this.server.getOnline()];
     const onlineMap = new Map(online.map((o) => [o.deviceNo, o]));
     return devices.map((d) => ({
       ...d,
       online: onlineMap.has(d.deviceNo),
       connection: onlineMap.get(d.deviceNo) ?? null,
     }));
+  }
+
+  @Get('plates')
+  @Roles(UserRole.DRIVER, UserRole.ADMIN, UserRole.DISPATCHER)
+  @ApiOperation({ summary: '已登记车牌（司机接单时快速选择，避免手输打错对不上设备）' })
+  plates() {
+    return this.service.plates();
   }
 
   @Get('gateway')

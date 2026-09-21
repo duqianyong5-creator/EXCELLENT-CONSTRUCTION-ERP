@@ -3,11 +3,11 @@ import { Row, Col, Card, Typography, Spin, Button, Modal, Select, Empty, message
 import {
   TruckOutlined, OrderedListOutlined, CheckCircleOutlined,
   ClockCircleOutlined, ReloadOutlined, CalendarOutlined, RocketOutlined,
-  EnvironmentOutlined,
+  EnvironmentOutlined, DisconnectOutlined,
 } from '@ant-design/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { tasksApi, gpsApi, usersApi, driverPresenceApi } from '../../api';
+import { tasksApi, gpsApi, usersApi, driverPresenceApi, gpsDevicesApi } from '../../api';
 import TrackMap from '../../components/TrackMap';
 import { addBaseLayers } from '../../components/mapLayers';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ const { Text } = Typography;
 const AMBER = '#F59E0B';
 const AMBER_DARK = '#D97706';
 const POSITION_REFRESH_MS = 10000;
+const DEVICE_REFRESH_MS = 30000;
 
 // 转义用户输入，防止司机昵称把 HTML/脚本注入到地图标记（Leaflet 直接渲染 HTML 字符串）
 function escapeHtml(value: unknown): string {
@@ -152,6 +153,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [driverCount, setDriverCount] = useState(0);
+  const [deviceStat, setDeviceStat] = useState<{ total: number; offline: number }>({ total: 0, offline: 0 });
 
   // 轨迹回放
   const [trackOpen, setTrackOpen] = useState(false);
@@ -209,14 +211,24 @@ export default function DashboardPage() {
     setDriverCount(Array.isArray(onlineDrivers) ? onlineDrivers.length : 0);
   }, []);
 
+  // 车载 GPS 设备在线情况：掉线的车要能在仪表盘一眼看到（明细在「GPS设备」页）
+  const refreshDevices = useCallback(async () => {
+    const devices: any = await gpsDevicesApi.list();
+    const rows = Array.isArray(devices) ? devices : [];
+    const enabled = rows.filter((d: any) => d.enabled !== false);
+    setDeviceStat({ total: enabled.length, offline: enabled.filter((d: any) => !d.online).length });
+  }, []);
+
   const loadData = useCallback(async () => {
     // 各数据源独立加载：任一接口出错也不会让整个仪表盘空白
-    const [statsR, posR, driversR, onlineR] = await Promise.allSettled([
+    const [statsR, posR, driversR, onlineR, devicesR] = await Promise.allSettled([
       tasksApi.stats(),
       gpsApi.positions(),
       usersApi.drivers(),
       driverPresenceApi.online(),
+      refreshDevices(),
     ]);
+    if (devicesR.status === 'rejected') console.error('[dashboard] gps devices failed:', devicesR.reason);
     if (statsR.status === 'fulfilled') setStats(statsR.value);
     else console.error('[dashboard] stats failed:', statsR.reason);
     if (onlineR.status === 'fulfilled') setDriverCount(Array.isArray(onlineR.value) ? onlineR.value.length : 0);
@@ -228,7 +240,7 @@ export default function DashboardPage() {
       console.error('[dashboard] positions failed:', posR.reason);
     }
     setLoading(false);
-  }, [enrichPositions]);
+  }, [enrichPositions, refreshDevices]);
 
   // 手动刷新：给按钮一个明确的加载态 + 成功提示，避免"点了没反应"的错觉
   const handleRefresh = useCallback(async () => {
@@ -250,6 +262,8 @@ export default function DashboardPage() {
         await Promise.all([refreshPositions(), refreshOnlineDrivers()]);
       } catch {}
     }, POSITION_REFRESH_MS);
+    // 设备在线状态变化慢，单独用低频轮询，不给每 10 秒的定位刷新加负担
+    const deviceInterval = setInterval(() => { refreshDevices().catch(() => {}); }, DEVICE_REFRESH_MS);
     const gpsHandler = () => {
       refreshPositions().catch(() => {});
     };
@@ -260,10 +274,11 @@ export default function DashboardPage() {
     window.addEventListener('driver-presence:update', presenceHandler);
     return () => {
       clearInterval(interval);
+      clearInterval(deviceInterval);
       window.removeEventListener('gps:update', gpsHandler);
       window.removeEventListener('driver-presence:update', presenceHandler);
     };
-  }, [loadData, refreshOnlineDrivers, refreshPositions]);
+  }, [loadData, refreshOnlineDrivers, refreshPositions, refreshDevices]);
 
   const statCards = [
     {
@@ -301,6 +316,16 @@ export default function DashboardPage() {
       gradient: 'linear-gradient(135deg, #f3e8ff, #e9d5ff)',
       accentColor: '#a855f7',
     },
+    // 只有登记了车载定位器才显示这张卡
+    ...(deviceStat.total > 0 ? [{
+      title: deviceStat.offline > 0 ? '设备离线' : '设备在线',
+      value: deviceStat.offline > 0 ? deviceStat.offline : deviceStat.total,
+      icon: deviceStat.offline > 0 ? <DisconnectOutlined /> : <EnvironmentOutlined />,
+      gradient: deviceStat.offline > 0
+        ? 'linear-gradient(135deg, #fee2e2, #fecaca)'
+        : 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+      accentColor: deviceStat.offline > 0 ? '#ef4444' : '#22c55e',
+    }] : []),
   ];
 
   const now = new Date();

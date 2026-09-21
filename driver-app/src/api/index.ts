@@ -91,6 +91,11 @@ export const usersApi = {
     api.patch('/users/change-password', data),
 };
 
+export const gpsDevicesApi = {
+  /** 已登记车牌（接单时快选，避免手输和车载定位器对不上） */
+  plates: () => api.get('/gps-devices/plates'),
+};
+
 export const workRecordsApi = {
   byTask: (taskId: string) => api.get(`/work-records/task/${taskId}`),
 };

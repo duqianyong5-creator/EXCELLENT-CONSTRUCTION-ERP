@@ -39,15 +39,73 @@ export class GpsDeviceService {
     return this.repo.find({ order: { createdAt: 'ASC' } });
   }
 
+  /**
+   * 设备列表 + 每台设备当前挂在哪个进行中任务上。
+   * 车牌打错时表现为「设备在线、却没有任务」，调度看一眼就知道要核对车牌。
+   */
+  async listWithTasks(): Promise<Array<GpsDevice & { currentTask: { id: string; title: string; driverName: string } | null }>> {
+    const [devices, tasks] = await Promise.all([
+      this.list(),
+      this.taskRepo.find({ where: { status: TaskStatus.IN_PROGRESS }, relations: ['driver'], order: { updatedAt: 'DESC' } }),
+    ]);
+    const byPlate = new Map<string, Task>();
+    for (const t of tasks) {
+      const key = normalizePlate(t.vehiclePlate);
+      if (key && t.driverId && !byPlate.has(key)) byPlate.set(key, t);
+    }
+    return devices.map((d) => {
+      const task = byPlate.get(normalizePlate(d.vehiclePlate));
+      return Object.assign({}, d, {
+        currentTask: task
+          ? { id: task.id, title: task.title, driverName: task.driver?.fullName || task.driver?.username || '司机' }
+          : null,
+      });
+    });
+  }
+
+  /** 司机端车牌快选：已启用且绑定了车牌的设备 */
+  async plates(): Promise<Array<{ plate: string; name: string | null }>> {
+    const devices = await this.repo.find({ where: { enabled: true }, order: { createdAt: 'ASC' } });
+    const seen = new Set<string>();
+    const out: Array<{ plate: string; name: string | null }> = [];
+    for (const d of devices) {
+      const plate = (d.vehiclePlate || '').trim();
+      if (!plate) continue;
+      const key = normalizePlate(plate);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ plate, name: d.name || null });
+    }
+    return out;
+  }
+
+  private cleanPlate(value: string | undefined | null): string | null {
+    const plate = String(value ?? '').trim();
+    if (!plate) return null;
+    if (plate.length > 32) throw new BadRequestException('车牌过长 / Plate too long (max 32)');
+    return plate;
+  }
+
+  private cleanName(value: string | undefined | null): string | null {
+    const name = String(value ?? '').trim();
+    if (!name) return null;
+    if (name.length > 128) throw new BadRequestException('名称过长 / Name too long (max 128)');
+    return name;
+  }
+
   async create(dto: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean }): Promise<GpsDevice> {
     const deviceNo = normalizeDeviceNo(dto.deviceNo);
+    // 机身标签上常同时印 15 位 IMEI 和 11 位设备号，填错了在这里直接说清楚
+    if (/^\d{15}$/.test(deviceNo)) {
+      throw new BadRequestException('这是 15 位 IMEI，请填设备号（11 位）/ That is an IMEI, enter the 11-digit device number');
+    }
     if (!/^\d{5,20}$/.test(deviceNo)) throw new BadRequestException('设备号须为 5~20 位数字 / Device number must be 5-20 digits');
     const exists = await this.repo.findOne({ where: { deviceNo } });
     if (exists) throw new BadRequestException('该设备号已登记 / Device number already registered');
     const device = this.repo.create({
       deviceNo,
-      vehiclePlate: dto.vehiclePlate?.trim() || null,
-      name: dto.name?.trim() || null,
+      vehiclePlate: this.cleanPlate(dto.vehiclePlate),
+      name: this.cleanName(dto.name),
       enabled: dto.enabled ?? true,
     });
     const saved = await this.repo.save(device);
@@ -58,8 +116,8 @@ export class GpsDeviceService {
   async update(id: string, dto: { vehiclePlate?: string; name?: string; enabled?: boolean }): Promise<GpsDevice> {
     const device = await this.repo.findOne({ where: { id } });
     if (!device) throw new NotFoundException('设备不存在 / Device not found');
-    if (dto.vehiclePlate !== undefined) device.vehiclePlate = dto.vehiclePlate?.trim() || null;
-    if (dto.name !== undefined) device.name = dto.name?.trim() || null;
+    if (dto.vehiclePlate !== undefined) device.vehiclePlate = this.cleanPlate(dto.vehiclePlate);
+    if (dto.name !== undefined) device.name = this.cleanName(dto.name);
     if (dto.enabled !== undefined) device.enabled = !!dto.enabled;
     const saved = await this.repo.save(device);
     this.invalidate(device.deviceNo);

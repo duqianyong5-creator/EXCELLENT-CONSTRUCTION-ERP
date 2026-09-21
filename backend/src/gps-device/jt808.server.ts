@@ -24,6 +24,10 @@ interface Session {
   connectedAt: Date;
   lastSeenAt: Date;
   frames: number;
+  /** 同一连接的帧串行处理，避免分包/批量乱序 */
+  queue: Promise<void>;
+  /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
+  handshakeTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface OnlineDevice {
@@ -40,10 +44,13 @@ export interface UnregisteredAttempt {
   addr: string;
   count: number;
   lastAt: Date;
+  /** true = 设备已登记但被停用；false = 完全没登记过 */
+  disabled: boolean;
 }
 
 const MAX_BUFFER = 64 * 1024; // 单连接最大积压（0x0704 批量最多也就几 KB）
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 终端心跳一般 ≤ 5 分钟；低功耗休眠会主动断开
+const HANDSHAKE_TIMEOUT_MS = 30 * 1000; // 连上后 30 秒内没有一帧有效数据就断开
 const MAX_CONNECTIONS = 500;
 const MAX_UNREGISTERED = 200;
 
@@ -202,6 +209,8 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       connectedAt: new Date(),
       lastSeenAt: new Date(),
       frames: 0,
+      queue: Promise.resolve(),
+      handshakeTimer: null,
     };
     this.sessions.add(session);
     socket.setKeepAlive(true, 60_000);
@@ -210,12 +219,19 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`idle timeout ${session.deviceNo ?? session.addr}`);
       socket.destroy();
     });
+    session.handshakeTimer = setTimeout(() => {
+      if (session.frames === 0) {
+        this.logger.debug(`no valid frame from ${session.addr} within handshake window, closing`);
+        socket.destroy();
+      }
+    }, HANDSHAKE_TIMEOUT_MS);
     socket.on('data', (chunk) => this.onData(session, chunk));
     socket.on('error', (err) => this.logger.debug(`socket ${session.deviceNo ?? session.addr}: ${err.message}`));
     socket.on('close', () => this.dropSession(session));
   }
 
   private dropSession(session: Session): void {
+    if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
     this.sessions.delete(session);
     if (session.deviceNo && this.byDevice.get(session.deviceNo) === session) {
       this.byDevice.delete(session.deviceNo);
@@ -246,11 +262,14 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       }
       session.frames++;
       session.lastSeenAt = new Date();
+      if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
       this.bindDevice(session, frame.phone);
       // 逐帧串行处理，避免同一设备的分包/批量乱序
-      this.handleFrame(session, frame).catch((e) => {
-        this.logger.error(`handle 0x${frame.msgId.toString(16)} from ${session.deviceNo}: ${e?.message || e}`);
-      });
+      session.queue = session.queue
+        .then(() => this.handleFrame(session, frame))
+        .catch((e) => {
+          this.logger.error(`handle 0x${frame.msgId.toString(16)} from ${session.deviceNo}: ${e?.message || e}`);
+        });
     }
   }
 
@@ -275,15 +294,22 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
     const ack = (result: number = AckResult.OK) =>
       this.send(session, buildPlatformAck(phone, this.nextSerial(session), frame.serial, frame.msgId, result));
 
+    // 未登记 / 已停用的设备：任何消息都登记到「未登记设备」列表，保证管理端一定能发现它。
+    // （有些固件从别的平台切过来时会跳过注册，直接发心跳或定位；只认注册消息就会永远看不到这台设备）
+    // 一律回失败，迫使终端重新走注册流程；登记完成后下一次注册即被接受。
+    const device = await this.devices.findByDeviceNo(deviceNo);
+    if (!device || !device.enabled) {
+      this.noteUnregistered(session, deviceNo, !!device);
+      if (frame.msgId === MsgId.REGISTER) {
+        this.send(session, buildRegisterAck(phone, this.nextSerial(session), frame.serial, RegisterResult.TERMINAL_NOT_FOUND));
+      } else if (frame.msgId !== MsgId.TERMINAL_ACK) {
+        ack(AckResult.FAIL);
+      }
+      return;
+    }
+
     switch (frame.msgId) {
       case MsgId.REGISTER: {
-        const device = await this.devices.findByDeviceNo(deviceNo);
-        if (!device || !device.enabled) {
-          this.noteUnregistered(session, deviceNo);
-          this.send(session, buildRegisterAck(phone, this.nextSerial(session), frame.serial, RegisterResult.TERMINAL_NOT_FOUND));
-          this.logger.warn(`register from ${device ? 'disabled' : 'unregistered'} device ${deviceNo} (${session.addr})`);
-          return;
-        }
         session.authed = true;
         // 鉴权码沿用厂家平台做法：就是设备号本身
         this.send(session, buildRegisterAck(phone, this.nextSerial(session), frame.serial, RegisterResult.OK, device.deviceNo));
@@ -291,12 +317,6 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         return;
       }
       case MsgId.AUTH: {
-        const device = await this.devices.findByDeviceNo(deviceNo);
-        if (!device || !device.enabled) {
-          this.noteUnregistered(session, deviceNo);
-          ack(AckResult.FAIL); // 终端收到失败会重新走注册
-          return;
-        }
         session.authed = true;
         ack();
         await this.devices.touch(deviceNo);
@@ -376,14 +396,25 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private noteUnregistered(session: Session, deviceNo: string): void {
+  private noteUnregistered(session: Session, deviceNo: string, disabled: boolean): void {
     const cur = this.unregistered.get(deviceNo);
-    if (cur) { cur.count++; cur.lastAt = new Date(); cur.addr = session.addr; return; }
+    if (cur) {
+      cur.count++;
+      cur.lastAt = new Date();
+      cur.addr = session.addr;
+      cur.disabled = disabled;
+      // 终端会不停重试，日志按次数降频，避免刷屏
+      if (cur.count % 50 === 0) {
+        this.logger.warn(`${disabled ? 'disabled' : 'unregistered'} device ${deviceNo} still trying (${cur.count}x)`);
+      }
+      return;
+    }
     if (this.unregistered.size >= MAX_UNREGISTERED) {
       const oldest = [...this.unregistered.entries()].sort((a, b) => a[1].lastAt.getTime() - b[1].lastAt.getTime())[0];
       if (oldest) this.unregistered.delete(oldest[0]);
     }
-    this.unregistered.set(deviceNo, { deviceNo, addr: session.addr, count: 1, lastAt: new Date() });
+    this.unregistered.set(deviceNo, { deviceNo, addr: session.addr, count: 1, lastAt: new Date(), disabled });
+    this.logger.warn(`${disabled ? 'disabled' : 'unregistered'} device ${deviceNo} connected from ${session.addr} — register it in the admin console`);
   }
 
   private nextSerial(session: Session): number {

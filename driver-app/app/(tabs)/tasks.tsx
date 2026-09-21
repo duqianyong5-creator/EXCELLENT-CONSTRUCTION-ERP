@@ -10,7 +10,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { gpsApi, notificationsApi, tasksApi, usersApi } from '../../src/api';
+import { gpsApi, gpsDevicesApi, notificationsApi, tasksApi, usersApi } from '../../src/api';
 import { setActiveTask, setGpsRunning } from '../../src/store/taskSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
@@ -60,6 +60,7 @@ export default function TasksScreen() {
   const [acceptTask, setAcceptTask] = useState<any>(null);
   const [plateOpen, setPlateOpen] = useState(false);
   const [vehiclePlate, setVehiclePlate] = useState('');
+  const [knownPlates, setKnownPlates] = useState<Array<{ plate: string; name?: string | null }>>([]);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
   const [driverFilter, setDriverFilter] = useState<'all' | 'assigned' | 'in_progress' | 'completed'>('all');
   const [searchText, setSearchText] = useState('');
@@ -240,6 +241,10 @@ export default function TasksScreen() {
 
   const handleConfirmTaskInfo = () => {
     setPlateOpen(true);
+    // 拉一次已登记车牌：车上装了定位器的车可以直接点选，车牌必须和登记的一致轨迹才对得上
+    gpsDevicesApi.plates()
+      .then((data: any) => setKnownPlates(Array.isArray(data) ? data : []))
+      .catch(() => setKnownPlates([]));
   };
 
   const handleStartAcceptedTask = async () => {
@@ -721,6 +726,32 @@ export default function TasksScreen() {
                   placeholderTextColor="rgba(255,255,255,0.28)"
                   autoCapitalize="characters"
                 />
+                {knownPlates.length > 0 && (
+                  <View style={styles.platePickBox}>
+                    <Text style={styles.platePickLabel}>
+                      {lang === 'zh' ? '装了定位器的车（点一下自动填）' : 'Vehicles with a tracker (tap to fill)'}
+                    </Text>
+                    <View style={styles.platePickRow}>
+                      {knownPlates.map((item) => {
+                        const active = vehiclePlate.trim().toUpperCase().replace(/[\s-]/g, '')
+                          === item.plate.toUpperCase().replace(/[\s-]/g, '');
+                        return (
+                          <TouchableOpacity
+                            key={item.plate}
+                            style={[styles.plateChipBtn, active && styles.plateChipBtnActive]}
+                            onPress={() => setVehiclePlate(item.plate)}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="car-outline" size={14} color={active ? '#111827' : AMBER} />
+                            <Text style={[styles.plateChipBtnText, active && styles.plateChipBtnTextActive]}>
+                              {item.plate}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
                 <TouchableOpacity
                   style={[styles.modalBtn, startingTaskId && styles.btnDisabled]}
                   onPress={handleStartAcceptedTask}
@@ -2668,5 +2699,43 @@ const styles = StyleSheet.create({
   },
   pickItemSelected: {
     backgroundColor: 'rgba(245,158,11,0.08)',
+  },
+  platePickBox: {
+    marginBottom: 14,
+  },
+  platePickLabel: {
+    color: 'rgba(148,163,184,0.85)',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  platePickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  plateChipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.4)',
+    backgroundColor: 'rgba(245,158,11,0.1)',
+  },
+  plateChipBtnActive: {
+    backgroundColor: AMBER,
+    borderColor: AMBER,
+  },
+  plateChipBtnText: {
+    color: AMBER,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  plateChipBtnTextActive: {
+    color: '#111827',
   },
 });

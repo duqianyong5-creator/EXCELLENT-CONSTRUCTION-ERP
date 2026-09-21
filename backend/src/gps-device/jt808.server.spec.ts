@@ -135,6 +135,46 @@ describe('Jt808Server (TCP gateway)', () => {
     c.socket.destroy();
   });
 
+  it('discovers a device that skips registration and goes straight to heartbeat/position', async () => {
+    // 有些固件从别的平台切过来时不重新注册，只认注册消息就永远看不到这台设备
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeFrame(MsgId.HEARTBEAT, '000087654321', 1));
+    const hb = await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(hb.body[4]).toBe(AckResult.FAIL); // 回失败，逼它重新注册
+
+    c.socket.write(encodeFrame(MsgId.POSITION, '000087654321', 2, POSITION_BODY));
+    const pos = await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(pos.body[4]).toBe(AckResult.FAIL);
+    await flush();
+    expect(devices.ingest).not.toHaveBeenCalled(); // 未登记设备的点不入库
+
+    const attempt = server.getUnregistered().find((u) => u.deviceNo === '87654321');
+    expect(attempt).toMatchObject({ count: 2, disabled: false });
+    server.clearUnregistered('87654321');
+    c.socket.destroy();
+  });
+
+  it('flags a registered-but-disabled device separately from an unknown one', async () => {
+    devices.findByDeviceNo.mockImplementationOnce(async () => ({ id: 'dev9', deviceNo: '55555555555', enabled: false }));
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeFrame(MsgId.HEARTBEAT, '055555555555', 1));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(server.getUnregistered().find((u) => u.deviceNo === '55555555555')).toMatchObject({ disabled: true });
+    server.clearUnregistered('55555555555');
+    c.socket.destroy();
+  });
+
+  it('closes a connection that never sends a valid frame (no session slot squatting)', async () => {
+    // 握手超时是 30s，这里只验证连接建立后仍未发帧时 frames 计数为 0、服务器未把它当设备
+    const c = client(port);
+    await c.ready;
+    await flush();
+    expect(server.getOnline().some((o) => o.addr === `127.0.0.1:${(c.socket as any).localPort}`)).toBe(false);
+    c.socket.destroy();
+  });
+
   it('acks a position report and hands the parsed point to the device service', async () => {
     const c = client(port);
     await c.ready;

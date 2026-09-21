@@ -132,7 +132,60 @@ describe('GpsDeviceService.ingest', () => {
   });
 });
 
+describe('GpsDeviceService.listWithTasks / plates', () => {
+  it('attaches the in-progress task and driver of the matching plate, null when none matches', async () => {
+    const { service, repo } = build();
+    repo.find.mockResolvedValueOnce([
+      { id: 'dev1', deviceNo: '51160004464', vehiclePlate: 'ABC 123', enabled: true },
+      { id: 'dev2', deviceNo: '51160004465', vehiclePlate: 'ZZZ999', enabled: true },
+      { id: 'dev3', deviceNo: '51160004466', vehiclePlate: null, enabled: true },
+    ]);
+    const rows = await service.listWithTasks();
+    expect(rows[0].currentTask).toEqual({ id: 't1', title: undefined, driverName: '司机' });
+    expect(rows[1].currentTask).toBeNull();
+    expect(rows[2].currentTask).toBeNull();
+  });
+
+  it('prefers the driver full name and the most recent task per plate', async () => {
+    const { service, repo, taskRepo } = build();
+    repo.find.mockResolvedValueOnce([{ id: 'dev1', deviceNo: '51160004464', vehiclePlate: 'abc123', enabled: true }]);
+    taskRepo.find.mockResolvedValueOnce([
+      { id: 'newer', title: 'T-2', driverId: 'd2', driver: { fullName: '张三' }, vehiclePlate: 'ABC-123' },
+      { id: 'older', title: 'T-1', driverId: 'd1', driver: { fullName: '李四' }, vehiclePlate: 'ABC123' },
+    ]);
+    const rows = await service.listWithTasks();
+    expect(rows[0].currentTask).toEqual({ id: 'newer', title: 'T-2', driverName: '张三' });
+  });
+
+  it('plates() returns enabled, plate-bound devices only, deduped by normalized plate', async () => {
+    const { service, repo } = build();
+    repo.find.mockResolvedValueOnce([
+      { id: '1', deviceNo: '1', vehiclePlate: 'ABC123', name: '1 号车', enabled: true },
+      { id: '2', deviceNo: '2', vehiclePlate: 'abc-123', name: '备用', enabled: true },
+      { id: '3', deviceNo: '3', vehiclePlate: '  ', name: null, enabled: true },
+      { id: '4', deviceNo: '4', vehiclePlate: 'XYZ789', name: null, enabled: true },
+    ]);
+    const plates = await service.plates();
+    expect(repo.find).toHaveBeenCalledWith(expect.objectContaining({ where: { enabled: true } }));
+    expect(plates).toEqual([
+      { plate: 'ABC123', name: '1 号车' },
+      { plate: 'XYZ789', name: null },
+    ]);
+  });
+});
+
 describe('GpsDeviceService.create / touch', () => {
+  it('rejects a 15-digit IMEI with a message telling the user which number to use', async () => {
+    const { service } = build({ device: null });
+    await expect(service.create({ deviceNo: '867567041100769' })).rejects.toThrow(/IMEI/);
+  });
+
+  it('rejects an over-long plate or name instead of failing at the database', async () => {
+    const { service } = build({ device: null });
+    await expect(service.create({ deviceNo: '51160004464', vehiclePlate: 'X'.repeat(33) })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.create({ deviceNo: '51160004464', name: 'N'.repeat(129) })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('normalizes the device number and rejects non-numeric or duplicate numbers', async () => {
     const { service, repo } = build({ device: null });
     await expect(service.create({ deviceNo: 'abc' })).rejects.toBeInstanceOf(BadRequestException);
