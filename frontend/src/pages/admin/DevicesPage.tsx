@@ -27,8 +27,9 @@ type Device = {
 
 type Gateway = {
   port: number | null;
+  error?: string | null;
   online: Array<{ deviceNo: string }>;
-  unregistered: Array<{ deviceNo: string; addr: string; count: number; lastAt: string }>;
+  unregistered: Array<{ deviceNo: string; addr: string; count: number; lastAt: string; disabled?: boolean }>;
 };
 
 function ago(value?: string | null, zh = true): string {
@@ -224,8 +225,11 @@ export default function DevicesPage() {
           <Tooltip title={zh ? '编辑车牌/名称' : 'Edit'}>
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
           </Tooltip>
-          <Tooltip title={zh ? '立即定位一次' : 'Locate now'}>
-            <Button size="small" icon={<AimOutlined />} disabled={!r.online} onClick={() => sendCommand(r, 'locate')} />
+          {/* 禁用的 AntD 按钮不派发鼠标事件，tooltip 必须包一层才弹得出来 */}
+          <Tooltip title={r.online ? (zh ? '立即定位一次' : 'Locate now') : (zh ? '设备离线，无法下发' : 'Device offline')}>
+            <span>
+              <Button size="small" icon={<AimOutlined />} disabled={!r.online} onClick={() => sendCommand(r, 'locate')} />
+            </span>
           </Tooltip>
           <Popconfirm
             title={zh ? '下发车队实时模式？' : 'Send fleet realtime mode?'}
@@ -233,16 +237,20 @@ export default function DevicesPage() {
             onConfirm={() => sendCommand(r, 'realtime')} okText={zh ? '下发' : 'Send'} cancelText={zh ? '取消' : 'Cancel'}
             disabled={!r.online}
           >
-            <Tooltip title={zh ? '实时模式' : 'Realtime mode'}>
-              <Button size="small" icon={<ThunderboltOutlined />} disabled={!r.online} />
+            <Tooltip title={r.online ? (zh ? '实时模式' : 'Realtime mode') : (zh ? '设备离线，无法下发' : 'Device offline')}>
+              <span>
+                <Button size="small" icon={<ThunderboltOutlined />} disabled={!r.online} />
+              </span>
             </Tooltip>
           </Popconfirm>
           <Popconfirm
             title={zh ? '重启设备？' : 'Reboot device?'} onConfirm={() => sendCommand(r, 'reboot')}
             okText={zh ? '重启' : 'Reboot'} cancelText={zh ? '取消' : 'Cancel'} disabled={!r.online}
           >
-            <Tooltip title={zh ? '重启' : 'Reboot'}>
-              <Button size="small" icon={<PoweroffOutlined />} disabled={!r.online} />
+            <Tooltip title={r.online ? (zh ? '重启' : 'Reboot') : (zh ? '设备离线，无法下发' : 'Device offline')}>
+              <span>
+                <Button size="small" icon={<PoweroffOutlined />} disabled={!r.online} />
+              </span>
             </Tooltip>
           </Popconfirm>
           {isAdmin && (
@@ -261,8 +269,11 @@ export default function DevicesPage() {
   const onlineCount = list.filter((d) => d.online).length;
   // 「哪台设备 / 哪辆车不在线」：停用的设备不算掉线
   const offlineDevices = list.filter((d) => d.enabled && !d.online);
+  // 有任务在跑却掉线 = 要立刻处理；熄火停放导致的掉线是正常现象，分开显示避免告警疲劳
+  const offlineOnDuty = offlineDevices.filter((d) => d.currentTask);
+  const offlineParked = offlineDevices.filter((d) => !d.currentTask);
   const visibleList = filter === 'online' ? list.filter((d) => d.online)
-    : filter === 'offline' ? list.filter((d) => !d.online)
+    : filter === 'offline' ? list.filter((d) => d.enabled && !d.online)
       : list;
 
   return (
@@ -278,7 +289,14 @@ export default function DevicesPage() {
         </Space>
       </div>
 
-      {gateway && (
+      {gateway?.error && (
+        <Alert
+          type="error" showIcon style={{ marginBottom: 16, borderRadius: 10 }}
+          message={zh ? `定位器网关启动失败：${gateway.error}` : `Gateway failed to start: ${gateway.error}`}
+          description={zh ? '设备将无法连接。常见原因是端口被占用，改 JT808_PORT 后重新部署。' : 'Devices cannot connect. Usually the port is in use.'}
+        />
+      )}
+      {gateway && !gateway.error && (
         gateway.port
           ? (
             <Alert
@@ -322,7 +340,7 @@ export default function DevicesPage() {
         </Card>
       )}
 
-      {offlineDevices.length > 0 && (
+      {offlineOnDuty.length > 0 && (
         <Card
           size="small" bordered={false}
           style={{ marginBottom: 16, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca' }}
@@ -330,18 +348,18 @@ export default function DevicesPage() {
             <span style={{ color: '#b91c1c' }}>
               <DisconnectOutlined style={{ marginRight: 8 }} />
               {zh
-                ? `以下 ${offlineDevices.length} 辆车的 GPS 设备不在线`
-                : `${offlineDevices.length} vehicle(s) have an offline GPS device`}
+                ? `${offlineOnDuty.length} 辆车正在运输，但 GPS 设备不在线`
+                : `${offlineOnDuty.length} vehicle(s) on a job with an offline GPS device`}
             </span>
           }
         >
           <Space wrap size={[8, 8]}>
-            {offlineDevices.map((d) => (
+            {offlineOnDuty.map((d) => (
               <Tag key={d.id} color="red" style={{ padding: '5px 10px', fontSize: 13, margin: 0 }}>
                 <Text strong style={{ letterSpacing: 0.5 }}>
                   {d.vehiclePlate || (zh ? '未绑定车牌' : 'No plate')}
                 </Text>
-                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontFamily: 'monospace' }}>{d.deviceNo}</Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>{d.currentTask?.driverName}</Text>
                 <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                   {d.lastSeenAt ? (zh ? `已离线 ${ago(d.lastSeenAt, zh).replace('前', '')}` : `offline ${ago(d.lastSeenAt, zh)}`)
                     : (zh ? '从未连接' : 'never connected')}
@@ -352,10 +370,37 @@ export default function DevicesPage() {
           <div style={{ marginTop: 8 }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {zh
-                ? '车辆熄火停放、设备休眠或断电都会离线；长时间离线请检查设备供电与 SIM 卡流量。'
-                : 'Parked, sleeping or unpowered devices show as offline.'}
+                ? '任务进行中设备却掉线：检查车辆供电、SIM 卡流量，或设备是否被拔掉。'
+                : 'A job is running but the tracker is offline: check power, SIM data, or whether it was unplugged.'}
             </Text>
           </div>
+        </Card>
+      )}
+
+      {offlineParked.length > 0 && (
+        <Card
+          size="small" bordered={false}
+          style={{ marginBottom: 16, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}
+          title={
+            <span style={{ color: '#475569' }}>
+              <DisconnectOutlined style={{ marginRight: 8 }} />
+              {zh
+                ? `${offlineParked.length} 辆车的设备离线（无进行中任务，多为熄火停放）`
+                : `${offlineParked.length} tracker(s) offline with no active job (usually parked)`}
+            </span>
+          }
+        >
+          <Space wrap size={[8, 8]}>
+            {offlineParked.map((d) => (
+              <Tag key={d.id} style={{ padding: '5px 10px', fontSize: 13, margin: 0 }}>
+                <Text style={{ letterSpacing: 0.5 }}>{d.vehiclePlate || (zh ? '未绑定车牌' : 'No plate')}</Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontFamily: 'monospace' }}>{d.deviceNo}</Text>
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                  {d.lastSeenAt ? ago(d.lastSeenAt, zh) : (zh ? '从未连接' : 'never connected')}
+                </Text>
+              </Tag>
+            ))}
+          </Space>
         </Card>
       )}
 

@@ -26,7 +26,9 @@ export class GpsDevice {
   @Column({ default: true })
   enabled: boolean;
 
-  @Column({ name: 'last_seen_at', type: 'timestamp', nullable: true })
+  // 统一用 timestamptz，与 database/migrations 里的建表语句一致；
+  // 否则开发环境的 synchronize 会把列改成不带时区的 timestamp，两边时间差一个时区。
+  @Column({ name: 'last_seen_at', type: 'timestamptz', nullable: true })
   lastSeenAt: Date;
 
   @Column({ name: 'last_latitude', type: 'decimal', precision: 10, scale: 7, nullable: true })
@@ -38,7 +40,7 @@ export class GpsDevice {
   @Column({ name: 'last_speed', type: 'decimal', precision: 6, scale: 2, nullable: true })
   lastSpeed: number;
 
-  @Column({ name: 'last_fix_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'last_fix_at', type: 'timestamptz', nullable: true })
   lastFixAt: Date;
 
   @Column({ name: 'battery_percent', type: 'int', nullable: true })
@@ -53,9 +55,9 @@ export class GpsDevice {
   @Column({ name: 'last_task_id', nullable: true })
   lastTaskId: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

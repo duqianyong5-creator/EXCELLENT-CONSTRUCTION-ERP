@@ -141,9 +141,18 @@ export function normalizeDeviceNo(input: string): string {
  * 解析一帧（输入为两个 0x7e 之间的原始字节，仍带转义）。
  * 头部不完整或长度不符返回 null；校验码不符也返回帧但 checksumOk=false，由上层决定是否丢弃。
  */
+/**
+ * 消息体上限。协议里消息体长度只有 10 位（≤1023），这里放宽到 8KB 容忍厂家固件不严谨，
+ * 但绝不接受几十 KB 的巨帧——那不是真实终端会发的，只会是放大攻击。
+ */
+export const MAX_BODY_BYTES = 8 * 1024;
+/** 单个 0x0704 批量帧最多解析多少个点 */
+export const MAX_BATCH_ITEMS = 200;
+
 export function decodeFrame(escaped: Buffer): Jt808Frame | null {
   const raw = unescapeBytes(escaped);
   if (raw.length < 12 + 1) return null; // 最短：12 字节头 + 1 校验
+  if (raw.length > MAX_BODY_BYTES + 32) return null; // 巨帧直接丢弃
   const msgId = raw.readUInt16BE(0);
   const props = raw.readUInt16BE(2);
   const bodyLength = props & 0x03ff;
@@ -323,7 +332,7 @@ export function parsePosition(body: Buffer, tzOffsetHours: number): Position | n
 /** 解析 0x0704 定位数据批量上传：返回每一项的 0x0200 消息体 */
 export function parseBatchPositions(body: Buffer): { count: number; blindZone: boolean; items: Buffer[] } {
   if (body.length < 3) return { count: 0, blindZone: false, items: [] };
-  const count = body.readUInt16BE(0);
+  const count = Math.min(body.readUInt16BE(0), MAX_BATCH_ITEMS);
   const blindZone = body[2] === 1;
   const items: Buffer[] = [];
   let i = 3;

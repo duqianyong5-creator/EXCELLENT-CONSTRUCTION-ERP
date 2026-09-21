@@ -26,6 +26,12 @@ interface Session {
   frames: number;
   /** 同一连接的帧串行处理，避免分包/批量乱序 */
   queue: Promise<void>;
+  /** 待处理帧数，超过阈值暂停读取（背压） */
+  pending: number;
+  /** 被拒绝次数（未登记设备号），用于挡扫描 */
+  rejects: number;
+  /** 坏帧计数，用于日志降频 */
+  badFrames: number;
   /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
   handshakeTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -50,9 +56,14 @@ export interface UnregisteredAttempt {
 
 const MAX_BUFFER = 64 * 1024; // 单连接最大积压（0x0704 批量最多也就几 KB）
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 终端心跳一般 ≤ 5 分钟；低功耗休眠会主动断开
-const HANDSHAKE_TIMEOUT_MS = 30 * 1000; // 连上后 30 秒内没有一帧有效数据就断开
+const HANDSHAKE_TIMEOUT_MS = 10 * 1000; // 连上后 10 秒内没有一帧有效数据就断开
+const MAX_PENDING_FRAMES = 100; // 待处理帧超过这个数就暂停读取
 const MAX_CONNECTIONS = 500;
 const MAX_UNREGISTERED = 200;
+/** 一条连接上被拒绝多少次就断开：真实设备登记后就不会再被拒，这是挡设备号扫描的 */
+const MAX_REJECTS_PER_SESSION = 5;
+/** 一条连接上允许多少次校验错误的帧，超过只记一条汇总日志，避免刷日志 */
+const MAX_BAD_FRAME_LOGS = 3;
 
 /**
  * JT808 TCP 网关：设备 -> 本服务（TCP）-> GpsDeviceService.ingest -> gps_logs / 地图 / 报警 / 工时
@@ -68,6 +79,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
   private byDevice = new Map<string, Session>();
   private unregistered = new Map<string, UnregisteredAttempt>();
   private defaultTz = 8;
+  private startError: string | null = null;
 
   constructor(
     private config: ConfigService,
@@ -83,7 +95,14 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       this.logger.log('JT808 gateway disabled (set JT808_PORT to enable)');
       return;
     }
-    await this.start(port);
+    // 定位器网关起不来（端口被占、权限不足）不应该连带把后台、司机 App、客户端一起拖下线，
+    // 设备页顶部的告警条会显示网关未运行。
+    try {
+      await this.start(port);
+    } catch (e: any) {
+      this.startError = e?.message || String(e);
+      this.logger.error(`JT808 gateway failed to start on port ${port}: ${this.startError}`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -93,14 +112,15 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
   /** 也供测试直接调用（port=0 随机端口） */
   start(port: number, host = '0.0.0.0'): Promise<number> {
     return new Promise((resolve, reject) => {
+      // 连接准入由 handleConnection 自己管（优先踢空连接），不用 net 的先到先得上限
       const server = net.createServer((socket) => this.handleConnection(socket));
-      server.maxConnections = MAX_CONNECTIONS;
+      this.server = server; // 先挂上，监听失败时 stop() 也能收拾干净
       server.on('error', (err) => {
         this.logger.error(`JT808 server error: ${err.message}`);
         reject(err);
       });
       server.listen(port, host, () => {
-        this.server = server;
+        this.startError = null;
         const bound = (server.address() as net.AddressInfo).port;
         this.logger.log(`JT808 gateway listening on ${host}:${bound} (device tz default UTC${this.defaultTz >= 0 ? '+' : ''}${this.defaultTz})`);
         resolve(bound);
@@ -120,6 +140,11 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
   getPort(): number | null {
     const a = this.server?.address();
     return a && typeof a === 'object' ? a.port : null;
+  }
+
+  /** 网关启动失败的原因（端口被占等），供管理端显示 */
+  getStartError(): string | null {
+    return this.startError;
   }
 
   getOnline(): OnlineDevice[] {
@@ -210,8 +235,24 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       lastSeenAt: new Date(),
       frames: 0,
       queue: Promise.resolve(),
+      pending: 0,
+      rejects: 0,
+      badFrames: 0,
       handshakeTimer: null,
     };
+    // 连接数到上限时，优先踢掉「连上但一帧有效数据都没发」的连接，
+    // 否则一批空连接就能把真实设备全部挡在门外。
+    if (this.sessions.size >= MAX_CONNECTIONS) {
+      const idle = [...this.sessions].find((s) => s.frames === 0);
+      if (idle) {
+        this.logger.warn(`connection limit reached, dropping an idle connection from ${idle.addr}`);
+        idle.socket.destroy();
+      } else {
+        this.logger.error(`connection limit reached with all sessions active, refusing ${session.addr}`);
+        socket.destroy();
+        return;
+      }
+    }
     this.sessions.add(session);
     socket.setKeepAlive(true, 60_000);
     socket.setNoDelay(true);
@@ -225,6 +266,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         socket.destroy();
       }
     }, HANDSHAKE_TIMEOUT_MS);
+    session.handshakeTimer.unref?.(); // 不要因为这个定时器把进程/测试拖住不退出
     socket.on('data', (chunk) => this.onData(session, chunk));
     socket.on('error', (err) => this.logger.debug(`socket ${session.deviceNo ?? session.addr}: ${err.message}`));
     socket.on('close', () => this.dropSession(session));
@@ -252,7 +294,12 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       const frame = decodeFrame(raw);
       if (!frame) continue;
       if (!frame.checksumOk) {
-        this.logger.warn(`bad checksum from ${session.addr} msg=0x${frame.msgId.toString(16)}`);
+        session.badFrames++;
+        if (session.badFrames <= MAX_BAD_FRAME_LOGS) {
+          this.logger.warn(`bad checksum from ${session.addr} msg=0x${frame.msgId.toString(16)}`);
+        } else if (session.badFrames === MAX_BAD_FRAME_LOGS + 1) {
+          this.logger.warn(`further malformed frames from ${session.addr} will not be logged`);
+        }
         continue;
       }
       if (frame.encrypted) {
@@ -263,29 +310,49 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       session.frames++;
       session.lastSeenAt = new Date();
       if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
-      this.bindDevice(session, frame.phone);
-      // 逐帧串行处理，避免同一设备的分包/批量乱序
+      if (!this.bindDevice(session, frame.phone)) return;
+      // 逐帧串行处理，避免同一设备的分包/批量乱序；
+      // 处理慢（数据库卡）时暂停读取，不让待处理链无限增长。
+      session.pending++;
+      if (session.pending >= MAX_PENDING_FRAMES && !session.socket.isPaused()) session.socket.pause();
       session.queue = session.queue
         .then(() => this.handleFrame(session, frame))
         .catch((e) => {
           this.logger.error(`handle 0x${frame.msgId.toString(16)} from ${session.deviceNo}: ${e?.message || e}`);
+        })
+        .then(() => {
+          session.pending--;
+          if (session.pending < MAX_PENDING_FRAMES && session.socket.isPaused()) session.socket.resume();
         });
     }
   }
 
-  private bindDevice(session: Session, phone: string): void {
+  /** 返回 false 表示这一帧不该再处理（连接已被判定为异常并关闭） */
+  private bindDevice(session: Session, phone: string): boolean {
     const deviceNo = normalizeDeviceNo(phone);
-    if (session.deviceNo === deviceNo) { session.phone = phone; return; }
-    if (session.deviceNo && this.byDevice.get(session.deviceNo) === session) this.byDevice.delete(session.deviceNo);
+    if (session.deviceNo === deviceNo) { session.phone = phone; return true; }
+    if (session.deviceNo) {
+      // 真实终端在一条连接里不会换设备号；换号只可能是扫描/伪造，顺带还能借此把别的设备踢下线
+      this.logger.warn(`device number changed on one connection (${session.deviceNo} -> ${deviceNo}) from ${session.addr}, closing`);
+      session.socket.destroy();
+      return false;
+    }
     session.phone = phone;
     session.deviceNo = deviceNo;
     const previous = this.byDevice.get(deviceNo);
     if (previous && previous !== session) {
-      // 同一设备重连：踢掉旧连接
+      // 同一设备重连：踢掉旧连接（设备休眠/换基站后重连很常见，不能拒绝新连接，否则真设备会被锁在外面）。
+      // 但旧连接刚刚还在正常收发，说明可能有人拿着同一个设备号顶号——记下来以便排查。
+      if (Date.now() - previous.lastSeenAt.getTime() < 60_000) {
+        this.logger.warn(
+          `device ${deviceNo} taken over by ${session.addr} while the previous connection (${previous.addr}) was still active`,
+        );
+      }
       previous.socket.destroy();
     }
     this.byDevice.set(deviceNo, session);
     this.logger.log(`device ${deviceNo} connected from ${session.addr}`);
+    return true;
   }
 
   private async handleFrame(session: Session, frame: Jt808Frame): Promise<void> {
@@ -305,8 +372,14 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       } else if (frame.msgId !== MsgId.TERMINAL_ACK) {
         ack(AckResult.FAIL);
       }
+      // 真实设备登记之后就不会再被拒；连续被拒只可能是拿设备号在试探，断开让它付出重连成本
+      if (++session.rejects >= MAX_REJECTS_PER_SESSION) {
+        this.logger.warn(`${session.rejects} rejected frames on one connection from ${session.addr}, closing`);
+        session.socket.destroy();
+      }
       return;
     }
+    session.rejects = 0;
 
     switch (frame.msgId) {
       case MsgId.REGISTER: {
@@ -351,7 +424,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         for (const item of batch.items) {
           const pos = parsePosition(item, session.tzOffset);
           if (!pos) continue;
-          if ((await this.devices.ingest(deviceNo, pos, { batch: true })) === 'stored') stored++;
+          if ((await this.devices.ingest(deviceNo, pos, { batch: true, blindZone: batch.blindZone })) === 'stored') stored++;
         }
         this.logger.log(`batch from ${deviceNo}: ${batch.items.length} points${batch.blindZone ? ' (blind-zone backfill)' : ''}, stored ${stored}`);
         return;

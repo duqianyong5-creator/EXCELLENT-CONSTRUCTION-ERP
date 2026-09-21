@@ -10,7 +10,12 @@ import { createCorsOriginResolver } from './config/security.config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // 生产环境不输出 debug：里面会带车辆坐标等位置信息，不该进第三方日志平台
+    logger: process.env.NODE_ENV === 'production'
+      ? ['error', 'warn', 'log']
+      : ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
   const configService = app.get(ConfigService);
   const isProd = process.env.NODE_ENV === 'production';
 

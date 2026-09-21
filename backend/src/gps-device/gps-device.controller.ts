@@ -44,6 +44,7 @@ export class GpsDeviceController {
   gateway() {
     return {
       port: this.server.getPort(),
+      error: this.server.getStartError(),
       online: this.server.getOnline(),
       unregistered: this.server.getUnregistered(),
     };

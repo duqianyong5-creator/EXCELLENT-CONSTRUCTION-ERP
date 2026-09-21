@@ -9,6 +9,20 @@ import { haversineKm } from './geo.util';
 
 type RequestUser = { id: string; role: UserRole };
 
+/**
+ * 同一个任务可能同时有两个来源的点：司机手机（人）和车载定位器（车）。
+ * 两者混在一起，地图会在两点之间反复跳、轨迹画成锯齿。
+ * 车载定位器绑在车上、不依赖司机手机，是更可信的来源，只要有就只用它。
+ */
+const MIN_DEVICE_POINTS_FOR_TRACK = 5;
+
+export function preferDeviceSource<T extends { source?: string }>(logs: T[]): T[] {
+  const device = logs.filter((g) => g.source === 'device');
+  // 要有连续若干个点才认为"这趟车确实由定位器在跟"，
+  // 否则一两个偶发的设备点（车牌刚绑错、设备刚上线）就会把整条手机轨迹藏掉。
+  return device.length >= MIN_DEVICE_POINTS_FOR_TRACK ? device : logs;
+}
+
 const MAX_SPEED_KMH = 140;
 const TELEPORT_THRESHOLD_KM = 10;
 const GPS_TIMEOUT_SECONDS = 60;
@@ -34,9 +48,12 @@ export class GpsService {
     timestamp?: Date;
     /** 'app' 手机 App | 'device' 车载 JT808 定位器 */
     source?: 'app' | 'device';
+    /** 盲区补报的历史点：不做实时广播，避免一次补几百个点把前端刷爆 */
+    silent?: boolean;
   }): Promise<{ log: GpsLog; anomalies: string[] }> {
     const anomalies: string[] = [];
     const pointTime = data.timestamp ?? new Date();
+    const source = data.source ?? 'app';
 
     // Check speed anomaly
     if (data.speed > MAX_SPEED_KMH) {
@@ -49,7 +66,9 @@ export class GpsService {
       order: { timestamp: 'DESC' },
     });
 
-    if (lastLog) {
+    // 只和同一来源的上一个点比：手机在司机身上、定位器在车上，两者本就可能相距很远，
+    // 跨来源比较会在司机离车时把每一个点都判成瞬移，进而刷屏报警。
+    if (lastLog && (lastLog.source ?? 'app') === source) {
       const dist = haversineKm(
         Number(lastLog.latitude), Number(lastLog.longitude),
         data.latitude, data.longitude,
@@ -70,21 +89,23 @@ export class GpsService {
       speed: data.speed,
       heading: data.heading,
       accuracy: data.accuracy,
-      source: data.source ?? 'app',
+      source,
       ...(data.timestamp ? { timestamp: data.timestamp } : {}),
       isAnomaly: anomalies.length > 0,
     });
     const saved = await this.repo.save(log);
 
-    this.notifService.broadcastGpsUpdate(driverId, {
-      taskId,
-      latitude: saved.latitude,
-      longitude: saved.longitude,
-      speed: saved.speed,
-      heading: saved.heading,
-      accuracy: saved.accuracy,
-      timestamp: saved.timestamp,
-    });
+    if (!data.silent) {
+      this.notifService.broadcastGpsUpdate(driverId, {
+        taskId,
+        latitude: saved.latitude,
+        longitude: saved.longitude,
+        speed: saved.speed,
+        heading: saved.heading,
+        accuracy: saved.accuracy,
+        timestamp: saved.timestamp,
+      });
+    }
 
     if (anomalies.length > 0) {
       await this.notifService.create(null, {
@@ -100,10 +121,11 @@ export class GpsService {
   }
 
   async getTrack(taskId: string): Promise<GpsLog[]> {
-    return this.repo.find({
+    const logs = await this.repo.find({
       where: { taskId },
       order: { timestamp: 'ASC' },
     });
+    return preferDeviceSource(logs);
   }
 
   // 运营角色（管理员/调度/监控）可看任意任务/司机；客户只能看自己名下的任务/司机；
@@ -152,23 +174,26 @@ export class GpsService {
   // 每个司机取最新一条位置（最近窗口内、进行中任务）。用 getMany + JS 去重，
   // 避免 Postgres 专属的 DISTINCT ON 原生列名出错导致接口 500。
   private dedupeLatestByDriver(logs: GpsLog[]): any[] {
-    const seen = new Set<string>();
-    const result: any[] = [];
+    // logs 已按时间倒序。每个司机取最新一条；若该司机在窗口内有车载定位器的点，
+    // 就只认定位器（否则地图会在手机位置和车辆位置之间来回跳）。
+    const best = new Map<string, GpsLog>();
     for (const g of logs) {
-      if (!g.driverId || seen.has(g.driverId)) continue;
-      seen.add(g.driverId);
-      result.push({
-        driverId: g.driverId,
-        taskId: g.taskId,
-        latitude: g.latitude,
-        longitude: g.longitude,
-        speed: g.speed,
-        heading: g.heading,
-        accuracy: g.accuracy,
-        timestamp: g.timestamp,
-      });
+      if (!g.driverId) continue;
+      const current = best.get(g.driverId);
+      if (!current) { best.set(g.driverId, g); continue; }
+      if (current.source !== 'device' && g.source === 'device') best.set(g.driverId, g);
     }
-    return result;
+    return [...best.values()].map((g) => ({
+      driverId: g.driverId,
+      taskId: g.taskId,
+      latitude: g.latitude,
+      longitude: g.longitude,
+      speed: g.speed,
+      heading: g.heading,
+      accuracy: g.accuracy,
+      timestamp: g.timestamp,
+      source: g.source ?? 'app',
+    }));
   }
 
   // 把司机账号名直接挂到每个位置点上，地图标记不必再单独查司机列表

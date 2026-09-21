@@ -139,4 +139,102 @@ describe('GpsService upload realtime broadcast', () => {
       timestamp: savedAt,
     });
   });
+
+  it('does not broadcast a silent (blind-zone backfill) point', async () => {
+    const gpsRepo = {
+      findOne: jest.fn(async () => null),
+      create: jest.fn((data) => data),
+      save: jest.fn(async (data) => ({ id: 'gps-1', ...data })),
+    };
+    const notifService = { create: jest.fn(), broadcastGpsUpdate: jest.fn() };
+    const service = new GpsService(gpsRepo as any, {} as any, notifService as any);
+
+    await service.upload('driver-1', 'task-1', {
+      latitude: 1, longitude: 2, speed: 0, source: 'device', silent: true,
+      timestamp: new Date('2026-06-27T00:00:00.000Z'),
+    });
+
+    expect(notifService.broadcastGpsUpdate).not.toHaveBeenCalled();
+    expect(gpsRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'device', timestamp: new Date('2026-06-27T00:00:00.000Z'),
+    }));
+  });
+});
+
+describe('GpsService phone + tracker on the same task', () => {
+  const makeService = (lastLog: any) => {
+    const gpsRepo = {
+      findOne: jest.fn(async () => lastLog),
+      create: jest.fn((data) => data),
+      save: jest.fn(async (data) => ({ id: 'g', timestamp: new Date(), ...data })),
+    };
+    const notifService = { create: jest.fn(), broadcastGpsUpdate: jest.fn() };
+    return { service: new GpsService(gpsRepo as any, {} as any, notifService as any), notifService };
+  };
+
+  it('does NOT flag teleport when the previous point came from the other source', async () => {
+    // 司机把车停在工地、自己带着手机离开：车上定位器和手机本就相距很远，
+    // 跨来源比较会把每一个点都判成瞬移，给管理员刷屏报警
+    const { service, notifService } = makeService({
+      latitude: -36.8, longitude: 174.7, timestamp: new Date(Date.now() - 60_000), source: 'app',
+    });
+    const { anomalies } = await service.upload('d1', 't1', {
+      latitude: -37.9, longitude: 175.9, speed: 10, source: 'device', timestamp: new Date(),
+    });
+    expect(anomalies).not.toContain('teleport');
+    expect(notifService.create).not.toHaveBeenCalled();
+  });
+
+  it('still flags teleport within the same source', async () => {
+    const { service } = makeService({
+      latitude: -36.8, longitude: 174.7, timestamp: new Date(Date.now() - 60_000), source: 'device',
+    });
+    const { anomalies } = await service.upload('d1', 't1', {
+      latitude: -37.9, longitude: 175.9, speed: 10, source: 'device', timestamp: new Date(),
+    });
+    expect(anomalies).toContain('teleport');
+  });
+
+  it('live map prefers the tracker point over the phone point for the same driver', async () => {
+    const now = new Date();
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn(async () => [
+        { driverId: 'd1', taskId: 't1', latitude: 1, longitude: 1, source: 'app', timestamp: now },
+        { driverId: 'd1', taskId: 't1', latitude: 2, longitude: 2, source: 'device', timestamp: new Date(now.getTime() - 5000) },
+      ]),
+    };
+    const service = new GpsService(
+      { createQueryBuilder: jest.fn(() => qb) } as any,
+      { find: jest.fn(async () => [{ id: 't1' }]) } as any,
+      {} as any,
+    );
+
+    const result = await service.getLatestPositions();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ latitude: 2, longitude: 2, source: 'device' });
+  });
+
+  it('track replay uses tracker points once the tracker is really following the trip', async () => {
+    const devicePoints = [1, 2, 3, 4, 5, 6].map((id) => ({ id, source: 'device' }));
+    const rows = [{ id: 0, source: 'app' }, ...devicePoints, { id: 9, source: 'app' }];
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    await expect(service.getTrack('t1')).resolves.toEqual(devicePoints);
+  });
+
+  it('does NOT hide the phone trail for one or two stray tracker points', async () => {
+    // 车牌刚绑错、设备刚上线时会冒出零星设备点，不能因此把整条手机轨迹藏掉
+    const rows = [{ id: 1, source: 'app' }, { id: 2, source: 'device' }, { id: 3, source: 'app' }];
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    await expect(service.getTrack('t1')).resolves.toEqual(rows);
+  });
+
+  it('track replay falls back to phone points when there is no tracker', async () => {
+    const rows = [{ id: 1, source: 'app' }, { id: 2, source: 'app' }];
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    await expect(service.getTrack('t1')).resolves.toEqual(rows);
+  });
 });

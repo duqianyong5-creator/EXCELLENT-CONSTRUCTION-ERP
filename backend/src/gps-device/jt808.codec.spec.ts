@@ -233,6 +233,32 @@ describe('0x0704 batch upload', () => {
     const body = H('0002' + '00' + '001c' + '00');
     expect(parseBatchPositions(body).items).toHaveLength(0);
   });
+
+  it('caps the number of items a single frame can expand into (amplification guard)', () => {
+    const item = Buffer.alloc(28);
+    const lenBuf = Buffer.alloc(2); lenBuf.writeUInt16BE(28, 0);
+    const parts = [H('ffff'), H('00')]; // 声称 65535 个点
+    for (let i = 0; i < 400; i++) parts.push(lenBuf, item);
+    const r = parseBatchPositions(Buffer.concat(parts));
+    expect(r.count).toBe(200);
+    expect(r.items.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('oversized frame rejection', () => {
+  it('drops a frame whose body is far beyond any legitimate JT808 message', () => {
+    // 协议消息体上限 1023 字节；几十 KB 的「一帧」只会是放大攻击
+    const header = Buffer.alloc(12);
+    header.writeUInt16BE(MsgId.BATCH_POSITION, 0);
+    const huge = Buffer.concat([header, Buffer.alloc(60 * 1024, 0x41), Buffer.from([0])]);
+    expect(decodeFrame(huge)).toBeNull();
+  });
+
+  it('still accepts a large-but-plausible frame', () => {
+    const body = Buffer.alloc(1000, 0x42);
+    const frame = encodeFrame(MsgId.BATCH_POSITION, '051160004464', 1, body);
+    expect(decodeFrame(frame.subarray(1, -1))!.body).toEqual(body);
+  });
 });
 
 describe('time and timezone helpers', () => {

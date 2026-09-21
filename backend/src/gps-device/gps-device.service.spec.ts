@@ -3,11 +3,14 @@ import { GpsDeviceService, normalizePlate } from './gps-device.service';
 import { TaskStatus } from '../tasks/task.entity';
 import type { Position } from './jt808.codec';
 
+// 实时点的时间必须是"刚刚"：写死日期的夹具会随着时间流逝被时钟修正逻辑改掉
+const RECENT = new Date(Date.now() - 30_000);
+
 function pos(over: Partial<Position> = {}): Position {
   return {
     alarm: 0, status: 2, acc: true, fixed: true, moving: true,
     latitude: -36.8485, longitude: 174.7633, altitude: 10, speedKmh: 42.5, heading: 90,
-    time: new Date('2026-09-14T03:00:00.000Z'),
+    time: RECENT,
     extras: { raw: new Map(), batteryPercent: 88, externalPower: true, signalPercent: 70 },
     ...over,
   };
@@ -61,7 +64,7 @@ describe('GpsDeviceService.ingest', () => {
     expect(await service.ingest('051160004464', pos())).toBe('stored');
     expect(gpsService.upload).toHaveBeenCalledWith('d1', 't1', expect.objectContaining({
       latitude: -36.8485, longitude: 174.7633, speed: 42.5, heading: 90,
-      timestamp: new Date('2026-09-14T03:00:00.000Z'), source: 'device',
+      timestamp: RECENT, source: 'device',
     }));
     expect(repo.update).toHaveBeenCalledWith('dev1', expect.objectContaining({
       lastLatitude: -36.8485, lastLongitude: 174.7633, lastSpeed: 42.5, lastTaskId: 't1',
@@ -103,8 +106,19 @@ describe('GpsDeviceService.ingest', () => {
   it('keeps a legitimately old blind-zone backfill timestamp (hours old)', async () => {
     const { service, gpsService } = build();
     const old = new Date(Date.now() - 6 * 3600 * 1000);
-    await service.ingest('51160004464', pos({ time: old }), { batch: true });
-    expect((gpsService.upload.mock.calls[0] as any)[2].timestamp).toEqual(old);
+    await service.ingest('51160004464', pos({ time: old }), { batch: true, blindZone: true });
+    const call: any = gpsService.upload.mock.calls[0];
+    expect(call[2].timestamp).toEqual(old);
+    expect(call[2].silent).toBe(true); // 补报不实时广播，否则一次几百个点会把前端刷爆
+  });
+
+  it('repairs an hours-old timestamp on a LIVE report (device clock/timezone misconfigured)', async () => {
+    // 实时点落在在线窗口外 = 车在跑却不出现在地图上，是最难查的故障，必须用服务器时间兜底
+    const { service, gpsService } = build();
+    const before = Date.now();
+    await service.ingest('51160004464', pos({ time: new Date(Date.now() - 4 * 3600 * 1000) }));
+    const ts: Date = (gpsService.upload.mock.calls[0] as any)[2].timestamp;
+    expect(ts.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it('caches device and task lookups and drops them on invalidate()', async () => {
@@ -120,15 +134,25 @@ describe('GpsDeviceService.ingest', () => {
     expect(taskRepo.find).toHaveBeenCalledTimes(2);
   });
 
-  it('picks the most recently updated task when two in-progress tasks share a plate', async () => {
+  it('refuses to guess when two in-progress tasks claim the same plate', async () => {
+    // 猜错就会把这辆车的位置画进别人的任务里（客户端也看得到），宁可不归属
     const { service, gpsService } = build({ tasks: [
       { id: 'newer', driverId: 'd2', vehiclePlate: 'ABC123', updatedAt: new Date('2026-09-14T02:00:00Z') },
-      { id: 'older', driverId: 'd1', vehiclePlate: 'ABC123', updatedAt: new Date('2026-09-13T02:00:00Z') },
+      { id: 'older', driverId: 'd1', vehiclePlate: 'ABC 123', updatedAt: new Date('2026-09-13T02:00:00Z') },
     ] });
-    await service.ingest('51160004464', pos());
-    const call: any = gpsService.upload.mock.calls[0];
-    expect(call[0]).toBe('d2');
-    expect(call[1]).toBe('newer');
+    expect(await service.ingest('51160004464', pos())).toBe('no_task');
+    expect(gpsService.upload).not.toHaveBeenCalled();
+  });
+
+  it('only trusts a days-old timestamp when the device flagged it as blind-zone backfill', async () => {
+    const { service, gpsService } = build();
+    const old = new Date(Date.now() - 6 * 3600 * 1000);
+    // 批量但没标盲区补报：按实时处理，时间被修正（否则可以用批量消息绕过时间校验）
+    await service.ingest('51160004464', pos({ time: old }), { batch: true });
+    expect((gpsService.upload.mock.calls[0] as any)[2].timestamp).not.toEqual(old);
+    // 标了盲区补报：保留原始时间
+    await service.ingest('51160004464', pos({ time: old }), { batch: true, blindZone: true });
+    expect((gpsService.upload.mock.calls[1] as any)[2].timestamp).toEqual(old);
   });
 });
 

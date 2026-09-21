@@ -216,7 +216,12 @@ export default function DashboardPage() {
     const devices: any = await gpsDevicesApi.list();
     const rows = Array.isArray(devices) ? devices : [];
     const enabled = rows.filter((d: any) => d.enabled !== false);
-    setDeviceStat({ total: enabled.length, offline: enabled.filter((d: any) => !d.online).length });
+    // 只统计「有任务在跑却掉线」的设备：车辆熄火停放时设备本来就会断开，
+    // 全算离线的话每天下班后仪表盘就一片红，真出问题反而没人看了。
+    setDeviceStat({
+      total: enabled.length,
+      offline: enabled.filter((d: any) => !d.online && d.currentTask).length,
+    });
   }, []);
 
   const loadData = useCallback(async () => {
@@ -264,8 +269,14 @@ export default function DashboardPage() {
     }, POSITION_REFRESH_MS);
     // 设备在线状态变化慢，单独用低频轮询，不给每 10 秒的定位刷新加负担
     const deviceInterval = setInterval(() => { refreshDevices().catch(() => {}); }, DEVICE_REFRESH_MS);
+    // 车载设备每 10 秒一个点、多车并发，逐条事件刷新会把接口打爆：合并成最多 2 秒一次
+    let gpsPending: ReturnType<typeof setTimeout> | null = null;
     const gpsHandler = () => {
-      refreshPositions().catch(() => {});
+      if (gpsPending) return;
+      gpsPending = setTimeout(() => {
+        gpsPending = null;
+        refreshPositions().catch(() => {});
+      }, 2000);
     };
     const presenceHandler = () => {
       refreshOnlineDrivers().catch(() => {});
@@ -275,6 +286,7 @@ export default function DashboardPage() {
     return () => {
       clearInterval(interval);
       clearInterval(deviceInterval);
+      if (gpsPending) clearTimeout(gpsPending);
       window.removeEventListener('gps:update', gpsHandler);
       window.removeEventListener('driver-presence:update', presenceHandler);
     };
@@ -318,7 +330,7 @@ export default function DashboardPage() {
     },
     // 只有登记了车载定位器才显示这张卡
     ...(deviceStat.total > 0 ? [{
-      title: deviceStat.offline > 0 ? '设备离线' : '设备在线',
+      title: deviceStat.offline > 0 ? '运输中设备离线' : 'GPS设备',
       value: deviceStat.offline > 0 ? deviceStat.offline : deviceStat.total,
       icon: deviceStat.offline > 0 ? <DisconnectOutlined /> : <EnvironmentOutlined />,
       gradient: deviceStat.offline > 0

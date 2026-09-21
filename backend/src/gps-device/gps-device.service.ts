@@ -12,9 +12,13 @@ interface TaskTarget { taskId: string; driverId: string }
 
 const DEVICE_CACHE_MS = 30_000;
 const TASK_CACHE_MS = 15_000;
+const MAX_DEVICE_CACHE_ENTRIES = 1000; // 设备号来自报文、可被伪造，缓存必须有上限
 /** 终端时钟明显不对（未同步）时，用服务器时间入库 */
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
-const MAX_PAST_SKEW_MS = 7 * 24 * 3600 * 1000;
+/** 盲区补报允许是几天前的点；实时上报只允许几分钟的偏差，
+ *  否则设备时钟/时区配错时点会落在在线窗口之外，车在跑却永远不出现在地图上。 */
+const MAX_PAST_SKEW_BATCH_MS = 7 * 24 * 3600 * 1000;
+const MAX_PAST_SKEW_LIVE_MS = 5 * 60 * 1000;
 
 /** 车牌归一化：大写、去空格/连字符/中点，便于设备登记的车牌与司机接单时输入的车牌匹配 */
 export function normalizePlate(plate: string | null | undefined): string {
@@ -106,7 +110,7 @@ export class GpsDeviceService {
       deviceNo,
       vehiclePlate: this.cleanPlate(dto.vehiclePlate),
       name: this.cleanName(dto.name),
-      enabled: dto.enabled ?? true,
+      enabled: dto.enabled === undefined ? true : !!dto.enabled,
     });
     const saved = await this.repo.save(device);
     this.invalidate(deviceNo);
@@ -149,6 +153,8 @@ export class GpsDeviceService {
     const hit = this.deviceCache.get(deviceNo);
     if (hit && Date.now() - hit.at < DEVICE_CACHE_MS) return hit.device;
     const device = await this.repo.findOne({ where: { deviceNo } });
+    // 设备号来自报文，可被任意伪造：缓存必须有上限，否则连上来乱发不同设备号就能把内存撑爆
+    if (this.deviceCache.size >= MAX_DEVICE_CACHE_ENTRIES) this.deviceCache.clear();
     this.deviceCache.set(deviceNo, { device, at: Date.now() });
     return device;
   }
@@ -164,7 +170,13 @@ export class GpsDeviceService {
       select: ['id', 'driverId', 'vehiclePlate', 'updatedAt'],
       order: { updatedAt: 'DESC' },
     });
-    const match = tasks.find((t) => t.driverId && normalizePlate(t.vehiclePlate) === key);
+    const matches = tasks.filter((t) => t.driverId && normalizePlate(t.vehiclePlate) === key);
+    // 同一车牌同时挂着多个进行中任务：可能是司机输错车牌，也可能是有人蹭别人的车。
+    // 猜错会把 A 车的位置画到 B 的任务上（客户还能看到），所以宁可不归属，让它在设备页显示「无进行中任务」。
+    if (matches.length > 1) {
+      this.logger.warn(`plate ${key} is claimed by ${matches.length} in-progress tasks — not attaching device points`);
+    }
+    const match = matches.length === 1 ? matches[0] : null;
     const target = match ? { taskId: match.id, driverId: match.driverId } : null;
     this.taskCache.set(key, { target, at: Date.now() });
     return target;
@@ -182,16 +194,26 @@ export class GpsDeviceService {
   }
 
   /** 一条定位：更新设备最后状态；有定位且能匹配到进行中任务时写入 gps_logs（归属该司机/任务） */
-  async ingest(rawNo: string, pos: Position, opts: { batch?: boolean } = {}): Promise<IngestResult> {
+  async ingest(rawNo: string, pos: Position, opts: { batch?: boolean; blindZone?: boolean } = {}): Promise<IngestResult> {
     const device = await this.findByDeviceNo(rawNo);
     if (!device) return 'unknown';
     if (!device.enabled) return 'disabled';
 
     const now = Date.now();
+    // 只有设备自己标了「盲区补报」的批量包才允许是几天前的点；
+    // 普通上报一律按实时对待，避免用批量消息绕开时间校验、把点写到过去（会绕过静止报警、把地图钉死）
+    const maxPast = opts.batch && opts.blindZone ? MAX_PAST_SKEW_BATCH_MS : MAX_PAST_SKEW_LIVE_MS;
     let pointTime = pos.time;
     if (!(pointTime instanceof Date) || Number.isNaN(pointTime.getTime())
       || pointTime.getTime() - now > MAX_FUTURE_SKEW_MS
-      || now - pointTime.getTime() > MAX_PAST_SKEW_MS) {
+      || now - pointTime.getTime() > maxPast) {
+      const offBy = pointTime instanceof Date && !Number.isNaN(pointTime.getTime())
+        ? Math.round((now - pointTime.getTime()) / 60000)
+        : null;
+      // 时钟/时区配错是最难查的故障之一：点会静默地落在在线窗口外，看起来就是"设备没上报"
+      this.logger.warn(
+        `${device.deviceNo} clock off by ${offBy ?? '?'} min (JT808_DEVICE_TZ_OFFSET_HOURS or device timezone), using server time`,
+      );
       pointTime = new Date(now);
     }
     const hasFix = pos.fixed && !(pos.latitude === 0 && pos.longitude === 0)
@@ -214,6 +236,7 @@ export class GpsDeviceService {
       target = await this.resolveTarget(device.vehiclePlate);
       if (!target) {
         result = 'no_task';
+        patch.lastTaskId = null; // 任务结束后别一直指着旧任务
       } else {
         await this.gpsService.upload(target.driverId, target.taskId, {
           latitude: pos.latitude,
@@ -222,6 +245,7 @@ export class GpsDeviceService {
           heading: pos.heading,
           timestamp: pointTime,
           source: 'device',
+          silent: !!opts.batch, // 盲区补报不实时广播
         });
         patch.lastTaskId = target.taskId;
         result = 'stored';

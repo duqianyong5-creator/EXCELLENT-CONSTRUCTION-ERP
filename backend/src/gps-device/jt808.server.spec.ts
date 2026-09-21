@@ -166,6 +166,19 @@ describe('Jt808Server (TCP gateway)', () => {
     c.socket.destroy();
   });
 
+  it('closes a connection that changes device number mid-stream (scanner / spoof attempt)', async () => {
+    // 真实终端不会在一条连接里换设备号；允许换号等于给了「把别的设备踢下线」的手段
+    const c = client(port);
+    await c.ready;
+    c.socket.write(HEARTBEAT);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    const closed = new Promise<void>((r) => c.socket.once('close', () => r()));
+    c.socket.write(encodeFrame(MsgId.HEARTBEAT, '000099998888', 2));
+    await closed;
+    expect(server.getUnregistered().find((u) => u.deviceNo === '99998888')).toBeUndefined();
+    expect(server.isOnline(KNOWN_NO)).toBe(false);
+  });
+
   it('closes a connection that never sends a valid frame (no session slot squatting)', async () => {
     // 握手超时是 30s，这里只验证连接建立后仍未发帧时 frames 计数为 0、服务器未把它当设备
     const c = client(port);
@@ -244,7 +257,7 @@ describe('Jt808Server (TCP gateway)', () => {
     expect(a.body.readUInt16BE(2)).toBe(MsgId.BATCH_POSITION);
     await flush();
     expect(devices.ingest).toHaveBeenCalledTimes(2);
-    expect(devices.ingest.mock.calls[1][2]).toEqual({ batch: true });
+    expect(devices.ingest.mock.calls[1][2]).toEqual({ batch: true, blindZone: true });
     c.socket.destroy();
   });
 

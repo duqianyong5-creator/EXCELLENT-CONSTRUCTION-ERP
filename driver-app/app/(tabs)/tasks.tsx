@@ -239,12 +239,21 @@ export default function TasksScreen() {
     setVehiclePlate('');
   };
 
+  const platesRequestId = useRef(0);
+
   const handleConfirmTaskInfo = () => {
     setPlateOpen(true);
-    // 拉一次已登记车牌：车上装了定位器的车可以直接点选，车牌必须和登记的一致轨迹才对得上
+    // 拉一次已登记车牌：车上装了定位器的车可以直接点选，车牌必须和登记的一致轨迹才对得上。
+    // 连开两次弹窗时只认最后一次的结果，避免旧响应把列表覆盖回去。
+    const reqId = ++platesRequestId.current;
     gpsDevicesApi.plates()
-      .then((data: any) => setKnownPlates(Array.isArray(data) ? data : []))
-      .catch(() => setKnownPlates([]));
+      .then((data: any) => {
+        if (reqId !== platesRequestId.current) return;
+        setKnownPlates(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (reqId === platesRequestId.current) setKnownPlates([]);
+      });
   };
 
   const handleStartAcceptedTask = async () => {
@@ -398,6 +407,12 @@ export default function TasksScreen() {
     if (task.status === 'completed') return '#22c55e';
     return '#64748b';
   };
+
+  // 车牌归一化规则与后端 normalizePlate 保持一致（大小写、空格、连字符、中点都忽略）
+  const normalizePlateLocal = (value: string) => value.toUpperCase().replace(/[\s\-·•.]/g, '');
+  const plateHasTracker = knownPlates.some(
+    (item) => normalizePlateLocal(item.plate) === normalizePlateLocal(vehiclePlate.trim()),
+  );
 
   const driverName = user?.fullName || user?.username || t('d.driverFallback');
   const driverInProgressCount = tasks.filter(t => t.status === 'in_progress').length;
@@ -726,6 +741,16 @@ export default function TasksScreen() {
                   placeholderTextColor="rgba(255,255,255,0.28)"
                   autoCapitalize="characters"
                 />
+                {knownPlates.length > 0 && vehiclePlate.trim().length > 0 && !plateHasTracker && (
+                  <View style={styles.plateWarnBox}>
+                    <Ionicons name="alert-circle-outline" size={15} color="#fbbf24" />
+                    <Text style={styles.plateWarnText}>
+                      {lang === 'zh'
+                        ? '这个车牌没有登记车载定位器，轨迹只会来自手机'
+                        : 'No tracker registered for this plate — tracking will come from the phone only'}
+                    </Text>
+                  </View>
+                )}
                 {knownPlates.length > 0 && (
                   <View style={styles.platePickBox}>
                     <Text style={styles.platePickLabel}>
@@ -733,8 +758,7 @@ export default function TasksScreen() {
                     </Text>
                     <View style={styles.platePickRow}>
                       {knownPlates.map((item) => {
-                        const active = vehiclePlate.trim().toUpperCase().replace(/[\s-]/g, '')
-                          === item.plate.toUpperCase().replace(/[\s-]/g, '');
+                        const active = normalizePlateLocal(vehiclePlate.trim()) === normalizePlateLocal(item.plate);
                         return (
                           <TouchableOpacity
                             key={item.plate}
@@ -2699,6 +2723,25 @@ const styles = StyleSheet.create({
   },
   pickItemSelected: {
     backgroundColor: 'rgba(245,158,11,0.08)',
+  },
+  plateWarnBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  plateWarnText: {
+    flex: 1,
+    color: '#fcd34d',
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   platePickBox: {
     marginBottom: 14,
