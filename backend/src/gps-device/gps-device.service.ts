@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { GpsDevice } from './gps-device.entity';
 import { Task, TaskStatus } from '../tasks/task.entity';
 import { GpsService } from '../gps/gps.service';
+import { RucService } from '../ruc/ruc.service';
+import { haversineKm } from '../gps/geo.util';
 import { normalizeDeviceNo, Position } from './jt808.codec';
 
 export type IngestResult = 'unknown' | 'disabled' | 'no_fix' | 'no_task' | 'stored';
@@ -25,6 +27,11 @@ export function normalizePlate(plate: string | null | undefined): string {
   return String(plate ?? '').toUpperCase().replace(/[\s\-·•.]/g, '');
 }
 
+function numberOrNull(v: unknown): number | null {
+  const n = Number(v);
+  return v == null || v === '' || !Number.isFinite(n) ? null : n;
+}
+
 @Injectable()
 export class GpsDeviceService {
   private readonly logger = new Logger('GpsDevice');
@@ -35,6 +42,7 @@ export class GpsDeviceService {
     @InjectRepository(GpsDevice) private repo: Repository<GpsDevice>,
     @InjectRepository(Task) private taskRepo: Repository<Task>,
     private gpsService: GpsService,
+    private ruc: RucService,
   ) {}
 
   // ---------- 管理 CRUD ----------
@@ -224,6 +232,23 @@ export class GpsDeviceService {
     if (pos.extras.externalPower !== undefined) patch.externalPower = pos.extras.externalPower;
     if (pos.extras.signalPercent !== undefined) patch.signalPercent = pos.extras.signalPercent;
     if (hasFix) {
+      // 累计车辆里程（RUC 路税按里程买，提醒全靠这条数据）。
+      // 优先用定位器自己的里程计，没有就用与上一个点的直线距离兜底。
+      if (device.vehiclePlate) {
+        const deviceOdoKm = pos.extras.mileageKm;
+        const previousLat = numberOrNull(device.lastLatitude);
+        const previousLng = numberOrNull(device.lastLongitude);
+        const gpsKm = deviceOdoKm == null && previousLat != null && previousLng != null
+          ? haversineKm(previousLat, previousLng, pos.latitude, pos.longitude)
+          : undefined;
+        try {
+          await this.ruc.addDistance(device.vehiclePlate, { deviceOdoKm, gpsKm });
+        } catch (e: any) {
+          // 里程累计失败不能影响定位入库
+          this.logger.warn(`mileage update for ${device.vehiclePlate} failed: ${e?.message || e}`);
+        }
+      }
+
       patch.lastLatitude = pos.latitude;
       patch.lastLongitude = pos.longitude;
       patch.lastSpeed = pos.speedKmh;

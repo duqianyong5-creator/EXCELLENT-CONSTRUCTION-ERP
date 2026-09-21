@@ -12,6 +12,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   gps_alarm_repeat: '3',           // 最多报警次数（含首次）
   gps_alarm_delay_minutes: '10',   // 延时报警间隔（分钟）
   gps_retention_days: '7',         // GPS 轨迹保留天数（已完成任务超过该天数自动清理）
+  ruc_warn_km: '500',              // RUC 路税：剩余公里低于此值开始提醒
+  ruc_critical_km: '200',          // RUC 路税：剩余公里低于此值紧急提醒
+  ruc_warn_days: '3',              // RUC 路税：预计多少天内用完就提醒
 };
 
 @Injectable()

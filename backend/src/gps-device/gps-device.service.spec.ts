@@ -34,8 +34,9 @@ function build(opts: { device?: any; tasks?: any[] } = {}) {
     ]),
   };
   const gpsService = { upload: jest.fn(async () => ({ log: {}, anomalies: [] })) };
-  const service = new GpsDeviceService(repo as any, taskRepo as any, gpsService as any);
-  return { service, repo, taskRepo, gpsService, device };
+  const ruc = { addDistance: jest.fn(async () => undefined) };
+  const service = new GpsDeviceService(repo as any, taskRepo as any, gpsService as any, ruc as any);
+  return { service, repo, taskRepo, gpsService, ruc, device };
 }
 
 describe('normalizePlate', () => {
@@ -166,6 +167,38 @@ describe('GpsDeviceService.ingest', () => {
     // 标了盲区补报：保留原始时间
     await service.ingest('51160004464', pos({ time: old }), { batch: true, blindZone: true });
     expect((gpsService.upload.mock.calls[1] as any)[2].timestamp).toEqual(old);
+  });
+});
+
+describe('GpsDeviceService feeds vehicle mileage for RUC', () => {
+  it('passes the tracker odometer through to the vehicle bound to that plate', async () => {
+    // RUC 路税按里程买，这条链路断了提醒就永远不会响
+    const { service, ruc } = build();
+    await service.ingest('51160004464', pos({ extras: { raw: new Map(), mileageKm: 88_123.4 } }));
+    expect(ruc.addDistance).toHaveBeenCalledWith('ABC 123', expect.objectContaining({ deviceOdoKm: 88_123.4 }));
+  });
+
+  it('falls back to GPS distance when the tracker reports no odometer', async () => {
+    const { service, ruc } = build({
+      device: { id: 'dev1', deviceNo: '51160004464', vehiclePlate: 'ABC 123', enabled: true, lastLatitude: -36.8485, lastLongitude: 174.7633 },
+    });
+    await service.ingest('51160004464', pos({ latitude: -36.8585, longitude: 174.7633 }));
+    const call: any = ruc.addDistance.mock.calls[0];
+    expect(call[1].deviceOdoKm).toBeUndefined();
+    expect(call[1].gpsKm).toBeGreaterThan(1);
+    expect(call[1].gpsKm).toBeLessThan(2); // 0.01 度纬度 ≈ 1.1 km
+  });
+
+  it('does not feed mileage for a device with no plate bound', async () => {
+    const { service, ruc } = build({ device: { id: 'dev1', deviceNo: '51160004464', vehiclePlate: null, enabled: true } });
+    await service.ingest('51160004464', pos());
+    expect(ruc.addDistance).not.toHaveBeenCalled();
+  });
+
+  it('does not feed mileage from a point with no GPS fix', async () => {
+    const { service, ruc } = build();
+    await service.ingest('51160004464', pos({ fixed: false }));
+    expect(ruc.addDistance).not.toHaveBeenCalled();
   });
 });
 

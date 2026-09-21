@@ -16,6 +16,7 @@ import { DriverPresenceModule } from './driver-presence/driver-presence.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { GpsDeviceModule } from './gps-device/gps-device.module';
+import { RucModule } from './ruc/ruc.module';
 import { getConfig } from './config/security.config';
 
 @Controller()
@@ -63,6 +64,7 @@ class AppController {
     SystemSettingsModule,
     AnnouncementsModule,
     GpsDeviceModule,
+    RucModule,
   ],
   controllers: [AppController],
 })
