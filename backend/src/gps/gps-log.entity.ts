@@ -42,6 +42,8 @@ export class GpsLog {
   @Column({ length: 16, default: 'app' })
   source: string;
 
-  @CreateDateColumn({ name: 'timestamp' })
+  // 显式 timestamptz：数据库建的就是 TIMESTAMPTZ，不写类型的话开发环境的 synchronize
+  // 会把它改成不带时区的 timestamp，两边差一个时区（设备点的时间尤其敏感）。
+  @CreateDateColumn({ name: 'timestamp', type: 'timestamptz' })
   timestamp: Date;
 }

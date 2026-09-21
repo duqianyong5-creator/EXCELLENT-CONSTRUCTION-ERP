@@ -1,5 +1,9 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Logger } from '@nestjs/common';
+import { getMetadataArgsStorage } from 'typeorm';
 import { GpsDeviceSchemaGuard, GPS_DEVICE_DDL } from './gps-device.schema';
+import { GpsDevice } from './gps-device.entity';
 
 /**
  * 按 SQL 文本响应，而不是按调用顺序：DDL 语句增减时测试不会跟着碎掉。
@@ -60,5 +64,45 @@ describe('GpsDeviceSchemaGuard', () => {
   it('onModuleInit propagates the failure so the deploy fails instead of booting broken', async () => {
     const { guard } = guardWith({ columnOk: false });
     await expect(guard.onModuleInit()).rejects.toThrow();
+  });
+});
+
+describe('GPS_DEVICE_DDL matches the code and the SQL migration', () => {
+  const createTable = GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE')) as string;
+  const migration = fs.readFileSync(
+    path.join(__dirname, '../../../database/migrations/2026-09-14_gps_devices.sql'),
+    'utf8',
+  );
+
+  it('creates every column the GpsDevice entity maps (drift guard)', () => {
+    // 实体加了列却忘了改建表语句 => 生产上每个设备查询都 500，设备页直接空白
+    const columns = getMetadataArgsStorage().columns
+      .filter((c) => c.target === GpsDevice)
+      .map((c) => c.options.name || c.propertyName);
+    expect(columns.length).toBeGreaterThan(10);
+    for (const name of columns) {
+      expect(createTable).toContain(name);
+    }
+  });
+
+  it('keeps every statement idempotent (it runs on every boot)', () => {
+    for (const statement of GPS_DEVICE_DDL) {
+      if (/^\s*(CREATE TABLE|CREATE INDEX|ALTER TABLE \w+ ADD COLUMN)/i.test(statement)) {
+        expect(statement).toMatch(/IF NOT EXISTS/i);
+      }
+    }
+  });
+
+  it('stays in sync with database/migrations (same table, columns and index)', () => {
+    const columns = getMetadataArgsStorage().columns
+      .filter((c) => c.target === GpsDevice)
+      .map((c) => c.options.name || c.propertyName);
+    for (const name of columns) expect(migration).toContain(name);
+    expect(migration).toContain('idx_gps_devices_plate');
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS source");
+    // 两条路径必须用同一个 uuid 默认值，否则老实例上会有一条建不出来
+    const uuidFn = /gen_random_uuid\(\)/;
+    expect(createTable).toMatch(uuidFn);
+    expect(migration).toMatch(uuidFn);
   });
 });

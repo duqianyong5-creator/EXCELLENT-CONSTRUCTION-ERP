@@ -2,8 +2,8 @@ import * as net from 'net';
 import { Logger, NotFoundException } from '@nestjs/common';
 import { Jt808Server } from './jt808.server';
 import {
-  MsgId, RegisterResult, AckResult,
-  Jt808Frame, decodeFrame, encodeFrame, splitFrames, stringToBcd,
+  MsgId, RegisterResult, AckResult, ParamId,
+  Jt808Frame, decodeFrame, encodeFrame, encodeSubFrame, splitFrames, stringToBcd, encodeTimezone,
 } from './jt808.codec';
 
 const H = (s: string) => Buffer.from(s.replace(/\s+/g, ''), 'hex');
@@ -21,9 +21,12 @@ const POSITION_BODY = H(
 );
 const POSITION_KNOWN = encodeFrame(MsgId.POSITION, KNOWN, 0x0d, POSITION_BODY);
 
+const openSockets: net.Socket[] = [];
+
 /** 测试客户端：收集并按消息 ID 等待服务器下行帧 */
 function client(port: number) {
   const socket = net.connect({ port, host: '127.0.0.1' });
+  openSockets.push(socket); // 断言失败时也要收回连接，否则会影响后面的用例
   let buf: Buffer = Buffer.alloc(0);
   const frames: Jt808Frame[] = [];
   const waiters: Array<() => void> = [];
@@ -49,6 +52,15 @@ function client(port: number) {
 
 const flush = () => new Promise((r) => setTimeout(r, 60));
 
+/** 等条件成立，而不是赌固定时长：CI 机器慢的时候固定等待最先崩 */
+async function until(check: () => boolean, ms = 3000, what = 'condition'): Promise<void> {
+  const started = Date.now();
+  while (!check()) {
+    if (Date.now() - started > ms) throw new Error(`timeout waiting for ${what}`);
+    await new Promise((r) => setImmediate(r));
+  }
+}
+
 describe('Jt808Server (TCP gateway)', () => {
   let server: Jt808Server;
   let port: number;
@@ -57,8 +69,13 @@ describe('Jt808Server (TCP gateway)', () => {
   beforeAll(async () => {
     Logger.overrideLogger(false);
     devices = {
-      findByDeviceNo: jest.fn(async (no: string) =>
-        no === KNOWN_NO ? { id: 'dev1', deviceNo: KNOWN_NO, enabled: true, vehiclePlate: 'ABC123' } : null),
+      // 按设备号返回，而不是用 mockImplementationOnce：
+      // 一次性 mock 会被"恰好先到"的那一帧吃掉，导致用例之间互相干扰
+      findByDeviceNo: jest.fn(async (no: string) => {
+        if (no === KNOWN_NO) return { id: 'dev1', deviceNo: KNOWN_NO, enabled: true, vehiclePlate: 'ABC123' };
+        if (no === '55555555555') return { id: 'dev9', deviceNo: '55555555555', enabled: false };
+        return null;
+      }),
       touch: jest.fn(async () => undefined),
       ingest: jest.fn(async () => 'stored'),
     };
@@ -74,6 +91,10 @@ describe('Jt808Server (TCP gateway)', () => {
   beforeEach(() => {
     devices.ingest.mockClear();
     devices.touch.mockClear();
+  });
+
+  afterEach(() => {
+    openSockets.splice(0).forEach((s) => s.destroy());
   });
 
   it('registers a known device and replies 0x8100 OK with auth code = device number', async () => {
@@ -121,7 +142,7 @@ describe('Jt808Server (TCP gateway)', () => {
     c.socket.write(HEARTBEAT);
     const a2 = await c.waitFor(MsgId.PLATFORM_ACK);
     expect(a2.body.readUInt16BE(2)).toBe(MsgId.HEARTBEAT);
-    await flush();
+    await until(() => devices.touch.mock.calls.length > 0, 3000, 'touch');
     expect(devices.touch).toHaveBeenCalledWith(KNOWN_NO);
     c.socket.destroy();
   });
@@ -156,7 +177,6 @@ describe('Jt808Server (TCP gateway)', () => {
   });
 
   it('flags a registered-but-disabled device separately from an unknown one', async () => {
-    devices.findByDeviceNo.mockImplementationOnce(async () => ({ id: 'dev9', deviceNo: '55555555555', enabled: false }));
     const c = client(port);
     await c.ready;
     c.socket.write(encodeFrame(MsgId.HEARTBEAT, '055555555555', 1));
@@ -195,8 +215,7 @@ describe('Jt808Server (TCP gateway)', () => {
     const a = await c.waitFor(MsgId.PLATFORM_ACK);
     expect(a.body.readUInt16BE(0)).toBe(0x0d);
     expect(a.body.readUInt16BE(2)).toBe(MsgId.POSITION);
-    await flush();
-    expect(devices.ingest).toHaveBeenCalledTimes(1);
+    await until(() => devices.ingest.mock.calls.length === 1, 3000, 'ingest');
     const [no, pos] = devices.ingest.mock.calls[0];
     expect(no).toBe(KNOWN_NO);
     expect(pos.latitude).toBeCloseTo(22.64483, 5);
@@ -214,7 +233,7 @@ describe('Jt808Server (TCP gateway)', () => {
     await c.waitFor(MsgId.PLATFORM_ACK);
     c.socket.write(POSITION_KNOWN);
     await c.waitFor(MsgId.PLATFORM_ACK);
-    await flush();
+    await until(() => devices.ingest.mock.calls.length > 0, 3000, 'ingest');
     const pos = devices.ingest.mock.calls[0][1];
     expect(pos.time.toISOString()).toBe('2020-08-07T06:07:22.000Z');
     expect(server.getOnline().find((o) => o.deviceNo === KNOWN_NO)!.tzOffset).toBe(12);
@@ -231,6 +250,99 @@ describe('Jt808Server (TCP gateway)', () => {
     expect(r.body.readUInt16BE(0)).toBe(local.getUTCFullYear());
     expect(r.body[2]).toBe(local.getUTCMonth() + 1); // body: 年(2) 月 日 时 分 秒 结果
     expect(r.body[7]).toBe(AckResult.OK);
+    c.socket.destroy();
+  });
+
+  it('reassembles a subpackaged 0x0704 backfill and stores every point', async () => {
+    // 消息体长度字段只有 10 位（≤1023 字节），一个定位点 74 字节，
+    // 所以盲区补报超过十几个点时终端必然分包；不重组就会静默丢掉一半数据
+    const c = client(port);
+    await c.ready;
+    const len = Buffer.alloc(2); len.writeUInt16BE(POSITION_BODY.length, 0);
+    const full = Buffer.concat([
+      H('0004'), H('01'),
+      len, POSITION_BODY, len, POSITION_BODY, len, POSITION_BODY, len, POSITION_BODY,
+    ]);
+    // 故意在一个定位点的中间切开，确保不是"恰好按点对齐"才能work
+    const cut = Math.floor(full.length / 2) + 7;
+    c.socket.write(encodeSubFrame(MsgId.BATCH_POSITION, KNOWN, 1, 2, 1, full.subarray(0, cut)));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await flush();
+    expect(devices.ingest).not.toHaveBeenCalled(); // 第一包还不能入库
+
+    c.socket.write(encodeSubFrame(MsgId.BATCH_POSITION, KNOWN, 2, 2, 2, full.subarray(cut)));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await until(() => devices.ingest.mock.calls.length === 4, 3000, 'reassembled batch');
+    expect(devices.ingest.mock.calls[3][2]).toEqual({ batch: true, blindZone: true });
+    c.socket.destroy();
+  });
+
+  it('ignores a bogus subpackage header instead of mis-parsing it as a whole message', async () => {
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeSubFrame(MsgId.BATCH_POSITION, KNOWN, 1, 0, 5, H('0001'))); // total=0, index>total
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await flush();
+    expect(devices.ingest).not.toHaveBeenCalled();
+    c.socket.destroy();
+  });
+
+  it('processes frames from one connection strictly in order even when the database is slow', async () => {
+    // 乱序入库会把轨迹连成折线、把 GPS 工时的间隔算错
+    const done: number[] = [];
+    let first = true;
+    devices.ingest.mockImplementation(async (_no: string, pos: any) => {
+      if (first) { first = false; await new Promise((r) => setTimeout(r, 120)); }
+      done.push(pos.speedKmh);
+      return 'stored';
+    });
+    const slow = Buffer.from(POSITION_BODY); slow.writeUInt16BE(111, 18); // 11.1 km/h
+    const fast = Buffer.from(POSITION_BODY); fast.writeUInt16BE(222, 18); // 22.2 km/h
+
+    const c = client(port);
+    await c.ready;
+    c.socket.write(Buffer.concat([
+      encodeFrame(MsgId.POSITION, KNOWN, 1, slow),
+      encodeFrame(MsgId.POSITION, KNOWN, 2, fast),
+    ]));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(done).toEqual([11.1, 22.2]);
+    devices.ingest.mockImplementation(async () => 'stored');
+    c.socket.destroy();
+  });
+
+  it('sends the exact 0x8103 payload for realtime mode, and clamps the interval', async () => {
+    // 参数发错比不发更糟：车会被改成按距离上报或错误时区，直到有人重新配置
+    const c = client(port);
+    await c.ready;
+    c.socket.write(HEARTBEAT);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+
+    server.setRealtimeMode(KNOWN_NO, 10, 12);
+    const body = (await c.waitFor(MsgId.SET_PARAMS)).body;
+    const items = new Map<number, Buffer>();
+    let i = 2; // 跳过 参数总数 + 包参数个数（2011 版布局）
+    while (i + 5 <= body.length) {
+      const id = body.readUInt32BE(i);
+      const len = body[i + 4];
+      items.set(id, body.subarray(i + 5, i + 5 + len));
+      i += 5 + len;
+    }
+    expect(items.get(ParamId.SLEEP_INTERVAL_MIN)).toEqual(H('00000000')); // 禁止休眠
+    expect(items.get(ParamId.REALTIME_UPLOAD_MODE)).toEqual(H('00000a')); // 定时 10 秒
+    expect(items.get(ParamId.DEFAULT_TIME_INTERVAL)).toEqual(H('0000000a'));
+    expect(items.get(ParamId.REPORT_STRATEGY)).toEqual(H('00000000')); // 0 = 定时，不是定距
+    expect(items.get(ParamId.REPORT_WHEN_STATIONARY)).toEqual(H('01')); // 静止也上报
+    expect(items.get(ParamId.HEARTBEAT_INTERVAL)).toEqual(H('0000003c'));
+    expect(items.get(ParamId.DEVICE_TIMEZONE)).toEqual(Buffer.from([encodeTimezone(12)]));
+
+    const read = async (interval: number) => {
+      server.setRealtimeMode(KNOWN_NO, interval, 12);
+      const b = (await c.waitFor(MsgId.SET_PARAMS)).body;
+      return b.readUInt16BE(b.indexOf(H('0000f11503')) + 6);
+    };
+    expect(await read(1)).toBe(10);
+    expect(await read(9999)).toBe(120);
     c.socket.destroy();
   });
 
@@ -255,8 +367,7 @@ describe('Jt808Server (TCP gateway)', () => {
     c.socket.write(encodeFrame(MsgId.BATCH_POSITION, KNOWN, 9, body));
     const a = await c.waitFor(MsgId.PLATFORM_ACK);
     expect(a.body.readUInt16BE(2)).toBe(MsgId.BATCH_POSITION);
-    await flush();
-    expect(devices.ingest).toHaveBeenCalledTimes(2);
+    await until(() => devices.ingest.mock.calls.length === 2, 3000, 'batch ingest');
     expect(devices.ingest.mock.calls[1][2]).toEqual({ batch: true, blindZone: true });
     c.socket.destroy();
   });
@@ -320,9 +431,10 @@ describe('Jt808Server (TCP gateway)', () => {
   it('drops a connection that floods without frame delimiters', async () => {
     const c = client(port);
     await c.ready;
-    const closed = new Promise<void>((r) => c.socket.once('close', () => r()));
+    let closed = false;
+    c.socket.once('close', () => { closed = true; });
     // 一个起始 7e 后面跟 70KB 永不结束的数据：必须触发缓冲上限并断开（纯垃圾无 7e 会被直接丢弃、不占内存）
     c.socket.write(Buffer.concat([Buffer.from([0x7e]), Buffer.alloc(70 * 1024, 0x11)]));
-    await closed;
+    await until(() => closed, 2000, 'flood connection to be dropped');
   });
 });

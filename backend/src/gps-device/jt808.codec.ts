@@ -197,6 +197,25 @@ export function encodeFrame(msgId: number, phone: string, serial: number, body: 
 }
 
 /**
+ * 组装分包消息中的一包（消息体属性 bit13=1，消息头后面多 4 字节：总包数 + 包序号）。
+ * 主要给测试和将来下发长消息用；上行的分包由网关负责重组。
+ */
+export function encodeSubFrame(
+  msgId: number, phone: string, serial: number, total: number, index: number, body: Buffer,
+): Buffer {
+  const header = Buffer.alloc(16);
+  header.writeUInt16BE(msgId, 0);
+  header.writeUInt16BE((body.length & 0x03ff) | 0x2000, 2);
+  stringToBcd(phone, 6).copy(header, 4);
+  header.writeUInt16BE(serial & 0xffff, 10);
+  header.writeUInt16BE(total & 0xffff, 12);
+  header.writeUInt16BE(index & 0xffff, 14);
+  const payload = Buffer.concat([header, body]);
+  const withSum = Buffer.concat([payload, Buffer.from([xorChecksum(payload)])]);
+  return Buffer.concat([Buffer.from([FLAG]), escapeBytes(withSum), Buffer.from([FLAG])]);
+}
+
+/**
  * 从 TCP 流缓冲区中切出完整帧（两个 0x7e 之间的内容）。
  * 兼容 "…7e7e…"（连发）与共享单个 7e 的情况；返回剩余未完成数据。
  */

@@ -219,10 +219,50 @@ describe('GpsService phone + tracker on the same task', () => {
   });
 
   it('track replay uses tracker points once the tracker is really following the trip', async () => {
-    const devicePoints = [1, 2, 3, 4, 5, 6].map((id) => ({ id, source: 'device' }));
-    const rows = [{ id: 0, source: 'app' }, ...devicePoints, { id: 9, source: 'app' }];
+    const base = Date.now();
+    const devicePoints = [1, 2, 3, 4, 5, 6].map((id) => ({ id, source: 'device', timestamp: new Date(base + id * 1000) }));
+    const rows = [
+      { id: 0, source: 'app', timestamp: new Date(base) },
+      ...devicePoints,
+      { id: 9, source: 'app', timestamp: new Date(base + 7000) },
+    ];
     const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
     await expect(service.getTrack('t1')).resolves.toEqual(devicePoints);
+  });
+
+  it('does not flag teleport for a backfilled point older than the last stored one', async () => {
+    // 盲区补报一次上来几百个历史点，若逐点判成瞬移，会给每个管理员刷几百条通知
+    const { service, notifService } = makeService({
+      latitude: -36.8, longitude: 174.7, timestamp: new Date(), source: 'device',
+    });
+    const { anomalies } = await service.upload('d1', 't1', {
+      latitude: -37.9, longitude: 175.9, speed: 0, source: 'device', silent: true,
+      timestamp: new Date(Date.now() - 3 * 3600 * 1000),
+    });
+    expect(anomalies).not.toContain('teleport');
+    expect(notifService.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the phone trail for the part of the trip the tracker did not cover', async () => {
+    // 定位器中途断电：不能把后面几小时的手机轨迹一起藏掉，否则回放和工时都对不上
+    const t0 = Date.now() - 4 * 3600 * 1000;
+    const device = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, source: 'device', timestamp: new Date(t0 + i * 60_000) }));
+    const phoneDuring = Array.from({ length: 5 }, (_, i) => ({ id: `pd${i}`, source: 'app', timestamp: new Date(t0 + i * 60_000 + 20_000) }));
+    const phoneAfter = Array.from({ length: 6 }, (_, i) => ({ id: `pa${i}`, source: 'app', timestamp: new Date(t0 + 3600_000 + i * 60_000) }));
+    const service = new GpsService(
+      { find: jest.fn(async () => [...device, ...phoneDuring, ...phoneAfter]) } as any, {} as any, {} as any,
+    );
+
+    const track = await service.getTrack('t1');
+    const ids = track.map((g: any) => g.id);
+    // 定位器在跑的那段只保留定位器点
+    expect(ids).toEqual(expect.arrayContaining(device.map((d) => d.id)));
+    expect(ids).not.toEqual(expect.arrayContaining(phoneDuring.map((p) => p.id)));
+    // 它没覆盖的后半程保留手机点
+    expect(ids).toEqual(expect.arrayContaining(phoneAfter.map((p) => p.id)));
+    // 时间递增，回放不会来回跳
+    const times = track.map((g: any) => new Date(g.timestamp).getTime());
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
 
   it('does NOT hide the phone trail for one or two stray tracker points', async () => {

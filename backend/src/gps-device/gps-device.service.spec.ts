@@ -68,8 +68,21 @@ describe('GpsDeviceService.ingest', () => {
     }));
     expect(repo.update).toHaveBeenCalledWith('dev1', expect.objectContaining({
       lastLatitude: -36.8485, lastLongitude: 174.7633, lastSpeed: 42.5, lastTaskId: 't1',
+      lastFixAt: RECENT, // 设备页「最后定位」那一列靠它，写错了看不出来
       batteryPercent: 88, externalPower: true, signalPercent: 70,
     }));
+  });
+
+  it('asks the database for the most recently updated task first', async () => {
+    const { service, taskRepo } = build();
+    await service.ingest('51160004464', pos());
+    expect(taskRepo.find).toHaveBeenCalledWith(expect.objectContaining({ order: { updatedAt: 'DESC' } }));
+  });
+
+  it('clears lastTaskId once the job is over, so a finished task stops looking live', async () => {
+    const { service, repo } = build({ tasks: [] });
+    expect(await service.ingest('51160004464', pos())).toBe('no_task');
+    expect(repo.update).toHaveBeenCalledWith('dev1', expect.objectContaining({ lastTaskId: null }));
   });
 
   it('returns no_task when no in-progress task carries that plate, but still updates device state', async () => {

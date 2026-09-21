@@ -32,6 +32,8 @@ interface Session {
   rejects: number;
   /** 坏帧计数，用于日志降频 */
   badFrames: number;
+  /** 分包消息的暂存区：key = 消息ID:总包数 */
+  partials: Map<string, { parts: Map<number, Buffer>; at: number; bytes: number }>;
   /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
   handshakeTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -64,6 +66,11 @@ const MAX_UNREGISTERED = 200;
 const MAX_REJECTS_PER_SESSION = 5;
 /** 一条连接上允许多少次校验错误的帧，超过只记一条汇总日志，避免刷日志 */
 const MAX_BAD_FRAME_LOGS = 3;
+/** 分包重组上限：包数、字节数、同时进行的消息数、以及攒包的有效期 */
+const MAX_SUBPACKAGES = 64;
+const MAX_SUBPACKAGE_BYTES = 128 * 1024;
+const MAX_SUBPACKAGE_SETS = 4;
+const SUBPACKAGE_TTL_MS = 60 * 1000;
 
 /**
  * JT808 TCP 网关：设备 -> 本服务（TCP）-> GpsDeviceService.ingest -> gps_logs / 地图 / 报警 / 工时
@@ -238,6 +245,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       pending: 0,
       rejects: 0,
       badFrames: 0,
+      partials: new Map(),
       handshakeTimer: null,
     };
     // 连接数到上限时，优先踢掉「连上但一帧有效数据都没发」的连接，
@@ -311,20 +319,70 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       session.lastSeenAt = new Date();
       if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
       if (!this.bindDevice(session, frame.phone)) return;
+
+      // 分包消息：先攒齐再处理。消息体长度字段只有 10 位（≤1023 字节），
+      // 一个定位点 74 字节，所以盲区补报超过十几个点时终端必然分包发送。
+      // 不重组就只会处理第一包、后面几包当残帧丢掉——而且我们还回了「成功」，终端就不再重传了。
+      const assembled = frame.subpackage ? this.collectSubpackage(session, frame) : frame;
+      if (!assembled) {
+        // 还没攒齐：按协议逐包应答，等后续包
+        this.send(session, buildPlatformAck(frame.phone, this.nextSerial(session), frame.serial, frame.msgId, AckResult.OK));
+        continue;
+      }
       // 逐帧串行处理，避免同一设备的分包/批量乱序；
       // 处理慢（数据库卡）时暂停读取，不让待处理链无限增长。
       session.pending++;
       if (session.pending >= MAX_PENDING_FRAMES && !session.socket.isPaused()) session.socket.pause();
       session.queue = session.queue
-        .then(() => this.handleFrame(session, frame))
+        .then(() => this.handleFrame(session, assembled))
         .catch((e) => {
-          this.logger.error(`handle 0x${frame.msgId.toString(16)} from ${session.deviceNo}: ${e?.message || e}`);
+          this.logger.error(`handle 0x${assembled.msgId.toString(16)} from ${session.deviceNo}: ${e?.message || e}`);
         })
         .then(() => {
           session.pending--;
           if (session.pending < MAX_PENDING_FRAMES && session.socket.isPaused()) session.socket.resume();
         });
     }
+  }
+
+  /**
+   * 收集分包消息。攒齐返回拼好的整条消息，没攒齐返回 null。
+   * 同一条消息的各包共用「消息ID + 总包数」，包序号从 1 开始。
+   */
+  private collectSubpackage(session: Session, frame: Jt808Frame): Jt808Frame | null {
+    const { total, index } = frame.subpackage!;
+    if (total < 1 || total > MAX_SUBPACKAGES || index < 1 || index > total) {
+      this.logger.warn(`bogus subpackage ${index}/${total} for 0x${frame.msgId.toString(16)} from ${session.deviceNo}`);
+      return null;
+    }
+    const key = `${frame.msgId}:${total}`;
+    let set = session.partials.get(key);
+    const now = Date.now();
+    if (set && now - set.at > SUBPACKAGE_TTL_MS) {
+      this.logger.warn(`discarding a stale ${set.parts.size}/${total} subpackage set from ${session.deviceNo}`);
+      set = undefined;
+    }
+    if (!set) {
+      if (session.partials.size >= MAX_SUBPACKAGE_SETS) session.partials.clear();
+      set = { parts: new Map(), at: now, bytes: 0 };
+      session.partials.set(key, set);
+    }
+    if (!set.parts.has(index)) {
+      set.bytes += frame.body.length;
+      if (set.bytes > MAX_SUBPACKAGE_BYTES) {
+        this.logger.warn(`subpackage set for 0x${frame.msgId.toString(16)} from ${session.deviceNo} too large, dropping`);
+        session.partials.delete(key);
+        return null;
+      }
+      set.parts.set(index, frame.body);
+    }
+    set.at = now;
+    if (set.parts.size < total) return null;
+
+    session.partials.delete(key);
+    const body = Buffer.concat(Array.from({ length: total }, (_, i) => set!.parts.get(i + 1)!));
+    this.logger.log(`reassembled 0x${frame.msgId.toString(16)} from ${session.deviceNo}: ${total} packets, ${body.length} bytes`);
+    return { ...frame, body, subpackage: undefined };
   }
 
   /** 返回 false 表示这一帧不该再处理（连接已被判定为异常并关闭） */

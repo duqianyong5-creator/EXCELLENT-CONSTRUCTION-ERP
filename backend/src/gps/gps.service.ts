@@ -15,12 +15,28 @@ type RequestUser = { id: string; role: UserRole };
  * 车载定位器绑在车上、不依赖司机手机，是更可信的来源，只要有就只用它。
  */
 const MIN_DEVICE_POINTS_FOR_TRACK = 5;
+/** 定位器停报超过这么久，就认为这段路它没覆盖到，用手机点补上 */
+const DEVICE_COVERAGE_GAP_MS = 5 * 60 * 1000;
 
-export function preferDeviceSource<T extends { source?: string }>(logs: T[]): T[] {
+const timeOf = (g: { timestamp?: Date | string }): number => {
+  const t = g.timestamp instanceof Date ? g.timestamp.getTime() : new Date(g.timestamp ?? 0).getTime();
+  return Number.isNaN(t) ? 0 : t;
+};
+
+export function preferDeviceSource<T extends { source?: string; timestamp?: Date | string }>(logs: T[]): T[] {
   const device = logs.filter((g) => g.source === 'device');
-  // 要有连续若干个点才认为"这趟车确实由定位器在跟"，
+  // 要有若干个点才认为"这趟车确实由定位器在跟"，
   // 否则一两个偶发的设备点（车牌刚绑错、设备刚上线）就会把整条手机轨迹藏掉。
-  return device.length >= MIN_DEVICE_POINTS_FOR_TRACK ? device : logs;
+  if (device.length < MIN_DEVICE_POINTS_FOR_TRACK) return logs;
+
+  // 定位器覆盖到的时段只用定位器（避免人车分离画出锯齿）；
+  // 它没覆盖的时段（中途断电、装之前、拆之后）仍然保留手机轨迹，否则整趟回放会被截断。
+  const deviceTimes = device.map(timeOf).sort((a, b) => a - b);
+  const covered = (t: number): boolean =>
+    deviceTimes.some((d) => Math.abs(d - t) <= DEVICE_COVERAGE_GAP_MS);
+
+  const kept = logs.filter((g) => g.source === 'device' || !covered(timeOf(g)));
+  return kept.sort((a, b) => timeOf(a) - timeOf(b));
 }
 
 const MAX_SPEED_KMH = 140;
