@@ -81,6 +81,16 @@ export const gpsApi = {
   driverPosition: (driverId: string) => api.get(`/gps/driver/${driverId}/position`),
 };
 
+export const vehiclesApi = {
+  list: () => api.get('/vehicles'),
+  create: (data: { plate: string; label?: string }) => api.post('/vehicles', data),
+  update: (id: string, data: { label?: string; enabled?: boolean }) => api.patch(`/vehicles/${id}`, data),
+  delete: (id: string) => api.delete(`/vehicles/${id}`),
+  recordLicence: (id: string, data: { licenceNo?: string; startKm: number; endKm: number; purchasedAt?: string }) =>
+    api.post(`/vehicles/${id}/ruc`, data),
+  calibrate: (id: string, odometerKm: number) => api.post(`/vehicles/${id}/odometer`, { odometerKm }),
+};
+
 export const gpsDevicesApi = {
   list: () => api.get('/gps-devices'),
   gateway: () => api.get('/gps-devices/gateway'),
