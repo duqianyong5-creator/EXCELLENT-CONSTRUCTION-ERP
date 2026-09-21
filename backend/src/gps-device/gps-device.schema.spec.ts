@@ -33,9 +33,11 @@ describe('GpsDeviceSchemaGuard', () => {
     expect(executed.filter((s) => s.includes('information_schema'))).toHaveLength(2);
   });
 
-  it('sets a lock timeout before altering gps_logs (a long reader must not hang the boot)', () => {
-    expect(GPS_DEVICE_DDL[0]).toMatch(/lock_timeout/);
-    expect(GPS_DEVICE_DDL.findIndex((s) => s.includes('ALTER TABLE gps_logs'))).toBeGreaterThan(0);
+  it('sets the lock timeout in the same statement as the ALTER (pool hands out other connections)', () => {
+    const alter = GPS_DEVICE_DDL.find((s) => s.includes('ALTER TABLE gps_logs')) as string;
+    expect(alter).toMatch(/lock_timeout/);
+    // 单独一条 SET 会被分到别的连接上，等于没设
+    expect(GPS_DEVICE_DDL.some((s) => /^\s*SET lock_timeout[^;]*$/.test(s))).toBe(false);
   });
 
   it('enables row level security on gps_devices, matching the SQL migration', () => {

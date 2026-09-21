@@ -11,9 +11,10 @@ import { DataSource } from 'typeorm';
  * 已经执行过 database/migrations 的库，这些语句都是空操作。
  */
 export const GPS_DEVICE_DDL: string[] = [
-  // ALTER 需要 ACCESS EXCLUSIVE 锁：加超时，避免有长查询时把启动卡死
-  `SET lock_timeout = '5s'`,
-  `ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'app'`,
+  // ALTER 需要 ACCESS EXCLUSIVE 锁：加超时，避免有长查询时把启动卡死。
+  // lock_timeout 必须和 ALTER 在同一条语句里发出去——连接池会把两次 query 分到不同连接上，
+  // 单独发一条 SET 是设给了别的连接，等于没设。
+  `SET lock_timeout = '5s'; ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'app'`,
   `CREATE TABLE IF NOT EXISTS gps_devices (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       device_no       VARCHAR(32) NOT NULL UNIQUE,
