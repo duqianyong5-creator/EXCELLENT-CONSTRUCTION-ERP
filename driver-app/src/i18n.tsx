@@ -23,6 +23,8 @@ const zh: Dict = {
   'login.notice': '提示',
   'login.enterBoth': '请输入账号和密码',
   'login.loginFailed': '登录失败',
+  'login.noServer': '连不上服务器，请检查手机网络后重试。服务器地址：',
+  'login.tryAgain': '请稍后重试',
   // register
   'reg.title': '申请注册',
   'reg.subtitle': '提交后等待管理员审核',
@@ -274,6 +276,8 @@ const en: Dict = {
   'login.notice': 'Notice',
   'login.enterBoth': 'Please enter account and password',
   'login.loginFailed': 'Login failed',
+  'login.noServer': 'Cannot reach the server. Check your connection and try again. Server:',
+  'login.tryAgain': 'Please try again',
   // register
   'reg.title': 'Sign Up',
   'reg.subtitle': 'Submit and wait for admin approval',

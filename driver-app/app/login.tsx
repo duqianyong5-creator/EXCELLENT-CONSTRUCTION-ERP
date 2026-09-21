@@ -44,15 +44,22 @@ export default function LoginScreen() {
       dispatch(setCredentials({ token: res.access_token, user: res.user }));
       router.replace('/(tabs)/tasks');
     } catch (err: any) {
-      console.error('Login Error:', err);
-      const currentUrl = await getBaseUrl();
-      const detail = JSON.stringify(err, null, 2);
-      const msg = typeof err?.message === 'string'
-        ? err.message
-        : (typeof err?.message === 'object' ? JSON.stringify(err.message) : String(err?.message ?? 'Unknown error'));
-      const code = err?.statusCode ?? err?.status ?? err?.response?.status;
-      const errorMsg = `Server: ${currentUrl}\nStatus: ${code ?? '-'}\n\nDetail: ${msg}\n\nRaw: ${detail.substring(0, 500)}`;
-      showAppAlert(t('login.loginFailed'), errorMsg);
+      if (__DEV__) console.error('Login Error:', err);
+      // 后端会明确告诉是账号不存在、密码错误还是账户待审核，直接把这句话给司机看。
+      // 只有压根没连上服务器时才显示技术细节（那时地址/网络才是真正要查的东西）。
+      const serverMessage = err?.response?.data?.message ?? err?.data?.message;
+      const noResponse = !err?.response && !err?.statusCode;
+      if (serverMessage) {
+        showAppAlert(t('login.loginFailed'), String(serverMessage));
+      } else if (noResponse) {
+        const currentUrl = await getBaseUrl();
+        showAppAlert(
+          t('login.loginFailed'),
+          `${t('login.noServer')}\n\n${currentUrl}`,
+        );
+      } else {
+        showAppAlert(t('login.loginFailed'), String(err?.message ?? t('login.tryAgain')));
+      }
     } finally {
       setLoading(false);
     }

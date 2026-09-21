@@ -16,7 +16,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res.data,
   (err) => {
-    if (err.response?.status === 401) {
+    // 登录/注册接口本来就没有会话，它们返回 401 是"账号或密码错误"，不是登录态过期。
+    // 这里若跟着刷新页面，错误提示会被刷掉，用户只看到页面闪一下、不知道哪里错了。
+    const url = err.config?.url || '';
+    const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
+    if (err.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       // reload 后应用重新初始化（无 token → 路由跳登录）。
