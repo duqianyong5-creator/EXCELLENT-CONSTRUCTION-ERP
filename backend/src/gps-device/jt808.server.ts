@@ -33,6 +33,12 @@ interface Session {
   rejects: number;
   /** 坏帧计数，用于日志降频 */
   badFrames: number;
+  /** 协议层错误（加密位、非法分包头）计数：同样降频，超限断开 */
+  protocolErrors: number;
+  /** 该连接是否已经对应到一台「已登记且启用」的设备。连接准入时用它区分真实车辆和陌生连接 */
+  trusted: boolean;
+  /** 迟迟没有成为 trusted 的连接会被回收（占着槽位的陌生连接） */
+  trustTimer: ReturnType<typeof setTimeout> | null;
   /** 分包消息的暂存区：key = 消息ID:总包数 */
   partials: Map<string, { parts: Map<number, Buffer>; at: number; bytes: number }>;
   /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
@@ -67,6 +73,13 @@ const MAX_UNREGISTERED = 200;
 const MAX_REJECTS_PER_SESSION = 5;
 /** 一条连接上允许多少次校验错误的帧，超过只记一条汇总日志，避免刷日志 */
 const MAX_BAD_FRAME_LOGS = 3;
+/** 协议层错误（加密位、非法分包头）：超过这个数就断开。不设上限的话一条连接能无限刷日志 */
+const MAX_PROTOCOL_ERRORS = 20;
+/** 连上后多久还没对应到已登记设备就回收连接（真实设备几秒内就会发第一帧可识别数据） */
+const TRUST_TIMEOUT_MS = 60 * 1000;
+/** 未建立信任的连接能占用的分包缓冲额度，远小于正常额度 */
+const UNTRUSTED_SUBPACKAGE_SETS = 1;
+const UNTRUSTED_SUBPACKAGE_BYTES = 32 * 1024;
 /** 分包重组上限：包数、字节数、同时进行的消息数、以及攒包的有效期 */
 const MAX_SUBPACKAGES = 64;
 const MAX_SUBPACKAGE_BYTES = 128 * 1024;
@@ -254,21 +267,21 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       pending: 0,
       rejects: 0,
       badFrames: 0,
+      protocolErrors: 0,
+      trusted: false,
+      trustTimer: null,
       partials: new Map(),
       handshakeTimer: null,
     };
-    // 连接数到上限时，优先踢掉「连上但一帧有效数据都没发」的连接，
-    // 否则一批空连接就能把真实设备全部挡在门外。
-    if (this.sessions.size >= MAX_CONNECTIONS) {
-      const idle = [...this.sessions].find((s) => s.frames === 0);
-      if (idle) {
-        this.logger.warn(`connection limit reached, dropping an idle connection from ${idle.addr}`);
-        idle.socket.destroy();
-      } else {
-        this.logger.error(`connection limit reached with all sessions active, refusing ${session.addr}`);
-        socket.destroy();
-        return;
-      }
+    // 连接数到上限时按「可信度」淘汰，而不是只看有没有发过帧。
+    // 只看 frames===0 的话，攻击者每条连接发一帧合法心跳就永远不算空闲，
+    // 500 个槽位占满之后真实车辆全部被拒——整个车队在地图上消失，而且没人知道为什么。
+    if (this.sessions.size >= MAX_CONNECTIONS && !this.evictLeastTrusted(session.addr)) {
+      this.logger.error(
+        `connection limit reached and every session belongs to a registered device, refusing ${session.addr}`,
+      );
+      socket.destroy();
+      return;
     }
     this.sessions.add(session);
     socket.setKeepAlive(true, 60_000);
@@ -284,13 +297,45 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       }
     }, HANDSHAKE_TIMEOUT_MS);
     session.handshakeTimer.unref?.(); // 不要因为这个定时器把进程/测试拖住不退出
+    // 发了帧但始终没对应上任何已登记设备的连接同样是在占槽位，到点回收
+    session.trustTimer = setTimeout(() => {
+      if (session.trusted) return;
+      this.logger.debug(`${session.addr} never matched a registered device, closing`);
+      socket.destroy();
+    }, TRUST_TIMEOUT_MS);
+    session.trustTimer.unref?.();
     socket.on('data', (chunk) => this.onData(session, chunk));
     socket.on('error', (err) => this.logger.debug(`socket ${session.deviceNo ?? session.addr}: ${err.message}`));
     socket.on('close', () => this.dropSession(session));
   }
 
+  /**
+   * 连接槽位满时腾一个位置：先踢从没对上设备号的，再踢对上了但不是已登记设备的，
+   * 同级里踢最久没动静的。已登记设备的连接绝不主动踢——那才是真的车。
+   * 返回 false 表示在场的全是已登记设备，没得可踢。
+   */
+  private evictLeastTrusted(incomingAddr: string): boolean {
+    const tier = (s: Session): number => (s.trusted ? 2 : s.deviceNo ? 1 : 0);
+    let victim: Session | null = null;
+    for (const s of this.sessions) {
+      if (tier(s) === 2) continue;
+      if (!victim || tier(s) < tier(victim) ||
+          (tier(s) === tier(victim) && s.lastSeenAt.getTime() < victim.lastSeenAt.getTime())) {
+        victim = s;
+      }
+    }
+    if (!victim) return false;
+    this.logger.warn(
+      `connection limit reached, dropping an untrusted connection from ${victim.addr} ` +
+        `(tier ${tier(victim)}, ${victim.frames} frames) to admit ${incomingAddr}`,
+    );
+    victim.socket.destroy();
+    return true;
+  }
+
   private dropSession(session: Session): void {
     if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
+    if (session.trustTimer) { clearTimeout(session.trustTimer); session.trustTimer = null; }
     this.sessions.delete(session);
     if (session.deviceNo && this.byDevice.get(session.deviceNo) === session) {
       this.byDevice.delete(session.deviceNo);
@@ -299,12 +344,15 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
   }
 
   private onData(session: Session, chunk: Buffer): void {
-    session.buffer = Buffer.concat([session.buffer, chunk]);
-    if (session.buffer.length > MAX_BUFFER) {
+    if (session.socket.destroyed) return;
+    // 先判上限再拼接：拼完再判的话，攻击者一次一个字节地喂到 64KB，
+    // 光 Buffer.concat 的拷贝量就是 n²/2 ≈ 2GB，够把事件循环卡死（API 和网关同进程）。
+    if (session.buffer.length + chunk.length > MAX_BUFFER) {
       this.logger.warn(`buffer overflow from ${session.addr}, dropping connection`);
       session.socket.destroy();
       return;
     }
+    session.buffer = Buffer.concat([session.buffer, chunk]);
     const { frames, rest } = splitFrames(session.buffer);
     session.buffer = rest;
     for (const raw of frames) {
@@ -320,10 +368,12 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       if (frame.encrypted) {
-        this.logger.warn(`encrypted message not supported from ${session.addr}`);
         this.send(session, buildPlatformAck(frame.phone, this.nextSerial(session), frame.serial, frame.msgId, AckResult.UNSUPPORTED));
+        if (this.noteProtocolError(session, `encrypted message not supported from ${session.addr}`)) return;
         continue;
       }
+      // 一次 onData 里能切出几千帧；拒绝到上限而断开之后，剩下的帧不该继续排队处理
+      if (session.socket.destroyed) return;
       session.frames++;
       session.lastSeenAt = new Date();
       if (session.handshakeTimer) { clearTimeout(session.handshakeTimer); session.handshakeTimer = null; }
@@ -355,13 +405,37 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 记一条协议层错误：前几条打日志，之后只汇总，超限直接断开。
+   * 返回 true 表示连接已被关闭，调用方应立刻停止处理。
+   */
+  private noteProtocolError(session: Session, message: string): boolean {
+    session.protocolErrors++;
+    if (session.protocolErrors <= MAX_BAD_FRAME_LOGS) {
+      this.logger.warn(message);
+    } else if (session.protocolErrors === MAX_BAD_FRAME_LOGS + 1) {
+      this.logger.warn(`further protocol errors from ${session.addr} will not be logged`);
+    }
+    if (session.protocolErrors >= MAX_PROTOCOL_ERRORS) {
+      this.logger.warn(`${session.protocolErrors} protocol errors on one connection from ${session.addr}, closing`);
+      session.socket.destroy();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * 收集分包消息。攒齐返回拼好的整条消息，没攒齐返回 null。
    * 同一条消息的各包共用「消息ID + 总包数」，包序号从 1 开始。
    */
   private collectSubpackage(session: Session, frame: Jt808Frame): Jt808Frame | null {
     const { total, index } = frame.subpackage!;
     if (total < 1 || total > MAX_SUBPACKAGES || index < 1 || index > total) {
-      this.logger.warn(`bogus subpackage ${index}/${total} for 0x${frame.msgId.toString(16)} from ${session.deviceNo}`);
+      // 这条路径在 handleFrame 之前就返回了，拒绝计数不会生效，所以必须自己限流并计数——
+      // 否则一条连接可以无限刷 warn 日志（每 64KB 入站能产生约 4600 行）
+      this.noteProtocolError(
+        session,
+        `bogus subpackage ${index}/${total} for 0x${frame.msgId.toString(16)} from ${session.deviceNo}`,
+      );
       return null;
     }
     const key = `${frame.msgId}:${total}`;
@@ -371,15 +445,40 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`discarding a stale ${set.parts.size}/${total} subpackage set from ${session.deviceNo}`);
       set = undefined;
     }
+    // 分包重组在设备核验之前就要分配内存，所以未建立信任的连接只给很小的额度：
+    // 500 条连接 × 4 组 × 128KB ≈ 270MB 全是陌生人可控的，足以把进程 OOM 掉，
+    // 而 OOM 会把同进程的 HTTP API 一起带走。真实设备登记后额度照旧。
+    const maxSets = session.trusted ? MAX_SUBPACKAGE_SETS : UNTRUSTED_SUBPACKAGE_SETS;
+    const maxBytes = session.trusted ? MAX_SUBPACKAGE_BYTES : UNTRUSTED_SUBPACKAGE_BYTES;
+
     if (!set) {
-      if (session.partials.size >= MAX_SUBPACKAGE_SETS) session.partials.clear();
+      if (session.partials.size >= maxSets) {
+        // 不要 clear()：那会把其它几组已经应答过 OK 的分包一起丢掉。
+        // 丢最旧的那一组，并且说清楚丢了什么。
+        let oldestKey: string | null = null;
+        let oldestAt = Infinity;
+        for (const [k, v] of session.partials) {
+          if (v.at < oldestAt) { oldestAt = v.at; oldestKey = k; }
+        }
+        if (oldestKey) {
+          const dropped = session.partials.get(oldestKey)!;
+          this.logger.warn(
+            `dropping an incomplete subpackage set ${oldestKey} (${dropped.parts.size} packets) from ` +
+              `${session.deviceNo ?? session.addr} to make room; those points were already acked OK and are lost`,
+          );
+          session.partials.delete(oldestKey);
+        }
+      }
       set = { parts: new Map(), at: now, bytes: 0 };
       session.partials.set(key, set);
     }
     if (!set.parts.has(index)) {
       set.bytes += frame.body.length;
-      if (set.bytes > MAX_SUBPACKAGE_BYTES) {
-        this.logger.warn(`subpackage set for 0x${frame.msgId.toString(16)} from ${session.deviceNo} too large, dropping`);
+      if (set.bytes > maxBytes) {
+        this.logger.warn(
+          `subpackage set for 0x${frame.msgId.toString(16)} from ${session.deviceNo ?? session.addr} too large ` +
+            `(${set.bytes} > ${maxBytes}${session.trusted ? '' : ', unregistered device'}), dropping`,
+        );
         session.partials.delete(key);
         return null;
       }
@@ -447,6 +546,11 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       return;
     }
     session.rejects = 0;
+    if (!session.trusted) {
+      // 从这一刻起这条连接对应到一台真实在册的车：连接准入时不再把它当陌生连接淘汰
+      session.trusted = true;
+      if (session.trustTimer) { clearTimeout(session.trustTimer); session.trustTimer = null; }
+    }
 
     switch (frame.msgId) {
       case MsgId.REGISTER: {

@@ -439,6 +439,82 @@ describe('Jt808Server (TCP gateway)', () => {
   });
 });
 
+describe('Jt808Server abuse resistance on the public TCP port', () => {
+  let server: Jt808Server;
+  let port: number;
+
+  const UNKNOWN = '099999999911';
+  const UNKNOWN_HEARTBEAT = encodeFrame(MsgId.HEARTBEAT, UNKNOWN, 0x0c);
+
+  beforeAll(async () => {
+    Logger.overrideLogger(false);
+    const devices = {
+      findByDeviceNo: jest.fn(async (no: string) =>
+        no === KNOWN_NO ? { id: 'dev1', deviceNo: KNOWN_NO, enabled: true, vehiclePlate: 'ABC123' } : null,
+      ),
+      touch: jest.fn(async () => undefined),
+      ingest: jest.fn(async () => 'stored'),
+    };
+    server = new Jt808Server({ get: () => undefined } as any, devices as any);
+    port = await server.start(0, '127.0.0.1');
+  });
+
+  afterAll(async () => { await server.stop(); });
+  afterEach(() => { openSockets.splice(0).forEach((s) => s.destroy()); });
+
+  it('closes a connection that floods bogus subpackage headers instead of logging forever', async () => {
+    // 这条路径在设备核验之前就 return 了，拒绝计数管不到它，
+    // 所以必须自己限流+断开：否则一条连接能无限刷 warn 日志把容器日志撑爆。
+    const c = client(port);
+    await c.ready;
+    let closed = false;
+    c.socket.once('close', () => { closed = true; });
+
+    // total=0 是非法分包头（合法范围 1..64）
+    const bogus = encodeSubFrame(MsgId.BATCH_POSITION, UNKNOWN, 0x01, 0, 1, Buffer.from([0xaa]));
+    for (let i = 0; i < 40 && !closed; i++) {
+      c.socket.write(bogus);
+      await new Promise((r) => setImmediate(r));
+    }
+
+    await until(() => closed, 3000, 'the log-flooding connection to be dropped');
+  });
+
+  it('evicts an unregistered connection so a real truck can still get in at the connection cap', async () => {
+    // 以前只踢 frames===0 的连接，攻击者每条连接发一帧合法心跳就永远不算空闲；
+    // 槽位占满之后真实车辆全部被拒 —— 整个车队从地图上消失。
+    const squatter = client(port);
+    await squatter.ready;
+    squatter.socket.write(UNKNOWN_HEARTBEAT);
+    await squatter.waitFor(MsgId.PLATFORM_ACK);            // 发过帧了，不再是"空连接"
+
+    const online = server.getOnline().length;
+    const real = client(port);
+    await real.ready;
+    real.socket.write(REGISTER_KNOWN);
+    const ack = await real.waitFor(MsgId.REGISTER_ACK);
+
+    expect(ack.body[2]).toBe(RegisterResult.OK);
+    expect(server.getOnline().length).toBeGreaterThanOrEqual(online);
+    expect(server.getOnline().map((o) => o.deviceNo)).toContain(KNOWN_NO);
+  });
+
+  it('drops a slow-drip flood before the buffer copy cost explodes', async () => {
+    // 上限必须在 concat 之前判：拼完再判的话，一字节一字节喂到 64KB
+    // 光拷贝量就是 n²/2 ≈ 2GB，足以卡死事件循环（API 与网关同进程）。
+    const c = client(port);
+    await c.ready;
+    let closed = false;
+    c.socket.once('close', () => { closed = true; });
+    c.socket.write(Buffer.from([0x7e]));
+    for (let i = 0; i < 70 && !closed; i++) {
+      c.socket.write(Buffer.alloc(1024, 0x11));
+      await new Promise((r) => setImmediate(r));
+    }
+    await until(() => closed, 3000, 'the slow-drip flood to be dropped');
+  });
+});
+
 describe('Jt808Server startup guards', () => {
   const build = (env: Record<string, string | undefined>) =>
     new Jt808Server({ get: (k: string) => env[k] } as any, {} as any);
