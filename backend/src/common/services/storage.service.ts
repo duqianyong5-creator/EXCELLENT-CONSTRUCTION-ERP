@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
-import { extname } from 'path';
+import { sniffImage } from './image-sniff';
+import { ErrorCode } from '../i18n/messages';
 
 @Injectable()
 export class StorageService {
@@ -37,14 +38,21 @@ export class StorageService {
     file: Express.Multer.File,
     folder = 'work-records',
   ): Promise<string> {
-    const ext = extname(file.originalname);
+    // 扩展名和 Content-Type 一律按文件内容判定，不采信客户端给的值。
+    // 否则一个司机账号就能把 .html / .svg 存进公开桶，用公司域名做钓鱼页；
+    // 走本地存储兜底时更糟——那是和 API 同源提供的，等于存储型 XSS。
+    const sniffed = sniffImage(file.buffer);
+    if (!sniffed) {
+      throw new BadRequestException(ErrorCode.UPLOAD_IMAGE_ONLY);
+    }
+    const { ext, contentType } = sniffed;
     const filename = `${folder}/${randomUUID()}${ext}`;
 
     if (this.supabase) {
       const { data, error } = await this.supabase.storage
         .from(this.bucket)
         .upload(filename, file.buffer, {
-          contentType: file.mimetype,
+          contentType,
           upsert: false,
         });
 
