@@ -412,7 +412,9 @@ export default function DevicesPage() {
             options={[
               { label: `${zh ? '全部' : 'All'} ${list.length}`, value: 'all' },
               { label: `${zh ? '在线' : 'Online'} ${onlineCount}`, value: 'online' },
-              { label: `${zh ? '离线' : 'Offline'} ${list.length - onlineCount}`, value: 'offline' },
+              // 数字要和切过去之后表格里的行数一致：停用的设备不算掉线。
+              // 原来用 list.length - onlineCount 把停用的也算了进去，标签和表格对不上。
+              { label: `${zh ? '离线' : 'Offline'} ${offlineDevices.length}`, value: 'offline' },
             ]}
           />
         </div>

@@ -21,13 +21,16 @@ function minutesToHM(min: number) {
 }
 
 // 默认工时调整量（在系统设置里配置：30 或 60 分钟）
-function getAdjustDefault(): number {
-  return Number(localStorage.getItem('wr_adjust_default')) === 60 ? 60 : 30;
-}
-
-// 最终工时 = GPS 工时 + 系统设置里的默认调整时间（自动加到每条记录，记为系统调整）
+// 最终工时以服务器为准：后端在 applyAdjustment/setFinalDuration 里维护
+// finalDuration = systemDuration + adjustmentTime，任务详情、司机端、客户端读的都是它。
+//
+// 这里原本是 systemDuration + localStorage 里的默认调整值，后果有两个：
+// 管理员真正做过的工时调整在本页和工资导出里完全不体现；
+// 两台电脑上的默认值不同，同一条记录在两个人屏幕上是两个数字。
 function finalMinutesOf(record: any): number {
-  return (record?.systemDuration || 0) + getAdjustDefault();
+  const stored = Number(record?.finalDuration);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  return Number(record?.systemDuration) || 0;
 }
 
 export default function WorkRecordsPage() {
@@ -256,7 +259,14 @@ export default function WorkRecordsPage() {
               <Descriptions.Item label="GPS开始时间">{selected.startTime ? dayjs(selected.startTime).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
               <Descriptions.Item label="GPS结束时间">{selected.endTime ? dayjs(selected.endTime).format('YYYY-MM-DD HH:mm') : '-'}</Descriptions.Item>
               <Descriptions.Item label="GPS工时"><Tag color="blue">{minutesToHM(selected.systemDuration)}</Tag></Descriptions.Item>
-              <Descriptions.Item label="系统调整"><Tag color="orange">+{minutesToHM(getAdjustDefault())}</Tag></Descriptions.Item>
+              {/* 显示这条记录实际被调整了多少分钟（后端 adjustmentTime），而不是本机的默认值 */}
+              <Descriptions.Item label="工时调整">
+                <Tag color={Number(selected.adjustmentTime) ? 'orange' : 'default'}>
+                  {Number(selected.adjustmentTime)
+                    ? `${Number(selected.adjustmentTime) > 0 ? '+' : '-'}${minutesToHM(Math.abs(Number(selected.adjustmentTime)))}`
+                    : '无调整'}
+                </Tag>
+              </Descriptions.Item>
               <Descriptions.Item label="最终工时" span={2}><Tag color="green" style={{ fontWeight: 700 }}>{minutesToHM(finalMinutesOf(selected))}</Tag></Descriptions.Item>
               <Descriptions.Item label="异常" span={2}>{selected.anomalyFlag ? <Tag color="red">有异常</Tag> : <Tag color="green">正常</Tag>}</Descriptions.Item>
               {selected.completionNotes && (<Descriptions.Item label="完成备注" span={2}>{selected.completionNotes}</Descriptions.Item>)}

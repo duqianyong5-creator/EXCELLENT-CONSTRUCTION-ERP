@@ -264,7 +264,9 @@ export default function SettingsPage() {
           </div>
         </SettingCard>
 
-        {/* GPS 异常报警设置 */}
+        {/* GPS 异常报警设置 —— 整个 SystemSettingsController 都是 @Roles(ADMIN)，
+            调度员看到这张卡也只会填完再吃一个「权限不足」，所以和操作日志、清空数据一样只给管理员 */}
+        {isAdmin && (
         <SettingCard
           span
           icon={<AlertOutlined />} color="#ef4444"
@@ -294,6 +296,7 @@ export default function SettingsPage() {
             说明：在「多久不动报警」时长内，司机始终没离开「位移阈值」（默认 80 米，可容忍 GPS 漂移）即视为静止并报警。首次报警后等待「延时间隔」，若仍未移动则二次、三次报警，直到「最多报警次数」。可在异常页「忽略」结案或「延时」延后。
           </Text>
         </SettingCard>
+        )}
 
         {/* 清空数据（危险操作）—— 仅管理员 */}
         {isAdmin && (

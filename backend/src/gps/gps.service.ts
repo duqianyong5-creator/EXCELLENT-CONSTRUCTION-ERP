@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import { GpsLog } from './gps-log.entity';
+import { GpsAnomaly, AnomalyType } from './gps-anomaly.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Task, TaskStatus } from '../tasks/task.entity';
 import { UserRole } from '../users/user.entity';
@@ -52,6 +53,7 @@ export class GpsService {
   constructor(
     @InjectRepository(GpsLog) private repo: Repository<GpsLog>,
     @InjectRepository(Task) private taskRepo: Repository<Task>,
+    @InjectRepository(GpsAnomaly) private anomalyRepo: Repository<GpsAnomaly>,
     private notifService: NotificationsService,
   ) {}
 
@@ -125,6 +127,28 @@ export class GpsService {
     }
 
     if (anomalies.length > 0) {
+      // 落一条异常记录：以前只发通知，「异常管理」页读的是 gps_anomalies 表，
+      // 所以「速度异常 / 瞬移异常」两个筛选项永远是空的，超速记录事后既查不到也没法处理。
+      // 静止报警由 GpsAlarmService 单独维护自己的记录，这里只管上报时当场判定的两类。
+      for (const type of anomalies) {
+        try {
+          const row = this.anomalyRepo.create({
+            driverId,
+            taskId: taskId || null,
+            anomalyType: type as AnomalyType,
+            description: this.describeAnomaly(type, saved),
+            latitude: saved.latitude != null ? Number(saved.latitude) : null,
+            longitude: saved.longitude != null ? Number(saved.longitude) : null,
+            speed: saved.speed != null ? Number(saved.speed) : null,
+            alarmCount: 1,
+          } as any);
+          await this.anomalyRepo.save(row);
+        } catch (e: any) {
+          // 定位点本身已经存下来了，异常记录写失败不该把上报打回去让司机 App 重试
+          this.logger.warn(`failed to record ${type} anomaly for driver ${driverId}: ${e?.message || e}`);
+        }
+      }
+
       await this.notifService.create(null, {
         title: 'GPS 异常',
         content: `司机 GPS 检测到异常：${anomalies.join(', ')}`,
@@ -135,6 +159,14 @@ export class GpsService {
     }
 
     return { log: saved, anomalies };
+  }
+
+  /** 异常记录上要能看出「到底怎么了」，光一个类型名事后没法判断 */
+  private describeAnomaly(type: string, log: GpsLog): string {
+    const speed = log.speed != null ? Number(log.speed).toFixed(1) : '?';
+    if (type === AnomalyType.SPEED_ANOMALY) return `上报速度 ${speed} km/h，超过合理阈值`;
+    if (type === AnomalyType.TELEPORT) return `两次定位之间位置跳变过大（疑似定位漂移或伪造）`;
+    return type;
   }
 
   async getTrack(taskId: string): Promise<GpsLog[]> {

@@ -348,10 +348,17 @@ export function parsePosition(body: Buffer, tzOffsetHours: number): Position | n
   };
 }
 
-/** 解析 0x0704 定位数据批量上传：返回每一项的 0x0200 消息体 */
-export function parseBatchPositions(body: Buffer): { count: number; blindZone: boolean; items: Buffer[] } {
-  if (body.length < 3) return { count: 0, blindZone: false, items: [] };
-  const count = Math.min(body.readUInt16BE(0), MAX_BATCH_ITEMS);
+/**
+ * 解析 0x0704 定位数据批量上传：返回每一项的 0x0200 消息体。
+ *
+ * declared 是设备自己声明的点数，count 是实际解析上限（受 MAX_BATCH_ITEMS 约束）。
+ * 两者必须都返回：只返回收敛后的 count，调用方就永远看不出「这次补传被截断了」，
+ * 而平台已经回了 OK，终端会把本地缓存删掉——丢的点找不回来。
+ */
+export function parseBatchPositions(body: Buffer): { count: number; declared: number; blindZone: boolean; items: Buffer[] } {
+  if (body.length < 3) return { count: 0, declared: 0, blindZone: false, items: [] };
+  const declared = body.readUInt16BE(0);
+  const count = Math.min(declared, MAX_BATCH_ITEMS);
   const blindZone = body[2] === 1;
   const items: Buffer[] = [];
   let i = 3;
@@ -362,7 +369,7 @@ export function parseBatchPositions(body: Buffer): { count: number; blindZone: b
     items.push(item);
     i += 2 + len;
   }
-  return { count, blindZone, items };
+  return { count, declared, blindZone, items };
 }
 
 // ---------- 0x1007 时区 ----------

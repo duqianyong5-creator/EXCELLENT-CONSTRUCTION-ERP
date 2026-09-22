@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Avatar, Dropdown, Badge, Button, Typography, Space } from 'antd';
 import {
   DashboardOutlined, TeamOutlined, OrderedListOutlined, ClockCircleOutlined,
@@ -292,17 +292,26 @@ export default function AdminLayout() {
           margin: '20px 24px',
           minHeight: 'calc(100vh - 104px)',
         }}>
+          {/* 路由和左侧菜单用同一份 monitor 白名单。
+              以前路由是无条件注册的，大屏账号手敲 URL 就能打开被刻意隐藏的页面
+              （比如车辆/路税），按钮都在但一保存就是「权限不足」。 */}
           <Routes>
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="work-records" element={<WorkRecordsPage />} />
-            <Route path="devices" element={<DevicesPage />} />
-            <Route path="vehicles" element={<VehiclesPage />} />
             <Route path="anomalies" element={<AnomaliesPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="announcements" element={<AnnouncementsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+            {user?.role === 'monitor' ? (
+              <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+            ) : (
+              <>
+                <Route path="users" element={<UsersPage />} />
+                <Route path="tasks" element={<TasksPage />} />
+                <Route path="work-records" element={<WorkRecordsPage />} />
+                <Route path="devices" element={<DevicesPage />} />
+                <Route path="vehicles" element={<VehiclesPage />} />
+                <Route path="announcements" element={<AnnouncementsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </>
+            )}
           </Routes>
         </Content>
       </Layout>

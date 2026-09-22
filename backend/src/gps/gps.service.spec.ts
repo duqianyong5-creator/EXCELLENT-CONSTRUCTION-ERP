@@ -3,6 +3,12 @@ import { TaskStatus } from '../tasks/task.entity';
 import { UserRole } from '../users/user.entity';
 import { ForbiddenException } from '@nestjs/common';
 
+// 检测到超速/瞬移时会往 gps_anomalies 落一条记录，这里给个最小 stub
+function anomalyStub() {
+  return { create: jest.fn((v: any) => v), save: jest.fn(async (v: any) => v) };
+}
+
+
 describe('GpsService live positions', () => {
   it('returns one fresh position per driver, filtered to in-progress tasks', async () => {
     const ts = new Date('2026-06-27T00:00:00.000Z');
@@ -21,6 +27,7 @@ describe('GpsService live positions', () => {
     const service = new GpsService(
       gpsRepo as any,
       taskRepo as any,
+      anomalyStub() as any,
       { create: jest.fn(), broadcastGpsUpdate: jest.fn() } as any,
     );
 
@@ -43,7 +50,7 @@ describe('GpsService live positions', () => {
   it('returns empty when there are no in-progress tasks (no gps query)', async () => {
     const gpsRepo = { createQueryBuilder: jest.fn() };
     const taskRepo = { find: jest.fn(async () => []) };
-    const service = new GpsService(gpsRepo as any, taskRepo as any, {} as any);
+    const service = new GpsService(gpsRepo as any, taskRepo as any, anomalyStub() as any, {} as any);
 
     const result = await service.getLatestPositions();
 
@@ -59,7 +66,7 @@ describe('GpsService position/track authorization (IDOR fix)', () => {
       findOne: jest.fn(async () => ({ id: 'g1', driverId: 'd1', latitude: 1, longitude: 2 })),
     };
     const taskRepo = { findOne: jest.fn(async () => taskRow) };
-    const service = new GpsService(gpsRepo as any, taskRepo as any, {} as any);
+    const service = new GpsService(gpsRepo as any, taskRepo as any, anomalyStub() as any, {} as any);
     return { service, gpsRepo, taskRepo };
   };
 
@@ -118,6 +125,7 @@ describe('GpsService upload realtime broadcast', () => {
     const service = new GpsService(
       gpsRepo as any,
       {} as any,
+      anomalyStub() as any,
       notifService as any,
     );
 
@@ -147,7 +155,7 @@ describe('GpsService upload realtime broadcast', () => {
       save: jest.fn(async (data) => ({ id: 'gps-1', ...data })),
     };
     const notifService = { create: jest.fn(), broadcastGpsUpdate: jest.fn() };
-    const service = new GpsService(gpsRepo as any, {} as any, notifService as any);
+    const service = new GpsService(gpsRepo as any, {} as any, anomalyStub() as any, notifService as any);
 
     await service.upload('driver-1', 'task-1', {
       latitude: 1, longitude: 2, speed: 0, source: 'device', silent: true,
@@ -161,6 +169,56 @@ describe('GpsService upload realtime broadcast', () => {
   });
 });
 
+describe('GpsService anomaly recording', () => {
+  const build = () => {
+    const gpsRepo = {
+      findOne: jest.fn(async () => null),
+      create: jest.fn((data: any) => data),
+      save: jest.fn(async (data: any) => ({ id: 'gps-1', ...data })),
+    };
+    const anomalyRepo = { create: jest.fn((v: any) => v), save: jest.fn(async (v: any) => v) };
+    const notifService = { create: jest.fn(), broadcastGpsUpdate: jest.fn() };
+    const service = new GpsService(gpsRepo as any, {} as any, anomalyRepo as any, notifService as any);
+    return { service, gpsRepo, anomalyRepo, notifService };
+  };
+
+  it('writes a row to gps_anomalies, not just a notification', async () => {
+    // 「异常管理」页读的是 gps_anomalies 表。以前只发了一条通知，
+    // 于是一辆记录到 160 km/h 的车事后在系统里完全查不到、也没法标记处理。
+    const { service, anomalyRepo, notifService } = build();
+
+    const { anomalies } = await service.upload('driver-1', 'task-1', {
+      latitude: -36.8, longitude: 174.7, speed: 180,
+    });
+
+    expect(anomalies).toContain('speed_anomaly');
+    expect(anomalyRepo.save).toHaveBeenCalledTimes(1);
+    const row = anomalyRepo.create.mock.calls[0][0] as any;
+    expect(row.anomalyType).toBe('speed_anomaly');
+    expect(row.driverId).toBe('driver-1');
+    expect(row.taskId).toBe('task-1');
+    // 事后要看得出到底怎么了，光一个类型名没法判断
+    expect(String(row.description)).toMatch(/180/);
+    expect(notifService.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('still stores the position when the anomaly row cannot be written', async () => {
+    // 定位点已经落库了，异常记录写失败不该把上报打回去让司机 App 一直重试
+    const { service, anomalyRepo } = build();
+    anomalyRepo.save.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(
+      service.upload('driver-1', 'task-1', { latitude: -36.8, longitude: 174.7, speed: 180 }),
+    ).resolves.toMatchObject({ log: expect.objectContaining({ id: 'gps-1' }) });
+  });
+
+  it('records nothing when the point is normal', async () => {
+    const { service, anomalyRepo } = build();
+    await service.upload('driver-1', 'task-1', { latitude: -36.8, longitude: 174.7, speed: 45 });
+    expect(anomalyRepo.save).not.toHaveBeenCalled();
+  });
+});
+
 describe('GpsService phone + tracker on the same task', () => {
   const makeService = (lastLog: any) => {
     const gpsRepo = {
@@ -169,7 +227,7 @@ describe('GpsService phone + tracker on the same task', () => {
       save: jest.fn(async (data) => ({ id: 'g', timestamp: new Date(), ...data })),
     };
     const notifService = { create: jest.fn(), broadcastGpsUpdate: jest.fn() };
-    return { service: new GpsService(gpsRepo as any, {} as any, notifService as any), notifService };
+    return { service: new GpsService(gpsRepo as any, {} as any, anomalyStub() as any, notifService as any), notifService };
   };
 
   it('does NOT flag teleport when the previous point came from the other source', async () => {
@@ -209,6 +267,7 @@ describe('GpsService phone + tracker on the same task', () => {
     const service = new GpsService(
       { createQueryBuilder: jest.fn(() => qb) } as any,
       { find: jest.fn(async () => [{ id: 't1' }]) } as any,
+      anomalyStub() as any,
       {} as any,
     );
 
@@ -226,7 +285,7 @@ describe('GpsService phone + tracker on the same task', () => {
       ...devicePoints,
       { id: 9, source: 'app', timestamp: new Date(base + 7000) },
     ];
-    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, anomalyStub() as any, {} as any);
     await expect(service.getTrack('t1')).resolves.toEqual(devicePoints);
   });
 
@@ -250,7 +309,7 @@ describe('GpsService phone + tracker on the same task', () => {
     const phoneDuring = Array.from({ length: 5 }, (_, i) => ({ id: `pd${i}`, source: 'app', timestamp: new Date(t0 + i * 60_000 + 20_000) }));
     const phoneAfter = Array.from({ length: 6 }, (_, i) => ({ id: `pa${i}`, source: 'app', timestamp: new Date(t0 + 3600_000 + i * 60_000) }));
     const service = new GpsService(
-      { find: jest.fn(async () => [...device, ...phoneDuring, ...phoneAfter]) } as any, {} as any, {} as any,
+      { find: jest.fn(async () => [...device, ...phoneDuring, ...phoneAfter]) } as any, {} as any, anomalyStub() as any, {} as any,
     );
 
     const track = await service.getTrack('t1');
@@ -268,13 +327,13 @@ describe('GpsService phone + tracker on the same task', () => {
   it('does NOT hide the phone trail for one or two stray tracker points', async () => {
     // 车牌刚绑错、设备刚上线时会冒出零星设备点，不能因此把整条手机轨迹藏掉
     const rows = [{ id: 1, source: 'app' }, { id: 2, source: 'device' }, { id: 3, source: 'app' }];
-    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, anomalyStub() as any, {} as any);
     await expect(service.getTrack('t1')).resolves.toEqual(rows);
   });
 
   it('track replay falls back to phone points when there is no tracker', async () => {
     const rows = [{ id: 1, source: 'app' }, { id: 2, source: 'app' }];
-    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, {} as any);
+    const service = new GpsService({ find: jest.fn(async () => rows) } as any, {} as any, anomalyStub() as any, {} as any);
     await expect(service.getTrack('t1')).resolves.toEqual(rows);
   });
 });

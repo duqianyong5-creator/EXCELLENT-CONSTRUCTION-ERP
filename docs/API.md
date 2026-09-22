@@ -17,7 +17,7 @@ Base URL: `http://localhost:3000`
 // Request
 {
   "identifier": "admin@trucksystem.com",
-  "password": "admin888"
+  "password": "your-password"
 }
 
 // Response

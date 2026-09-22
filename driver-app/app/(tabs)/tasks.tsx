@@ -1059,7 +1059,8 @@ export default function TasksScreen() {
 
               {canManage && (
                 <View style={styles.actionRow}>
-                  {item.status === 'pending' && (
+                  {/* 创建任务时司机必填，任务不会停在 pending；已分配未开始的必须能改派 */}
+                  {(item.status === 'pending' || item.status === 'assigned') && (
                     <TouchableOpacity
                       style={[styles.smallBtn, styles.smallBtnPrimary]}
                       onPress={async () => {

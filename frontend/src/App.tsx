@@ -11,7 +11,9 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: an
           <pre style={{ color: '#666', fontSize: 12, textAlign: 'left', maxWidth: 600, margin: '0 auto' }}>
             {String(this.state.error)}
           </pre>
-          <button onClick={() => { localStorage.clear(); window.location.href = '/login'; }}
+          {/* 桌面版从 file:// 加载：href='/login' 会跳到不存在的 file:///login 变空白页。
+              HashRouter 下必须走 hash，而且要 reload 一次让应用重新初始化。 */}
+          <button onClick={() => { localStorage.clear(); window.location.hash = '#/login'; window.location.reload(); }}
             style={{ marginTop: 20, padding: '8px 24px', background: '#F59E0B', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>
             清除缓存并重新登录
           </button>

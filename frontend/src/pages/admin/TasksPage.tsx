@@ -204,12 +204,14 @@ export default function TasksPage() {
           >
             详情
           </Button>
-          {record.status === 'pending' && (
+          {/* 创建任务时司机是必填，所以任务不会停在 pending。
+              已分配但还没开始的任务必须能改派——司机请假、派错人都要靠这个。 */}
+          {['pending', 'assigned'].includes(record.status) && (
             <Button
               size="small" type="primary" icon={<CarOutlined />}
               onClick={() => { setSelectedTask(record); setAssignOpen(true); }}
             >
-              分配
+              {record.driverId ? '改派' : '分配'}
             </Button>
           )}
           {['pending', 'assigned'].includes(record.status) && (
@@ -220,7 +222,7 @@ export default function TasksPage() {
           {['completed', 'cancelled'].includes(record.status) && (
             <Popconfirm
               title="确定删除此任务？"
-              description="删除后无法恢复，相关工时记录也会保留"
+              description="该任务的工时记录、GPS 轨迹和完工照片会一并删除，无法恢复。只是想结束任务请用「取消」。"
               onConfirm={() => handleDelete(record.id)}
               okText="删除"
               okButtonProps={{ danger: true }}

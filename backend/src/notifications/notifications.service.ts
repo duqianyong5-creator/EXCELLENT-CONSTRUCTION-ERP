@@ -35,7 +35,12 @@ export class NotificationsService {
     }
 
     if (data.notifyAdmins) {
-      const admins = await this.usersService.findAll({ role: UserRole.ADMIN });
+      // 调度员也要收：GPS 静止报警、RUC 到期这些都是他们当班时要处理的事。
+      // 以前只发给 role=admin，结果调度员的通知页永远是空的、铃铛永远是 0。
+      const recipients = await Promise.all(
+        [UserRole.ADMIN, UserRole.DISPATCHER].map((role) => this.usersService.findAll({ role })),
+      );
+      const admins = recipients.flat();
       for (const admin of admins) {
         const notif = this.repo.create({
           userId: admin.id,

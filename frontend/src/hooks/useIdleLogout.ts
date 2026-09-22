@@ -19,7 +19,10 @@ export function useIdleLogout() {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         dispatch(logout());
-        window.location.href = '/login';
+        // 应用用的是 HashRouter，桌面版还是从 file:// 加载的：
+        // href='/login' 会让 Electron 跳到 file:///login（不存在），
+        // 窗口变成空白的找不到文件页，而生产环境菜单和开发者工具都关了，用户只能强杀进程。
+        window.location.hash = '#/login';
       }, IDLE_MS);
     };
 

@@ -134,6 +134,13 @@ export default function LoginPage() {
 
           
 
+          {/* /register 路由和注册页一直都有，只是登录页没有入口，
+              被告知「在桌面端自己注册」的客户/司机根本找不到 */}
+          <div className="right-footer">
+            <span style={{ color: '#94a3b8' }}>{t('no_account')}</span>
+            <a className="register-link" onClick={() => navigate('/register')}>{t('register')}</a>
+          </div>
+
           <div className="version">V1.0.0</div>
         </div>
       </div>

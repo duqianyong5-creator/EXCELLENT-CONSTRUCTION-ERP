@@ -79,7 +79,11 @@ function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) 
 function DriverMap({ positions }: { positions: any[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  // 按司机 id 存 marker：原地更新而不是每次刷新全删重建，
+  // 否则每 10 秒（有定位器时 2 秒）打开的气泡会自己关掉、地图也会跳回全局视野
+  const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const didAutoFit = useRef(false);
+  const userMovedMap = useRef(false);
 
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
@@ -89,24 +93,31 @@ function DriverMap({ positions }: { positions: any[] }) {
       zoomControl: true,
     });
     addBaseLayers(leafletMap.current);
+    // 用户一旦自己缩放或拖动，就不再自动归位——调度员放大看某辆车时不该被拽回去
+    const markMoved = () => { userMovedMap.current = true; };
+    leafletMap.current.on('zoomstart', markMoved);
+    leafletMap.current.on('dragstart', markMoved);
     return () => {
       leafletMap.current?.remove();
       leafletMap.current = null;
+      markersRef.current.clear();
+      didAutoFit.current = false;
+      userMovedMap.current = false;
     };
   }, []);
 
   useEffect(() => {
     const map = leafletMap.current;
     if (!map) return;
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
 
     const validPos = positions.filter(p =>
       p.latitude != null && p.longitude != null &&
       !isNaN(Number(p.latitude)) && !isNaN(Number(p.longitude))
     );
 
-    validPos.forEach(pos => {
+    const seen = new Set<string>();
+
+    validPos.forEach((pos, i) => {
       const lat = Number(pos.latitude ?? pos.g_latitude);
       const lng = Number(pos.longitude ?? pos.g_longitude);
       const speed = Number(pos.speed ?? pos.g_speed ?? 0).toFixed(1);
@@ -114,6 +125,25 @@ function DriverMap({ positions }: { positions: any[] }) {
       const name = pos.driverName ?? pos.driver?.fullName ?? pos.driver?.username ?? `司机`;
       const safeName = escapeHtml(name);
       const safeInitial = escapeHtml(name.charAt(0).toUpperCase());
+      const key = String(pos.driverId ?? pos.g_driver_id ?? pos.driver_id ?? pos.driver?.id ?? `idx-${i}`);
+      seen.add(key);
+
+      const popupHtml = `
+          <div style="padding:8px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:6px">${safeName}</div>
+            <div style="font-size:12px;color:#666">速度：<b style="color:${AMBER}">${speed} km/h</b></div>
+            <div style="font-size:11px;color:#999;margin-top:4px">坐标：${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+          </div>
+        `;
+
+      const existing = markersRef.current.get(key);
+      if (existing) {
+        // 原地挪动并刷新气泡内容：正在看的气泡不会被关掉
+        existing.setLatLng([lat, lng]);
+        existing.setPopupContent(popupHtml);
+        return;
+      }
+
       const icon = L.divIcon({
         className: '',
         html: `<div style="display:flex;flex-direction:column;align-items:center">
@@ -123,21 +153,23 @@ function DriverMap({ positions }: { positions: any[] }) {
         iconSize: [100, 60],
         iconAnchor: [50, 60],
       });
-      const marker = L.marker([lat, lng], { icon })
-        .bindPopup(`
-          <div style="padding:8px">
-            <div style="font-weight:700;font-size:14px;margin-bottom:6px">${safeName}</div>
-            <div style="font-size:12px;color:#666">速度：<b style="color:${AMBER}">${speed} km/h</b></div>
-            <div style="font-size:11px;color:#999;margin-top:4px">坐标：${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
-          </div>
-        `)
-        .addTo(map);
-      markersRef.current.push(marker);
+      const marker = L.marker([lat, lng], { icon }).bindPopup(popupHtml).addTo(map);
+      markersRef.current.set(key, marker);
     });
 
+    // 只移除这一轮没再上报的车
+    markersRef.current.forEach((marker, key) => {
+      if (seen.has(key)) return;
+      marker.remove();
+      markersRef.current.delete(key);
+    });
+
+    // 自动归位只做一次，而且用户自己缩放/拖动过之后就不再抢镜头
+    if (didAutoFit.current || userMovedMap.current || validPos.length === 0) return;
+    didAutoFit.current = true;
     if (validPos.length === 1) {
       map.setView([Number(validPos[0].latitude ?? validPos[0].g_latitude), Number(validPos[0].longitude ?? validPos[0].g_longitude)], 13);
-    } else if (validPos.length > 1) {
+    } else {
       const bounds = L.latLngBounds(validPos.map(p => [Number(p.latitude ?? p.g_latitude), Number(p.longitude ?? p.g_longitude)] as [number, number]));
       map.fitBounds(bounds, { padding: [50, 50] });
     }
@@ -202,8 +234,12 @@ export default function DashboardPage() {
   }, []);
 
   const refreshPositions = useCallback(async () => {
-    const [pos, drivers]: any = await Promise.all([gpsApi.positions(), usersApi.drivers()]);
-    setPositions(enrichPositions(pos, drivers));
+    // 监控大屏账号没有 /users/drivers 权限，用 Promise.all 时那个 403 会让整次刷新失败，
+    // 于是大屏上的车在页面加载后就再也不动了。司机名后端已经随定位一起带过来了。
+    const [posRes, driversRes] = await Promise.allSettled([gpsApi.positions(), usersApi.drivers()]);
+    const pos = posRes.status === 'fulfilled' ? posRes.value : [];
+    const drivers = driversRes.status === 'fulfilled' ? driversRes.value : [];
+    setPositions(enrichPositions(pos as any, drivers as any));
   }, [enrichPositions]);
 
   const refreshOnlineDrivers = useCallback(async () => {

@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param,
   UseGuards, UseInterceptors, UploadedFiles,
-  HttpCode, HttpStatus, NotFoundException,
+  HttpCode, HttpStatus, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -12,6 +12,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StorageService } from '../common/services/storage.service';
+import { ErrorCode } from '../common/i18n/messages';
 import { UserRole } from '../users/user.entity';
 
 @ApiTags('任务管理 / Tasks')
@@ -77,7 +78,17 @@ export class TasksController {
 
   @Post(':id/complete')
   @Roles(UserRole.DRIVER)
-  @UseInterceptors(FilesInterceptor('images', 5, { storage: memoryStorage() }))
+  // multipart 不走 express 的 JSON body 上限，没有 limits 的话 5 个文件可以是任意大小、
+  // 并且整个读进内存 —— 一个司机账号就能把进程撑爆（API 和定位器网关同进程）。
+  // 手机拍的工地照片压缩后通常 1~3MB，10MB 一张足够。
+  @UseInterceptors(FilesInterceptor('images', 5, {
+    storage: memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 10 },
+    fileFilter: (_req, file, cb) => {
+      const ok = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype);
+      cb(ok ? null : new BadRequestException(ErrorCode.UPLOAD_IMAGE_ONLY), ok);
+    },
+  }))
   @ApiOperation({ summary: '完成任务（上传工作记录照片到 Supabase Storage）' })
   async completeTask(
     @Param('id') id: string,

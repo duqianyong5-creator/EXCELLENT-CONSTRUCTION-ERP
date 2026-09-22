@@ -37,6 +37,8 @@ export const ErrorCode = {
   VEHICLE_PLATE_EXISTS: 'VEHICLE_PLATE_EXISTS',
   VEHICLE_DEVICE_PLATE_TAKEN: 'VEHICLE_DEVICE_PLATE_TAKEN',
 
+  UPLOAD_IMAGE_ONLY: 'UPLOAD_IMAGE_ONLY',
+
   RUC_PURCHASE_DATE_INVALID: 'RUC_PURCHASE_DATE_INVALID',
   RUC_READINGS_NOT_NUMBERS: 'RUC_READINGS_NOT_NUMBERS',
   RUC_END_MUST_EXCEED_START: 'RUC_END_MUST_EXCEED_START',
@@ -132,6 +134,11 @@ const MESSAGES: Record<string, Record<Lang, string>> = {
   [ErrorCode.VEHICLE_DEVICE_PLATE_TAKEN]: {
     zh: '该车牌已绑定其它定位器，一辆车只能绑一台，否则里程会算错',
     en: 'Another tracker is already bound to this plate — one per vehicle, or the mileage estimate breaks',
+  },
+
+  [ErrorCode.UPLOAD_IMAGE_ONLY]: {
+    zh: '只能上传图片（JPG / PNG / WEBP / HEIC），单张不超过 10MB',
+    en: 'Images only (JPG / PNG / WEBP / HEIC), up to 10MB each',
   },
 
   [ErrorCode.RUC_PURCHASE_DATE_INVALID]: {

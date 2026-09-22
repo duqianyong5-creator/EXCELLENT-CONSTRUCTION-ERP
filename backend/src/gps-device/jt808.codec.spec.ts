@@ -234,6 +234,18 @@ describe('0x0704 batch upload', () => {
     expect(parseBatchPositions(body).items).toHaveLength(0);
   });
 
+  it('reports the count the device declared so truncation cannot pass as success', () => {
+    // 上限本身是防放大攻击的，必须保留；但被截断这件事要能被上层看见——
+    // 平台是先回 OK 再解析的，终端收到 OK 就会清掉本地缓存。
+    const parts = [H('ffff'), H('01')]; // 声称 65535 个点，盲区补传
+    for (let i = 0; i < 3; i++) parts.push(H('0002'), H('abcd'));
+    const r = parseBatchPositions(Buffer.concat(parts));
+    expect(r.declared).toBe(65535);
+    expect(r.count).toBe(200);
+    expect(r.items.length).toBe(3);
+    expect(r.blindZone).toBe(true);
+  });
+
   it('caps the number of items a single frame can expand into (amplification guard)', () => {
     const item = Buffer.alloc(28);
     const lenBuf = Buffer.alloc(2); lenBuf.writeUInt16BE(28, 0);

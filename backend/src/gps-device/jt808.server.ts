@@ -7,7 +7,7 @@ import {
   Jt808Frame, decodeFrame, splitFrames, normalizeDeviceNo,
   parsePosition, parseBatchPositions, decodeTimezone, encodeTimezone,
   buildPlatformAck, buildRegisterAck, buildTimeSyncAck, buildSetParams, buildReboot, buildPositionQuery,
-  realtimeUploadParam, dwordParam, byteParam, stringParam,
+  realtimeUploadParam, dwordParam, byteParam, stringParam, MAX_BATCH_ITEMS,
 } from './jt808.codec';
 import { ErrorCode } from '../common/i18n/messages';
 
@@ -493,7 +493,15 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
           if (!pos) continue;
           if ((await this.devices.ingest(deviceNo, pos, { batch: true, blindZone: batch.blindZone })) === 'stored') stored++;
         }
-        this.logger.log(`batch from ${deviceNo}: ${batch.items.length} points${batch.blindZone ? ' (blind-zone backfill)' : ''}, stored ${stored}`);
+        const tag = batch.blindZone ? ' (blind-zone backfill)' : '';
+        if (batch.declared > batch.items.length) {
+          // 平台已经回了 OK，终端会清掉本地缓存 —— 这些点是找不回来的，必须留下记录
+          this.logger.warn(
+            `batch from ${deviceNo}${tag}: device declared ${batch.declared} points but only ${batch.items.length} were parsed ` +
+              `(cap ${MAX_BATCH_ITEMS}); the rest are lost because the batch was already acked OK`,
+          );
+        }
+        this.logger.log(`batch from ${deviceNo}: ${batch.items.length} points${tag}, stored ${stored}`);
         return;
       }
       case MsgId.TIME_SYNC_REQ: {

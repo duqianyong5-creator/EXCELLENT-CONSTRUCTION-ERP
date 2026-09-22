@@ -62,7 +62,7 @@ database/database.sql
 | 字段 | �?|
 | --- | --- |
 | 邮箱 | `admin@trucksystem.com` |
-| 密码 | `admin888` |
+| 密码 | 见 `database/database.sql` 顶部注释，**装完请立刻在「系统设置 → 修改密码」改掉** |
 
 上线前务必修改默认密码�?
 ## 环境变量
