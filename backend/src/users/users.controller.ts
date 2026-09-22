@@ -174,6 +174,35 @@ export class UsersController {
     return updated;
   }
 
+  // 注意：以下静态路径必须排在 @Patch(':id') 之前。
+  // Nest 按声明顺序注册，':id' 会把 /users/profile、/users/change-password 当成 id 吃掉。
+  @Patch('profile')
+  @ApiOperation({ summary: '更新个人资料' })
+  updateProfile(@CurrentUser() user: any, @Body() body: any) {
+    const { password, role, status, ...safe } = body;
+    return this.service.updateProfile(user.id, safe);
+  }
+
+  @Patch('change-password')
+  @ApiOperation({ summary: '修改密码' })
+  async changePassword(
+    @CurrentUser() user: any,
+    @Body('oldPassword') oldPassword: string,
+    @Body('newPassword') newPassword: string,
+  ) {
+    const result = await this.service.changePassword(user.id, oldPassword, newPassword);
+    await this.operationLogs.record({
+      actorId: user.id,
+      actorName: this.actorName(user),
+      action: 'users.change-password',
+      targetType: 'user',
+      targetId: user.id,
+      description: 'Changed own password',
+      details: {},
+    });
+    return result;
+  }
+
   @Patch(':id')
   @Roles(UserRole.ADMIN)
   async updateUser(@Param('id') id: string, @Body() body: any, @CurrentUser() user: any) {
@@ -210,39 +239,12 @@ export class UsersController {
     return updated;
   }
 
-  @Patch('profile')
-  @ApiOperation({ summary: '更新个人资料' })
-  updateProfile(@CurrentUser() user: any, @Body() body: any) {
-    const { password, role, status, ...safe } = body;
-    return this.service.updateProfile(user.id, safe);
-  }
-
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '删除用户（仅管理员）' })
   deleteUser(@Param('id') id: string, @CurrentUser() me: any) {
     if (id === me.id) throw new BadRequestException('不能删除自己的账户');
     return this.service.delete(id);
-  }
-
-  @Patch('change-password')
-  @ApiOperation({ summary: '修改密码' })
-  async changePassword(
-    @CurrentUser() user: any,
-    @Body('oldPassword') oldPassword: string,
-    @Body('newPassword') newPassword: string,
-  ) {
-    const result = await this.service.changePassword(user.id, oldPassword, newPassword);
-    await this.operationLogs.record({
-      actorId: user.id,
-      actorName: this.actorName(user),
-      action: 'users.change-password',
-      targetType: 'user',
-      targetId: user.id,
-      description: 'Changed own password',
-      details: {},
-    });
-    return result;
   }
 
   @Patch(':id/reset-password')

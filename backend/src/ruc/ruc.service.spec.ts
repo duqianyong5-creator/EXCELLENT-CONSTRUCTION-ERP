@@ -88,9 +88,85 @@ describe('RucService odometer calibration', () => {
     expect(saved.odometerCalibratedAt).toBeInstanceOf(Date);
   });
 
-  it('rejects a reading that goes backwards (odometers do not run backwards)', async () => {
+  it('accepts a downward correction — the estimate is what calibration exists to fix', async () => {
+    // 系统里的里程是估算值，可能偏高（GPS 兜底会多算、换设备、或上次校准手滑多打一位）。
+    // 以前这里拿估算值当下限拦住，结果输错一次就永久锁死，正确读数再也填不进去——
+    // 而这辆车的 RUC 提醒从此全部基于错的基准。
+    const { service, repo } = build([vehicle({ odometerKm: 500_000 })]);
+    await service.calibrate('v1', 50_000);
+    const saved = repo.save.mock.calls.at(-1)![0];
+    expect(saved.odometerKm).toBe(50_000);
+    expect(saved.odometerCalibratedKm).toBe(50_000);
+    // 日均里程的起算点也要跟着重置，否则这次下调会被当成"跑了负数"
+    expect(saved.odoSnapshotKm).toBe(50_000);
+  });
+
+  it('still rejects a reading that is not a usable number', async () => {
     const { service } = build([vehicle({ odometerKm: 120_000 })]);
-    await expect(service.calibrate('v1', 119_000)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.calibrate('v1', -1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.calibrate('v1', NaN)).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('RucService: a licence with no mileage basis must not be silent', () => {
+  it('tells the admin to calibrate when a licence is recorded but the truck was never calibrated', async () => {
+    // 这是「漏买 RUC 被罚」最容易发生的情形：买了许可、录进系统，却漏掉一次性的
+    // 里程表校准。系统算不出剩余里程，于是 level=UNKNOWN，而 UNKNOWN 的 rank 是 0——
+    // 和「正常」走同一个分支被跳过，这辆车从此再也不会被提醒任何事。
+    const { service, notifications, store } = build([
+      vehicle({ odometerKm: null, odometerCalibratedKm: null, rucEndKm: 121_000 }),
+    ]);
+
+    await service.checkAll();
+
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+    const payload = (notifications.create.mock.calls[0] as any)[1];
+    expect(payload.type).toBe('ruc_due');
+    expect(payload.meta.reason).toBe('never_calibrated');
+    expect(payload.notifyAdmins).toBe(true);
+    // 提醒里必须说清要做什么，否则收到的人不知道下一步
+    expect(String(payload.content)).toMatch(/校准/);
+    // 只提醒一次，不要每天刷
+    await service.checkAll();
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+    expect(store[0].rucAlertLevel).toBeGreaterThan(0);
+  });
+
+  it('stays quiet for a vehicle that has no licence recorded at all', async () => {
+    // 没录许可的车可能只是还没设置完，天天报警会让人忽略所有 RUC 提醒
+    const { service, notifications } = build([
+      vehicle({ odometerKm: null, odometerCalibratedKm: null, rucEndKm: null }),
+    ]);
+    await service.checkAll();
+    expect(notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('resumes normal warn/critical alerts once the truck is calibrated', async () => {
+    // 「需校准」标记占用的是同一个 rucAlertLevel 字段，如果校准后不归零，
+    // 之后真正的 WARN(1)/CRITICAL(2) 都会被 rank <= 9 静默跳过——
+    // 那就等于用一条提醒换掉了这辆车后续所有提醒。
+    const { service, notifications, store } = build([
+      vehicle({ odometerKm: null, odometerCalibratedKm: null, rucEndKm: 121_000 }),
+    ]);
+    await service.checkAll();
+    expect(store[0].rucAlertLevel).toBeGreaterThan(0);
+
+    await service.calibrate('v1', 120_900); // 剩 100 km -> CRITICAL
+    expect(store[0].rucAlertLevel).toBe(0);
+
+    notifications.create.mockClear();
+    await service.checkAll();
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+    expect((notifications.create.mock.calls[0] as any)[1].meta.reason).toBeUndefined();
+  });
+
+  it('does not hijack the normal warn/critical escalation', async () => {
+    // 能算出剩余里程的车，走原来的分级逻辑，不应该被"需校准"这条抢走
+    const { service, notifications } = build([vehicle({ odometerKm: 120_900 })]); // 剩 100 -> CRITICAL
+    await service.checkAll();
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+    const payload = (notifications.create.mock.calls[0] as any)[1];
+    expect(payload.meta.reason).toBeUndefined();
   });
 });
 

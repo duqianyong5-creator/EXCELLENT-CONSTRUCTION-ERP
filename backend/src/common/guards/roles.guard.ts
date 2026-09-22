@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { UserRole } from '../../users/user.entity';
+import { ErrorCode } from '../i18n/messages';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -19,7 +20,7 @@ export class RolesGuard implements CanActivate {
     const hasRole = requiredRoles.some((role) => user?.role === role);
 
     if (!hasRole) {
-      throw new ForbiddenException('权限不足 / Insufficient permissions');
+      throw new ForbiddenException(ErrorCode.FORBIDDEN_ROLE);
     }
 
     return hasRole;

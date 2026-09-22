@@ -31,6 +31,9 @@ api.interceptors.request.use(async (config) => {
   config.baseURL = baseUrl;
   const token = await SecureStore.getItemAsync('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // 后端只回错误码，按这个头返回对应语言的句子（界面不再中英混排）
+  const lang = await SecureStore.getItemAsync('lang').catch(() => null);
+  config.headers['X-Lang'] = lang === 'en' ? 'en' : 'zh';
   return config;
 });
 

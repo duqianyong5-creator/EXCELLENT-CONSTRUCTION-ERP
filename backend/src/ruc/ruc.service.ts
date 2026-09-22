@@ -6,6 +6,7 @@ import { Vehicle } from './vehicle.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { RucAlertLevel, RucThresholds, applyDistance, assessRuc } from './ruc.util';
+import { ErrorCode } from '../common/i18n/messages';
 
 /** 车牌归一化：与 gps-device / 任务侧完全一致，否则三方对不上 */
 export function normalizeVehiclePlate(plate: string | null | undefined): string {
@@ -14,6 +15,9 @@ export function normalizeVehiclePlate(plate: string | null | undefined): string 
 
 /** 日均里程的统计窗口：太短会被单日长途带偏，太长又反应不过来 */
 const SNAPSHOT_WINDOW_DAYS = 7;
+
+/** 「有许可但从没校准」的提醒级别号：独立于 warn/critical/exceeded 的升级序列，只提醒一次 */
+const NEEDS_CALIBRATION_RANK = 9;
 
 const LEVEL_RANK: Record<RucAlertLevel, number> = {
   [RucAlertLevel.UNKNOWN]: 0,
@@ -57,16 +61,16 @@ export class RucService {
 
   private async findByIdOrFail(id: string): Promise<Vehicle> {
     const vehicle = await this.repo.findOne({ where: { id } });
-    if (!vehicle) throw new NotFoundException('车辆不存在 / Vehicle not found');
+    if (!vehicle) throw new NotFoundException(ErrorCode.VEHICLE_NOT_FOUND);
     return vehicle;
   }
 
   async create(dto: { plate: string; label?: string }): Promise<Vehicle> {
     const plate = normalizeVehiclePlate(dto.plate);
-    if (!plate) throw new BadRequestException('请填写车牌 / Plate is required');
-    if (plate.length > 32) throw new BadRequestException('车牌过长 / Plate too long');
+    if (!plate) throw new BadRequestException(ErrorCode.VEHICLE_PLATE_REQUIRED);
+    if (plate.length > 32) throw new BadRequestException(ErrorCode.VEHICLE_PLATE_TOO_LONG);
     if (await this.repo.findOne({ where: { plate } })) {
-      throw new BadRequestException('该车牌已登记 / This plate is already registered');
+      throw new BadRequestException(ErrorCode.VEHICLE_PLATE_EXISTS);
     }
     return this.repo.save(this.repo.create({
       plate,
@@ -101,10 +105,10 @@ export class RucService {
     const startKm = Number(dto.startKm);
     const endKm = Number(dto.endKm);
     if (!Number.isFinite(startKm) || !Number.isFinite(endKm)) {
-      throw new BadRequestException('起止里程必须是数字 / Start and end readings must be numbers');
+      throw new BadRequestException(ErrorCode.RUC_READINGS_NOT_NUMBERS);
     }
     if (endKm <= startKm) {
-      throw new BadRequestException('许可的截止里程必须大于起始里程 / Licence end must be greater than its start');
+      throw new BadRequestException(ErrorCode.RUC_END_MUST_EXCEED_START);
     }
     const current = numberOrNull(vehicle.odometerKm);
     if (current != null && endKm <= current) {
@@ -129,12 +133,15 @@ export class RucService {
     const vehicle = await this.findByIdOrFail(id);
     const reading = Number(odometerKm);
     if (!Number.isFinite(reading) || reading < 0) {
-      throw new BadRequestException('里程读数无效 / Invalid odometer reading');
+      throw new BadRequestException(ErrorCode.RUC_ODOMETER_INVALID);
     }
+    // 这里不能拿"系统估算值"当下限来拦：估算本来就可能偏高（GPS 兜底、设备换新、
+    // 或上一次校准手滑多打一位），而校准的全部意义就是纠正它。以前拦了之后，
+    // 输错一次就永久锁死，正确读数再也填不进去。真实读数一律接受，只记日志留痕。
     const current = numberOrNull(vehicle.odometerKm);
     if (current != null && reading < current - 1) {
-      throw new BadRequestException(
-        `里程读数不能比当前估算（${Math.round(current)} km）更小 / An odometer cannot run backwards`,
+      this.logger.warn(
+        `calibrate ${vehicle.displayPlate || vehicle.plate}: ${Math.round(current)} km -> ${Math.round(reading)} km (corrected downwards)`,
       );
     }
     const now = new Date();
@@ -145,6 +152,10 @@ export class RucService {
     // 校准点同时作为日均里程的新起算点，避免把校准造成的跳变算成"跑了很多"
     vehicle.odoSnapshotKm = reading;
     vehicle.odoSnapshotAt = now;
+    // 提醒级别归零：基准换了，剩余里程要重新判定。
+    // 这一步也是「需校准」标记（rank 9）的出口——不归零的话，
+    // 之后真的 WARN(1)/CRITICAL(2) 都会被 rank <= 9 跳过，这辆车再也不会被提醒。
+    vehicle.rucAlertLevel = 0;
     return this.repo.save(vehicle);
   }
 
@@ -216,7 +227,7 @@ export class RucService {
    * 每天检查一次。RUC 是按里程走的，不需要按分钟盯；
    * 每天一次既能提前几天发现，又不会变成刷屏的噪音。
    */
-  @Cron(CronExpression.EVERY_DAY_AT_8AM)
+  @Cron(CronExpression.EVERY_DAY_AT_8AM, { timeZone: 'Pacific/Auckland' })
   async checkAll(): Promise<void> {
     try {
       const rows = await this.listWithStatus();
@@ -224,6 +235,20 @@ export class RucService {
       for (const row of rows) {
         if (!row.enabled) continue;
         await this.rollSnapshot(row, now);
+
+        // 买了许可、却从没校准过里程 —— 这车永远算不出"还剩多少公里"，
+        // 以前它和"正常"一样被跳过，于是系统对它彻底沉默，直到超里程被罚。
+        // 没登记许可的车仍然不推送（避免还没录入的车天天报警）。
+        if (row.level === RucAlertLevel.UNKNOWN) {
+          const needsCalibration =
+            numberOrNull(row.rucEndKm) != null && numberOrNull(row.odometerKm) == null;
+          // 同样只提醒一次；校准完成后 calibrate() 会把级别归零，正常分级重新生效
+          if (needsCalibration && (row.rucAlertLevel ?? 0) !== NEEDS_CALIBRATION_RANK) {
+            await this.notifyNeedsCalibration(row);
+            await this.repo.update(row.id, { rucAlertLevel: NEEDS_CALIBRATION_RANK });
+          }
+          continue;
+        }
 
         const rank = LEVEL_RANK[row.level];
         // 只在"变得更严重"时提醒一次：同一级别每天重复推送会让人彻底忽略它
@@ -245,6 +270,31 @@ export class RucService {
     const stale = snapAt == null || (now.getTime() - snapAt) > SNAPSHOT_WINDOW_DAYS * 24 * 3600 * 1000;
     if (!stale) return;
     await this.repo.update(vehicle.id, { odoSnapshotKm: odo, odoSnapshotAt: now });
+  }
+
+  /**
+   * 买了 RUC 许可、但从没校准过里程表：系统算不出剩余里程，也就无法在用完前提醒。
+   * 这是「漏买 RUC 被罚」最容易发生的一种情况——界面看着像还没设置完的车，实际已经在跑。
+   */
+  private async notifyNeedsCalibration(row: VehicleRucStatus): Promise<void> {
+    const plate = row.displayPlate || row.plate;
+    await this.notifications.create(null, {
+      title: `RUC 无法提醒：${plate} 未校准里程`,
+      content:
+        `车辆 ${plate} 已登记 RUC 许可，但从未录入过 hubodometer 读数，` +
+        '系统无法估算还剩多少公里，也就无法在用完前提醒你。' +
+        '请到「车辆/路税」页对这辆车做一次「校准里程」。',
+      type: 'ruc_due',
+      meta: {
+        vehicleId: row.id,
+        plate,
+        level: row.level,
+        reason: 'never_calibrated',
+        rucEndKm: numberOrNull(row.rucEndKm),
+      },
+      notifyAdmins: true,
+    });
+    this.logger.warn(`RUC cannot be estimated for ${plate}: licence recorded but never calibrated`);
   }
 
   private async notify(row: VehicleRucStatus): Promise<void> {

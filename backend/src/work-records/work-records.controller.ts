@@ -22,13 +22,13 @@ export class WorkRecordsController {
 
   @Get('task/:taskId')
   @ApiOperation({ summary: '按任务获取工时' })
-  findByTask(@Param('taskId') taskId: string) {
-    return this.service.findByTask(taskId);
+  findByTask(@Param('taskId') taskId: string, @CurrentUser() user: any) {
+    return this.service.findByTask(taskId, user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findById(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.service.findById(id, user);
   }
 
   @Delete(':id')

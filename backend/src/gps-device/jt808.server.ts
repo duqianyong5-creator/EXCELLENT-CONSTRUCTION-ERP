@@ -9,6 +9,7 @@ import {
   buildPlatformAck, buildRegisterAck, buildTimeSyncAck, buildSetParams, buildReboot, buildPositionQuery,
   realtimeUploadParam, dwordParam, byteParam, stringParam,
 } from './jt808.codec';
+import { ErrorCode } from '../common/i18n/messages';
 
 interface Session {
   socket: net.Socket;
@@ -230,7 +231,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
 
   private requireSession(deviceNo: string): Session {
     const s = this.byDevice.get(normalizeDeviceNo(deviceNo));
-    if (!s || !s.phone) throw new NotFoundException('设备不在线 / Device is offline');
+    if (!s || !s.phone) throw new NotFoundException(ErrorCode.DEVICE_OFFLINE);
     return s;
   }
 

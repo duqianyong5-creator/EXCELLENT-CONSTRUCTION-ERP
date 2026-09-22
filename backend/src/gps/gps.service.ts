@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Task, TaskStatus } from '../tasks/task.entity';
 import { UserRole } from '../users/user.entity';
 import { haversineKm } from './geo.util';
+import { ErrorCode } from '../common/i18n/messages';
 
 type RequestUser = { id: string; role: UserRole };
 
@@ -160,7 +161,7 @@ export class GpsService {
       if (user.role === UserRole.CLIENT && task.clientId === user.id) return;
       if (user.role === UserRole.DRIVER && task.driverId === user.id) return;
     }
-    throw new ForbiddenException('无权查看该任务轨迹 / Not allowed');
+    throw new ForbiddenException(ErrorCode.FORBIDDEN_TASK_TRACK);
   }
 
   private async assertDriverVisible(driverId: string, user: RequestUser): Promise<void> {
@@ -174,7 +175,7 @@ export class GpsService {
       });
       if (task) return;
     }
-    throw new ForbiddenException('无权查看该司机位置 / Not allowed');
+    throw new ForbiddenException(ErrorCode.FORBIDDEN_DRIVER_POSITION);
   }
 
   async getTrackForUser(taskId: string, user: RequestUser): Promise<GpsLog[]> {

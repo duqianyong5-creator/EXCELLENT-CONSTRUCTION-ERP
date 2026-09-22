@@ -7,6 +7,7 @@ import { join } from 'path';
 import * as os from 'os';
 import { AppModule } from './app.module';
 import { createCorsOriginResolver } from './config/security.config';
+import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -34,6 +35,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // 服务里只抛错误码，这里按请求语言换成中文或英文的句子（不再返回 "中文 / English" 混排）
+  app.useGlobalFilters(new I18nExceptionFilter());
 
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',

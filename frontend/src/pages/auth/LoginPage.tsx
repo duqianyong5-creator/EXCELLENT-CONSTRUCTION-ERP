@@ -12,11 +12,17 @@ import { setCredentials } from '../../store/slices/authSlice';
 const AMBER = '#F59E0B';
 const AMBER_DARK = '#D97706';
 
-// 左侧功能标签 —— 根据本系统真实功能
-const FEATURES = ['用户管理', '任务调度', '工时记录', 'GPS 追踪', '异常监控', '通知中心'];
+// 左侧功能标签 —— 根据本系统真实功能。存 key，按当前语言显示，不做中英混排
+const FEATURE_KEYS = ['feat_users', 'feat_dispatch', 'feat_hours', 'feat_gps', 'feat_anomaly', 'feat_notify'];
 
 export default function LoginPage() {
   const { t, i18n } = useTranslation();
+  const lang = i18n.language === 'en' ? 'en' : 'zh';
+
+  const switchLang = (next: 'zh' | 'en') => {
+    i18n.changeLanguage(next);
+    localStorage.setItem('language', next);
+  };
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
@@ -33,7 +39,8 @@ export default function LoginPage() {
       else if (role === 'driver') navigate('/driver/tasks');
       else navigate('/client/tasks');
     } catch (err: any) {
-      message.error(err.message || '登录失败');
+      // 后端按 X-Lang 返回当前语言的句子；真取不到再退回本地文案
+      message.error(err?.message || t('login_failed'));
     } finally {
       setLoading(false);
     }
@@ -50,11 +57,11 @@ export default function LoginPage() {
             EXCELLENT<br />
             <span style={{ color: AMBER }}>CONSTRUCTION</span> LTD
           </div>
-          <div className="brand-sub">DISPATCH MANAGEMENT SYSTEM</div>
+          <div className="brand-sub">{t('brand_sub')}</div>
 
           <div className="feature-tags">
-            {FEATURES.map((f) => (
-              <span key={f} className="feature-tag">{f}</span>
+            {FEATURE_KEYS.map((k) => (
+              <span key={k} className="feature-tag">{t(k)}</span>
             ))}
           </div>
 
@@ -62,9 +69,9 @@ export default function LoginPage() {
             <div className="contact-row">
               <span className="contact-icon"><LaptopOutlined /></span>
               <div>
-                <div className="contact-main">IT Project Manager</div>
+                <div className="contact-main">{t('it_contact')}</div>
                 <div className="contact-sub">
-                  IT 项目经理 <PhoneOutlined style={{ color: AMBER, margin: '0 4px' }} /> 021 079 8567
+                  <PhoneOutlined style={{ color: AMBER, marginRight: 6 }} />021 079 8567
                 </div>
               </div>
             </div>
@@ -77,15 +84,29 @@ export default function LoginPage() {
 
         {/* ===== 右侧：登录表单 ===== */}
         <div className="login-right">
+          {/* 语言切换放在右上角，整块面板只显示一种语言 */}
+          <div className="lang-switch" role="group" aria-label="Language">
+            <button
+              type="button"
+              className={lang === 'en' ? 'lang-on' : 'lang-off'}
+              onClick={() => switchLang('en')}
+            >EN</button>
+            <button
+              type="button"
+              className={lang === 'zh' ? 'lang-on' : 'lang-off'}
+              onClick={() => switchLang('zh')}
+            >CN</button>
+          </div>
+
           <div className="accent-bar" />
-          <h1 className="portal-title">Admin Portal</h1>
-          <p className="portal-sub">Dashboard · Tasks · Records · Users</p>
+          <h1 className="portal-title">{t('portal_title')}</h1>
+          <p className="portal-sub">{t('portal_sub')}</p>
 
           <Form onFinish={onFinish} layout="vertical" requiredMark={false} className="login-form">
             <Form.Item
               name="identifier"
-              label={<span className="field-label">USERNAME <span className="field-label-zh">用户名</span></span>}
-              rules={[{ required: true, message: '请输入账号' }]}
+              label={<span className="field-label">{t('username')}</span>}
+              rules={[{ required: true, message: t('enter_username') }]}
             >
               <Input
                 prefix={<UserOutlined style={{ color: '#9ca3af' }} />}
@@ -96,8 +117,8 @@ export default function LoginPage() {
 
             <Form.Item
               name="password"
-              label={<span className="field-label">PASSWORD <span className="field-label-zh">密码</span></span>}
-              rules={[{ required: true, message: '请输入密码' }]}
+              label={<span className="field-label">{t('password')}</span>}
+              rules={[{ required: true, message: t('enter_password') }]}
             >
               <Input.Password
                 prefix={<LockOutlined style={{ color: '#9ca3af' }} />}
@@ -107,22 +128,11 @@ export default function LoginPage() {
             </Form.Item>
 
             <Button type="primary" htmlType="submit" loading={loading} block className="signin-btn">
-              Sign In&nbsp;→
+              {t('sign_in')}&nbsp;→
             </Button>
           </Form>
 
-          <div className="right-footer" style={{ justifyContent: 'flex-end' }}>
-            <span className="lang-switch">
-              <button
-                className={i18n.language === 'zh' ? 'lang-on' : 'lang-off'}
-                onClick={() => { i18n.changeLanguage('zh'); localStorage.setItem('language', 'zh'); }}
-              >CN</button>
-              <button
-                className={i18n.language === 'en' ? 'lang-on' : 'lang-off'}
-                onClick={() => { i18n.changeLanguage('en'); localStorage.setItem('language', 'en'); }}
-              >EN</button>
-            </span>
-          </div>
+          
 
           <div className="version">V1.0.0</div>
         </div>
@@ -204,16 +214,16 @@ export default function LoginPage() {
         .contact-sub { color: #94a3b8; font-size: 11px; margin-top: 2px; }
         /* 右侧 */
         .login-right {
+          position: relative;
           flex: 1;
           background: #ffffff;
-          padding: 40px 44px;
+          padding: 56px 44px 40px;
           display: flex; flex-direction: column; justify-content: center;
         }
         .accent-bar { width: 40px; height: 4px; border-radius: 3px; background: ${AMBER}; margin-bottom: 16px; }
         .portal-title { font-size: 23px; font-weight: 800; color: #0f172a; margin: 0; }
         .portal-sub { font-size: 13px; color: #64748b; margin: 5px 0 22px; }
         .field-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #334155; }
-        .field-label-zh { color: #94a3b8; font-weight: 500; letter-spacing: 0; }
         .login-form .ant-input-affix-wrapper {
           border-radius: 10px; padding: 10px 13px; border-color: #e2e8f0;
         }
@@ -233,19 +243,25 @@ export default function LoginPage() {
           background: ${AMBER_DARK} !important; color: #fff !important;
           transform: translateY(-1px); box-shadow: 0 10px 28px ${AMBER}66;
         }
-        .right-footer {
-          display: flex; align-items: center; justify-content: space-between;
-          margin-top: 16px; font-size: 13px;
-        }
         .register-link { color: ${AMBER}; font-weight: 700; margin-left: 4px; text-decoration: none; }
         .register-link:hover { color: ${AMBER_DARK}; }
-        .lang-switch { display: inline-flex; gap: 4px; }
-        .lang-switch button {
-          border: none; background: transparent; cursor: pointer;
-          font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 8px;
+        /* 右上角语言开关：整块面板只显示一种语言 */
+        .lang-switch {
+          position: absolute; top: 20px; right: 24px;
+          display: inline-flex; overflow: hidden;
+          border: 1px solid #e2e8f0; border-radius: 10px;
+          background: #fff;
         }
+        .lang-switch button {
+          border: none; cursor: pointer;
+          min-width: 46px; padding: 7px 0;
+          font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+        .lang-switch button + button { border-left: 1px solid #e2e8f0; }
         .lang-on { background: ${AMBER}; color: #fff; }
-        .lang-off { color: #94a3b8; }
+        .lang-off { background: #fff; color: #94a3b8; }
+        .lang-off:hover { background: #f8fafc; color: #475569; }
         .version { text-align: center; color: #cbd5e1; font-size: 12px; margin-top: 14px; font-weight: 600; }
         /* 响应式：窄屏堆叠，隐藏左侧品牌大区块 */
         @media (max-width: 760px) {
@@ -254,7 +270,8 @@ export default function LoginPage() {
           .brand-name { font-size: 24px; }
           .feature-tags { justify-content: center; }
           .contact-block { margin-top: 28px; align-items: center; }
-          .login-right { padding: 36px 32px; }
+          .login-right { padding: 52px 32px 32px; }
+          .lang-switch { top: 14px; right: 16px; }
         }
       `}</style>
     </div>

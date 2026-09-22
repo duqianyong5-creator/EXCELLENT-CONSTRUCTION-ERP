@@ -7,6 +7,7 @@ import { GpsLog } from '../gps/gps-log.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OperationLogsService } from '../operation-logs/operation-logs.service';
 import { UserRole } from '../users/user.entity';
+import { ErrorCode } from '../common/i18n/messages';
 
 @Injectable()
 export class TasksService {
@@ -59,12 +60,24 @@ export class TasksService {
       .getMany();
   }
 
-  async findById(id: string): Promise<Task> {
+  /**
+   * actor 传入时会做归属校验。findAll 一直是按角色收窄的，但单条查询没有——
+   * 任何登录账号只要有任务 UUID 就能读到别家客户的姓名、邮箱、送货地址、货物和司机。
+   * 内部调用（开始/完成/取消任务等）不传 actor，行为不变。
+   */
+  async findById(id: string, actor?: any): Promise<Task> {
     const task = await this.taskRepo.findOne({
       where: { id },
       relations: ['client', 'driver'],
     });
     if (!task) throw new NotFoundException('任务不存在');
+
+    if (actor?.role === UserRole.DRIVER && task.driverId !== actor.id) {
+      throw new ForbiddenException(ErrorCode.FORBIDDEN_TASK);
+    }
+    if (actor?.role === UserRole.CLIENT && task.clientId !== actor.id) {
+      throw new ForbiddenException(ErrorCode.FORBIDDEN_TASK);
+    }
     return task;
   }
 

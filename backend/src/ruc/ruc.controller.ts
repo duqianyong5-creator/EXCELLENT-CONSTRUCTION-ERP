@@ -5,6 +5,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../users/user.entity';
 import { RucService } from './ruc.service';
+import { ErrorCode } from '../common/i18n/messages';
 
 @ApiTags('RUC')
 @ApiBearerAuth()
@@ -49,7 +50,7 @@ export class RucController {
   ) {
     const purchasedAt = body.purchasedAt ? new Date(body.purchasedAt) : undefined;
     if (purchasedAt && Number.isNaN(purchasedAt.getTime())) {
-      throw new BadRequestException('购买日期无效 / Invalid purchase date');
+      throw new BadRequestException(ErrorCode.RUC_PURCHASE_DATE_INVALID);
     }
     return this.service.recordLicence(id, {
       licenceNo: body.licenceNo,

@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { UserRole, UserStatus } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { OperationLogsService } from '../operation-logs/operation-logs.service';
+import { ErrorCode } from '../common/i18n/messages';
 
 @Injectable()
 export class AuthService {
@@ -17,21 +18,21 @@ export class AuthService {
   async validateUser(identifier: string, password: string) {
     // 提示语中英双写：司机端可切英文，网页端也有英文界面，后端只有一种文案时另一边会看不懂
     const user = await this.usersService.findByEmailOrUsername(identifier);
-    if (!user) throw new UnauthorizedException('账号不存在，请检查账号是否输错 / Account not found — check the username or email');
+    if (!user) throw new UnauthorizedException(ErrorCode.AUTH_ACCOUNT_NOT_FOUND);
 
     if (user.status === UserStatus.PENDING) {
-      throw new UnauthorizedException('账户待审核，请等待管理员批准 / Account is awaiting approval');
+      throw new UnauthorizedException(ErrorCode.AUTH_PENDING);
     }
     if (user.status === UserStatus.REJECTED) {
-      throw new UnauthorizedException('账户申请已被拒绝 / Account application was rejected');
+      throw new UnauthorizedException(ErrorCode.AUTH_REJECTED);
     }
     if (user.status === UserStatus.DISABLED) {
-      throw new UnauthorizedException('账户已被禁用，请联系管理员 / Account is disabled — contact your administrator');
+      throw new UnauthorizedException(ErrorCode.AUTH_DISABLED);
     }
 
     const userWithPassword = await this.usersService.findWithPassword(user.id);
     const isMatch = await bcrypt.compare(password, userWithPassword.password);
-    if (!isMatch) throw new UnauthorizedException('密码错误，请重新输入 / Incorrect password');
+    if (!isMatch) throw new UnauthorizedException(ErrorCode.AUTH_WRONG_PASSWORD);
 
     return user;
   }

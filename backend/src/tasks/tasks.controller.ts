@@ -44,8 +44,8 @@ export class TasksController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findById(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.service.findById(id, user);
   }
 
   @Post()

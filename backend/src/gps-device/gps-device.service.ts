@@ -7,6 +7,7 @@ import { GpsService } from '../gps/gps.service';
 import { RucService } from '../ruc/ruc.service';
 import { haversineKm } from '../gps/geo.util';
 import { normalizeDeviceNo, Position } from './jt808.codec';
+import { ErrorCode } from '../common/i18n/messages';
 
 export type IngestResult = 'unknown' | 'disabled' | 'no_fix' | 'no_task' | 'stored';
 
@@ -94,14 +95,14 @@ export class GpsDeviceService {
   private cleanPlate(value: string | undefined | null): string | null {
     const plate = String(value ?? '').trim();
     if (!plate) return null;
-    if (plate.length > 32) throw new BadRequestException('车牌过长 / Plate too long (max 32)');
+    if (plate.length > 32) throw new BadRequestException(ErrorCode.DEVICE_PLATE_TOO_LONG);
     return plate;
   }
 
   private cleanName(value: string | undefined | null): string | null {
     const name = String(value ?? '').trim();
     if (!name) return null;
-    if (name.length > 128) throw new BadRequestException('名称过长 / Name too long (max 128)');
+    if (name.length > 128) throw new BadRequestException(ErrorCode.DEVICE_NAME_TOO_LONG);
     return name;
   }
 
@@ -111,9 +112,9 @@ export class GpsDeviceService {
     if (/^\d{15}$/.test(deviceNo)) {
       throw new BadRequestException('这是 15 位 IMEI，请填设备号（11 位）/ That is an IMEI, enter the 11-digit device number');
     }
-    if (!/^\d{5,20}$/.test(deviceNo)) throw new BadRequestException('设备号须为 5~20 位数字 / Device number must be 5-20 digits');
+    if (!/^\d{5,20}$/.test(deviceNo)) throw new BadRequestException(ErrorCode.DEVICE_NO_INVALID);
     const exists = await this.repo.findOne({ where: { deviceNo } });
-    if (exists) throw new BadRequestException('该设备号已登记 / Device number already registered');
+    if (exists) throw new BadRequestException(ErrorCode.DEVICE_NO_EXISTS);
     const device = this.repo.create({
       deviceNo,
       vehiclePlate: this.cleanPlate(dto.vehiclePlate),
@@ -127,7 +128,7 @@ export class GpsDeviceService {
 
   async update(id: string, dto: { vehiclePlate?: string; name?: string; enabled?: boolean }): Promise<GpsDevice> {
     const device = await this.repo.findOne({ where: { id } });
-    if (!device) throw new NotFoundException('设备不存在 / Device not found');
+    if (!device) throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     if (dto.vehiclePlate !== undefined) device.vehiclePlate = this.cleanPlate(dto.vehiclePlate);
     if (dto.name !== undefined) device.name = this.cleanName(dto.name);
     if (dto.enabled !== undefined) device.enabled = !!dto.enabled;
@@ -138,14 +139,14 @@ export class GpsDeviceService {
 
   async remove(id: string): Promise<void> {
     const device = await this.repo.findOne({ where: { id } });
-    if (!device) throw new NotFoundException('设备不存在 / Device not found');
+    if (!device) throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     await this.repo.delete(id);
     this.invalidate(device.deviceNo);
   }
 
   async findById(id: string): Promise<GpsDevice> {
     const device = await this.repo.findOne({ where: { id } });
-    if (!device) throw new NotFoundException('设备不存在 / Device not found');
+    if (!device) throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     return device;
   }
 

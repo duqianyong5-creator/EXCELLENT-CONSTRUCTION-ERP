@@ -25,7 +25,7 @@ export function useSocket(token: string | null) {
 
     ref.current = socketInstance;
 
-    socketInstance.on('notification', (data: any) => {
+    socketInstance.on('notification:new', (data: any) => {
       dispatch(addNotification(data));
       notification.info({ message: data.title, description: data.content, duration: 4 });
     });
@@ -40,7 +40,7 @@ export function useSocket(token: string | null) {
     });
 
     return () => {
-      socketInstance?.off('notification');
+      socketInstance?.off('notification:new');
       socketInstance?.off('gps:update');
       socketInstance?.off('driver-presence:update');
     };

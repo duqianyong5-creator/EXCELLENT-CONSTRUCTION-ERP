@@ -10,6 +10,8 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // 后端只回错误码，按这个头返回对应语言的句子（界面不再中英混排）
+  config.headers['X-Lang'] = localStorage.getItem('language') || 'zh';
   return config;
 });
 

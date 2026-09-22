@@ -3,6 +3,21 @@ import { initReactI18next } from 'react-i18next';
 
 const zh = {
   translation: {
+    // Login page
+    brand_sub: '货车调度管理系统',
+    portal_title: '管理后台',
+    portal_sub: '仪表盘 · 任务 · 工时 · 用户',
+    it_contact: 'IT development',
+    sign_in: '登录',
+    enter_username: '请输入账号',
+    enter_password: '请输入密码',
+    login_failed: '登录失败，请重试',
+    feat_users: '用户管理',
+    feat_dispatch: '任务调度',
+    feat_hours: '工时记录',
+    feat_gps: 'GPS 追踪',
+    feat_anomaly: '异常监控',
+    feat_notify: '通知中心',
     // Auth
     login: '登录',
     logout: '退出登录',
@@ -107,6 +122,21 @@ const zh = {
 
 const en = {
   translation: {
+    // Login page
+    brand_sub: 'DISPATCH MANAGEMENT SYSTEM',
+    portal_title: 'Admin Portal',
+    portal_sub: 'Dashboard · Tasks · Records · Users',
+    it_contact: 'IT development',
+    sign_in: 'Sign In',
+    enter_username: 'Enter your username',
+    enter_password: 'Enter your password',
+    login_failed: 'Sign-in failed, please try again',
+    feat_users: 'Users',
+    feat_dispatch: 'Dispatch',
+    feat_hours: 'Work Records',
+    feat_gps: 'GPS Tracking',
+    feat_anomaly: 'Anomalies',
+    feat_notify: 'Notifications',
     login: 'Login',
     logout: 'Logout',
     register: 'Register',

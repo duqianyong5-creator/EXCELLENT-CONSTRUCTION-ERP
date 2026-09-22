@@ -18,7 +18,7 @@ export class GpsCleanupService {
 
   // 每天凌晨 3 点清理：删除「非进行中任务」且超过保留天数的 GPS 轨迹点。
   // 进行中任务的实时点永不删除；工时数字存在 work_records，删点不影响工时。
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { timeZone: 'Pacific/Auckland' })
   async cleanupOldGps() {
     try {
       const days = await this.settings.getNumber('gps_retention_days', 7);
