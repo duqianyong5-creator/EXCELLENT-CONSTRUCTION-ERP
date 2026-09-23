@@ -6,7 +6,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { join } from 'path';
 import * as os from 'os';
 import { AppModule } from './app.module';
+import helmet from 'helmet';
 import { createCorsOriginResolver } from './config/security.config';
+import { securityHeaders } from './config/security-headers.config';
 import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 
 async function bootstrap() {
@@ -22,6 +24,10 @@ async function bootstrap() {
 
   // 部署在 Railway/Render 等反向代理后面：信任第一跳代理，拿到真实客户端 IP（限流按 IP 才准）
   app.set('trust proxy', 1);
+
+  // 安全响应头。资源策略必须放宽到 cross-origin，否则桌面端(file://)和手机端
+  // 加载 /uploads 下的工完照片会被挡掉（见 security-headers.config.ts）
+  app.use(helmet(securityHeaders(isProd)));
 
   app.enableCors({
     origin: createCorsOriginResolver(configService),
