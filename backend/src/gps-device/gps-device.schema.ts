@@ -36,6 +36,22 @@ export const GPS_DEVICE_DDL: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_gps_devices_plate ON gps_devices(vehicle_plate)`,
   // 与 database/migrations 里的脚本保持一致：两条路径不能建出安全属性不同的表
   `ALTER TABLE gps_devices ENABLE ROW LEVEL SECURITY`,
+  // 圆形电子围栏。设备端不支持 0x8600，围栏由平台侧逐点判定（见 geofence.service.ts）
+  `CREATE TABLE IF NOT EXISTS geofences (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name           VARCHAR(128) NOT NULL,
+      center_lat     DECIMAL(10, 7) NOT NULL,
+      center_lng     DECIMAL(10, 7) NOT NULL,
+      radius_m       INT NOT NULL,
+      vehicle_plate  VARCHAR(32),
+      enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      alert_on_enter BOOLEAN NOT NULL DEFAULT TRUE,
+      alert_on_leave BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_geofences_plate ON geofences(vehicle_plate)`,
+  `ALTER TABLE geofences ENABLE ROW LEVEL SECURITY`,
 ];
 
 @Injectable()
@@ -89,9 +105,24 @@ export class GpsDeviceSchemaGuard implements OnModuleInit {
       );
     }
 
+    const [{ ok: geofencesOk }] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_name = 'geofences'
+       ) AS ok`,
+    );
+    if (!geofencesOk) {
+      // 围栏表缺失 = 每个定位点的围栏判定都会抛错。那段代码在上报路径上，
+      // 抛不出去只会被吞掉、报警静默消失 —— 宁可这次部署失败。
+      throw new Error(
+        'geofences table is missing and could not be created — run database/migrations/2026-09-23_device_alarms_geofences.sql. '
+        + `Details: ${failures.join(' | ') || 'no error reported'}`,
+      );
+    }
+
     if (failures.length) {
       this.logger.warn(`schema statements reported errors but the schema is valid: ${failures.join(' | ')}`);
     }
-    this.logger.log('gps_devices / gps_logs.source schema verified');
+    this.logger.log('gps_devices / gps_logs.source / geofences schema verified');
   }
 }

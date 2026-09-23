@@ -5,9 +5,14 @@ import { GpsDevice } from './gps-device.entity';
 import { Task, TaskStatus } from '../tasks/task.entity';
 import { GpsService } from '../gps/gps.service';
 import { RucService } from '../ruc/ruc.service';
+import { DeviceAlarmService } from './device-alarm.service';
 import { haversineKm } from '../gps/geo.util';
 import { normalizeDeviceNo, Position } from './jt808.codec';
 import { ErrorCode } from '../common/i18n/messages';
+import { normalizePlate } from './plate.util';
+
+// 老的 import 路径继续可用（这个函数原本就定义在这里）
+export { normalizePlate };
 
 export type IngestResult = 'unknown' | 'disabled' | 'no_fix' | 'no_task' | 'stored';
 
@@ -23,10 +28,6 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const MAX_PAST_SKEW_BATCH_MS = 7 * 24 * 3600 * 1000;
 const MAX_PAST_SKEW_LIVE_MS = 5 * 60 * 1000;
 
-/** 车牌归一化：大写、去空格/连字符/中点，便于设备登记的车牌与司机接单时输入的车牌匹配 */
-export function normalizePlate(plate: string | null | undefined): string {
-  return String(plate ?? '').toUpperCase().replace(/[\s\-·•.]/g, '');
-}
 
 function numberOrNull(v: unknown): number | null {
   const n = Number(v);
@@ -44,6 +45,7 @@ export class GpsDeviceService {
     @InjectRepository(Task) private taskRepo: Repository<Task>,
     private gpsService: GpsService,
     private ruc: RucService,
+    private alarms: DeviceAlarmService,
   ) {}
 
   // ---------- 管理 CRUD ----------
@@ -155,6 +157,9 @@ export class GpsDeviceService {
   invalidate(deviceNo: string): void {
     this.deviceCache.delete(normalizeDeviceNo(deviceNo));
     this.taskCache.clear();
+    // 车牌改了以后该车要比的围栏就变了，停用/删除同理：内存里的报警与围栏状态必须一起清掉，
+    // 否则拿旧状态做边沿判定会把下一次真报警当成「早就在报了」吞掉。
+    this.alarms.forget(normalizeDeviceNo(deviceNo));
   }
 
   async findByDeviceNo(rawNo: string): Promise<GpsDevice | null> {
@@ -276,6 +281,15 @@ export class GpsDeviceService {
         patch.lastTaskId = target.taskId;
         result = 'stored';
       }
+    }
+
+    // 报警判定（震动/断电/电子围栏）。
+    // 只看实时上报：盲区补报是一次性倒出来的几百个历史点，拿它们做「状态变化」判定会把
+    // 早就过去的报警重放一遍，还会让围栏进出在同一毫秒里反复触发。设备若仍在报警，
+    // 紧随其后的实时 0x0200 会把标志再带上来，不会漏。
+    // handle() 自己吞掉所有异常：这条路径跑在 TCP 网关上，抛出去会连 HTTP API 一起带走。
+    if (!opts.batch) {
+      await this.alarms.handle(device, pos, { hasFix, target, pointTime });
     }
 
     try {

@@ -11,17 +11,33 @@ export enum AnomalyType {
   TELEPORT = 'teleport',
   TIME_INCONSISTENCY = 'time_inconsistency',
   STATIONARY = 'stationary', // GPS 长时间不动
+  // 车载 JT808 定位器上报的报警。设备在没有进行中任务时也会报（半夜撬车就是这种），
+  // 所以这几类记录的 driver_id / task_id 允许为空，靠 device_no + vehicle_plate 定位到车。
+  SHOCK = 'shock', // 震动（0xE7 报警状态 bit0）
+  POWER_CUT = 'power_cut', // 主电源掉电 / 防拆（报警标志 bit8）
+  GEOFENCE_ENTER = 'geofence_enter', // 驶入围栏（平台侧判定）
+  GEOFENCE_LEAVE = 'geofence_leave', // 驶离围栏（平台侧判定）
 }
+
+/** 由定位器/围栏产生、可能没有司机的报警类型 */
+export const DEVICE_ANOMALY_TYPES: AnomalyType[] = [
+  AnomalyType.SHOCK,
+  AnomalyType.POWER_CUT,
+  AnomalyType.GEOFENCE_ENTER,
+  AnomalyType.GEOFENCE_LEAVE,
+];
 
 @Entity('gps_anomalies')
 export class GpsAnomaly {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'driver_id' })
+  // 车载定位器的报警（震动/断电/围栏）在车辆空闲、没有进行中任务时也会发生 —— 这恰恰是最要紧的场景
+  // （半夜停车场撬车）。所以 driver_id 可空：这类记录靠下面的 device_no / vehicle_plate 指向具体车辆。
+  @Column({ name: 'driver_id', nullable: true })
   driverId: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'driver_id' })
   driver: User;
 
@@ -65,4 +81,15 @@ export class GpsAnomaly {
 
   @Column({ name: 'snooze_until', type: 'timestamp', nullable: true })
   snoozeUntil: Date;
+
+  /** 报警来源定位器的设备号（仅车载报警）。没有司机时，靠它和车牌才能知道是哪台车。 */
+  @Column({ name: 'device_no', length: 32, nullable: true })
+  deviceNo: string;
+
+  @Column({ name: 'vehicle_plate', length: 32, nullable: true })
+  vehiclePlate: string;
+
+  /** 触发的围栏（仅 geofence_enter / geofence_leave） */
+  @Column({ name: 'geofence_id', nullable: true })
+  geofenceId: string;
 }

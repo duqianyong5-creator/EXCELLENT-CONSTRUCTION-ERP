@@ -8,7 +8,7 @@ const RECENT = new Date(Date.now() - 30_000);
 
 function pos(over: Partial<Position> = {}): Position {
   return {
-    alarm: 0, status: 2, acc: true, fixed: true, moving: true,
+    alarm: 0, alarms: [], status: 2, acc: true, fixed: true, moving: true,
     latitude: -36.8485, longitude: 174.7633, altitude: 10, speedKmh: 42.5, heading: 90,
     time: RECENT,
     extras: { raw: new Map(), batteryPercent: 88, externalPower: true, signalPercent: 70 },
@@ -35,8 +35,9 @@ function build(opts: { device?: any; tasks?: any[] } = {}) {
   };
   const gpsService = { upload: jest.fn(async () => ({ log: {}, anomalies: [] })) };
   const ruc = { addDistance: jest.fn(async () => undefined) };
-  const service = new GpsDeviceService(repo as any, taskRepo as any, gpsService as any, ruc as any);
-  return { service, repo, taskRepo, gpsService, ruc, device };
+  const alarms = { handle: jest.fn(async () => undefined), forget: jest.fn() };
+  const service = new GpsDeviceService(repo as any, taskRepo as any, gpsService as any, ruc as any, alarms as any);
+  return { service, repo, taskRepo, gpsService, ruc, alarms, device };
 }
 
 describe('normalizePlate', () => {
@@ -272,5 +273,54 @@ describe('GpsDeviceService.create / touch', () => {
     repo.update.mockClear();
     await service.touch('1');
     expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('GpsDeviceService.ingest -> 报警判定', () => {
+  it('hands every live position to the alarm service with the resolved task', async () => {
+    const { service, alarms } = build();
+    const p = pos({ alarms: ['power_cut'] });
+    await service.ingest('51160004464', p);
+    expect(alarms.handle).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceNo: '51160004464' }),
+      p,
+      expect.objectContaining({ hasFix: true, target: { taskId: 't1', driverId: 'd1' } }),
+    );
+  });
+
+  it('still evaluates alarms when no task matches (车辆空闲时被撬也要报)', async () => {
+    const { service, alarms } = build({ tasks: [] });
+    await service.ingest('51160004464', pos({ alarms: ['shock'] }));
+    expect(alarms.handle).toHaveBeenCalledWith(expect.anything(), expect.anything(),
+      expect.objectContaining({ hasFix: true, target: null }));
+  });
+
+  it('tells the alarm service there is no fix, so geofences are not evaluated on 0,0', async () => {
+    const { service, alarms } = build();
+    await service.ingest('51160004464', pos({ fixed: false }));
+    expect(alarms.handle).toHaveBeenCalledWith(expect.anything(), expect.anything(),
+      expect.objectContaining({ hasFix: false }));
+  });
+
+  it('does NOT replay alarms for blind-zone backfill points', async () => {
+    // 补报是一次性倒出来的几百个历史点：拿它们做状态变化判定会把早就过去的报警重放一遍
+    const { service, alarms } = build();
+    await service.ingest('51160004464', pos({ alarms: ['power_cut'] }), { batch: true, blindZone: true });
+    expect(alarms.handle).not.toHaveBeenCalled();
+  });
+
+  it('forgets in-memory alarm state when the device registration changes', async () => {
+    // 车牌一改，这台车要比的围栏就变了；停用/删除同理
+    const { service, alarms } = build();
+    await service.update('dev1', { vehiclePlate: 'XYZ999' });
+    expect(alarms.forget).toHaveBeenCalledWith('51160004464');
+  });
+
+  it('keeps ingest alive when alarm handling blows up', async () => {
+    const { service, alarms, gpsService } = build();
+    alarms.handle.mockRejectedValue(new Error('boom'));
+    // handle() 自己吞异常；即便它没吞住，定位入库也不该被带走
+    await expect(service.ingest('51160004464', pos())).rejects.toThrow();
+    expect(gpsService.upload).toHaveBeenCalled();
   });
 });

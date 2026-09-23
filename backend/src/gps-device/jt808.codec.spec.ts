@@ -1,5 +1,6 @@
 import {
-  AckResult, MsgId, RegisterResult, ParamId,
+  AckResult, MsgId, RegisterResult, ParamId, AlarmBit, ExtAlarmBit,
+  decodeAlarms, parseAlarmExt,
   bcdToString, stringToBcd, normalizeDeviceNo,
   escapeBytes, unescapeBytes, xorChecksum,
   decodeFrame, encodeFrame, splitFrames,
@@ -331,5 +332,141 @@ describe('0x8103 set params / 0x8155 reboot', () => {
     expect(f.msgId).toBe(MsgId.REBOOT);
     expect(f.body.length).toBe(0);
     expect(f.serial).toBe(9);
+  });
+});
+
+// 报警位的权威来源是厂家文档《表18 报警标志位定义》和附加信息 0xE7 那一行，
+// 不是 JT/T 808-2013 标准表 —— 两者在这批固件上有实质差别，下面的用例把差别钉住。
+describe('decodeAlarms: 表18 报警标志位', () => {
+  it('returns nothing for a clean position', () => {
+    expect(decodeAlarms(0)).toEqual([]);
+    expect(decodeAlarms(0, { alarmExt: H('0000000000000000') })).toEqual([]);
+  });
+
+  it('decodes 主电源掉电 (bit8) — owner 要的「断电报警」', () => {
+    expect(AlarmBit.POWER_CUT).toBe(8);
+    expect(decodeAlarms(1 << 8)).toEqual(['power_cut']);
+  });
+
+  it('keeps 欠压(bit7) 和 掉电(bit8) 分开：低电不是断电', () => {
+    expect(decodeAlarms(1 << 7)).toEqual(['low_battery']);
+    expect(decodeAlarms((1 << 7) | (1 << 8))).toEqual(['low_battery', 'power_cut']);
+  });
+
+  it('decodes SOS / 超速 / 疲劳 / 天线 / 超时 / 非法点火 / 非法位移', () => {
+    expect(decodeAlarms(1 << 0)).toEqual(['sos']);
+    expect(decodeAlarms(1 << 1)).toEqual(['overspeed']);
+    expect(decodeAlarms(1 << 2)).toEqual(['fatigue']);
+    expect(decodeAlarms(1 << 5)).toEqual(['gnss_antenna_open']);
+    expect(decodeAlarms(1 << 6)).toEqual(['gnss_antenna_short']);
+    expect(decodeAlarms(1 << 18)).toEqual(['drive_time_exceeded']);
+    expect(decodeAlarms(1 << 19)).toEqual(['park_timeout']);
+    expect(decodeAlarms(1 << 27)).toEqual(['illegal_ignition']);
+  });
+
+  it('reads bit28 (车辆非法位移) without sign-extension damage', () => {
+    // 1 << 28 之后再往上就要小心 JS 位运算的符号位；bit29 同理
+    expect(decodeAlarms(1 << 28)).toEqual(['illegal_displacement']);
+    expect(decodeAlarms(0x30000000)).toEqual(['illegal_displacement', 'dog_bark']);
+  });
+
+  it('does NOT invent 进出区域 at bit20: 表18 里没有这一位（电子围栏只能平台侧算）', () => {
+    // 标准 JT/T 808-2013 的 bit20 是「进出区域/路线」，这批固件的表18 根本没有它。
+    // 如果照标准解码，这里会冒出一个永远不会被触发的 geofence 报警。
+    expect(decodeAlarms(1 << 20)).toEqual([]);
+  });
+
+  it('does NOT treat bit29 as 碰撞: 厂家把它改成了犬吠报警', () => {
+    // 标准表里 bit29/bit30 是碰撞/侧翻；照标准猜会把犬吠报成车祸。
+    expect(decodeAlarms(1 << 29)).toEqual(['dog_bark']);
+    expect(decodeAlarms(1 << 30)).toEqual([]);
+    expect(decodeAlarms(0x80000000)).toEqual([]);
+  });
+
+  it('ignores a rubbish alarm word instead of throwing', () => {
+    expect(decodeAlarms(NaN)).toEqual([]);
+    expect(decodeAlarms(0xffffffff)).toContain('power_cut');
+  });
+});
+
+describe('parseAlarmExt / 震动报警 (0xE7)', () => {
+  // 文档 0xE7 那一行给了工作样例：0x0001000700000000 =「震动报警，设备设防，设备休眠」
+  const VENDOR_E7 = H('0001000700000000');
+
+  it('matches the vendor worked example byte-for-byte', () => {
+    const ext = parseAlarmExt(VENDOR_E7)!;
+    expect(ext.alarmWord).toBe(0x0001);
+    expect(ext.switchWord).toBe(0x0007);
+    expect(ext.armed).toBe(true); // 开关状态 bit0 设防
+    expect(ext.sleeping).toBe(true); // 开关状态 bit1 休眠
+  });
+
+  it('震动报警 is 0xE7 报警状态 bit0 — it is NOT in the alarm DWORD', () => {
+    expect(ExtAlarmBit.SHOCK).toBe(0);
+    // 报警标志 DWORD 全 0，震动照样要解出来
+    expect(decodeAlarms(0, { alarmExt: VENDOR_E7 })).toEqual(['shock']);
+    // 反过来：没有 0xE7 就永远解不出震动，这正是之前漏掉它的原因
+    expect(decodeAlarms(0)).toEqual([]);
+  });
+
+  it('decodes the other 0xE7 alarm bits', () => {
+    expect(decodeAlarms(0, { alarmExt: H('0002000000000000') })).toEqual(['sos_call']);
+    expect(decodeAlarms(0, { alarmExt: H('0010000000000000') })).toEqual(['sleep_1h']);
+    expect(decodeAlarms(0, { alarmExt: H('0040000000000000') })).toEqual(['power_on']);
+    expect(decodeAlarms(0, { alarmExt: H('0080000000000000') })).toEqual(['power_off']);
+  });
+
+  it('collapses SOS1/2/3 into one kind instead of reporting it three times', () => {
+    expect(decodeAlarms(0, { alarmExt: H('000e000000000000') })).toEqual(['sos_call']);
+  });
+
+  it('combines the DWORD and 0xE7 in one list (断电 + 震动 同时发生)', () => {
+    expect(decodeAlarms(1 << 8, { alarmExt: VENDOR_E7 })).toEqual(['power_cut', 'shock']);
+  });
+
+  it('treats a short or missing 0xE7 as "no extension" rather than throwing', () => {
+    expect(parseAlarmExt(undefined)).toBeNull();
+    expect(parseAlarmExt(H('0001'))).toBeNull(); // 截断
+    expect(decodeAlarms(1 << 8, { alarmExt: H('00') })).toEqual(['power_cut']);
+    expect(decodeAlarms(1 << 8, null)).toEqual(['power_cut']);
+  });
+});
+
+describe('parsePosition exposes decoded alarms', () => {
+  // 厂家 0x0200 样例：报警标志全 0，0xE7 也全 0 —— 一条完全干净的定位
+  const cleanBody = H('02000048051160004464000d'
+    + '00000000' + '000c0002' + '0159885e' + '06cbf344' + '0000' + '0000' + '0000' + '200807180722'
+    + '010400000001' + '30011c' + '310109' + 'e4020063' + 'e50100' + 'e60100' + 'e7080000000000000000'
+    + 'ee0a01cc01262c009a674300').subarray(12);
+
+  it('reports no alarms for the vendor example', () => {
+    const p = parsePosition(cleanBody, 8)!;
+    expect(p.alarms).toEqual([]);
+    expect(p.extras.alarmExtState).toMatchObject({ alarmWord: 0, switchWord: 0, armed: false });
+  });
+
+  it('surfaces 震动 when the same frame carries the vendor 0xE7 example', () => {
+    const b = Buffer.from(cleanBody);
+    H('0001000700000000').copy(b, b.indexOf(H('e708'), 28) + 2);
+    const p = parsePosition(b, 8)!;
+    expect(p.alarms).toEqual(['shock']);
+    expect(p.extras.alarmExtState!.armed).toBe(true);
+  });
+
+  it('surfaces 断电 from the alarm DWORD', () => {
+    const b = Buffer.from(cleanBody);
+    b.writeUInt32BE(1 << 8, 0);
+    expect(parsePosition(b, 8)!.alarms).toEqual(['power_cut']);
+  });
+});
+
+describe('0x8600 设置圆形区域', () => {
+  it('is deliberately absent: 厂家 V1.54 文档没有这条消息', () => {
+    // 文档全文（含附录A 消息对照表）没有任何 0x86xx；位置附加信息里也没有标准的 0x12
+    // 「区域/路线报警」项，表18 里也没有 bit20 进出区域。
+    // 有人以后想「顺手补上」时，这条用例会说明为什么不能补。
+    const codec = require('./jt808.codec');
+    expect(codec.buildSetCircularArea).toBeUndefined();
+    expect(Object.values(MsgId).some((id) => (id as number) >= 0x8600 && (id as number) <= 0x86ff)).toBe(false);
   });
 });

@@ -43,6 +43,150 @@ export const MsgId = {
 /** 平台通用应答结果 */
 export const AckResult = { OK: 0, FAIL: 1, BAD_MESSAGE: 2, UNSUPPORTED: 3, ALARM_CONFIRMED: 4 } as const;
 
+// ---------- 报警位 ----------
+
+/**
+ * 0x0200 报警标志 DWORD 的位定义，照抄厂家文档《表18 报警标志位定义》。
+ *
+ * 这份固件和 JT/T 808-2013 标准表不是一回事，照标准猜会猜错：
+ *  - 标准里 bit20 是「进出区域/路线」，本固件的表18 里根本没有这一位 —— 设备不会上报电子围栏，
+ *    围栏只能由平台自己算（见 GeofenceService）。
+ *  - 标准里 bit29/bit30 是碰撞/侧翻，本固件 bit29 被厂家改成了「犬吠报警」（这批设备有宠物型号）。
+ *  - 震动报警根本不在这个 DWORD 里，在附加信息 0xE7 里（见 ExtAlarmBit），
+ *    文档「4、备注 / 2、C3L设备 / 1.1震动报警标志」写得很明确：「通过E7字段的报警状态位判断震动报警」。
+ */
+export const AlarmBit = {
+  SOS: 0, // 紧急报警，触动报警开关后触发（收到应答后清零）
+  OVERSPEED: 1,
+  FATIGUE: 2,
+  GNSS_ANTENNA_OPEN: 5, // 天线未接或被剪断
+  GNSS_ANTENNA_SHORT: 6,
+  LOW_BATTERY: 7, // 终端主电源欠压（低电报警）
+  POWER_CUT: 8, // 终端主电源掉电（防拆报警）—— owner 要的「断电」
+  DRIVE_TIME_EXCEEDED: 18, // 当天累计驾驶超时
+  PARK_TIMEOUT: 19, // 超时停车
+  ILLEGAL_IGNITION: 27,
+  ILLEGAL_DISPLACEMENT: 28, // 车辆非法位移（阈值见参数 0x0031）
+  DOG_BARK: 29, // 厂家改位：不是标准里的碰撞报警
+} as const;
+
+/**
+ * 附加信息 0xE7「状态扩展」8 字节：1-2 报警状态(WORD)，3-4 开关状态(WORD)，5-8 备用。
+ * 文档样例 0x0001000700000000 =「震动报警，设备设防，设备休眠」，
+ * 即两个 WORD 都是大端、bit0 是最低位 —— 下面的解析就是按这个样例对齐的。
+ */
+export const ExtAlarmBit = {
+  SHOCK: 0, // 震动报警：本固件唯一的震动来源
+  SOS1: 1,
+  SOS2: 2,
+  SOS3: 3,
+  SLEEP_1H: 4,
+  DATA_QUOTA: 5,
+  POWER_ON: 6, // 报一次后设备自己清标志
+  POWER_OFF: 7,
+} as const;
+
+/** 0xE7 开关状态 WORD 的位定义 */
+export const ExtSwitchBit = {
+  ARMED: 0, // 设防（撤防时固件不产生震动报警）
+  SLEEPING: 1,
+  SLEEP_JUDGED_BY_E7: 2,
+} as const;
+
+export type AlarmKind =
+  | 'sos'
+  | 'overspeed'
+  | 'fatigue'
+  | 'gnss_antenna_open'
+  | 'gnss_antenna_short'
+  | 'low_battery'
+  | 'power_cut'
+  | 'drive_time_exceeded'
+  | 'park_timeout'
+  | 'illegal_ignition'
+  | 'illegal_displacement'
+  | 'dog_bark'
+  | 'shock'
+  | 'sos_call'
+  | 'sleep_1h'
+  | 'data_quota'
+  | 'power_on'
+  | 'power_off';
+
+/** 报警标志 DWORD 的位 -> 名字。顺序即输出顺序，保证解码结果可直接比较。 */
+const ALARM_BIT_KINDS: Array<[number, AlarmKind]> = [
+  [AlarmBit.SOS, 'sos'],
+  [AlarmBit.OVERSPEED, 'overspeed'],
+  [AlarmBit.FATIGUE, 'fatigue'],
+  [AlarmBit.GNSS_ANTENNA_OPEN, 'gnss_antenna_open'],
+  [AlarmBit.GNSS_ANTENNA_SHORT, 'gnss_antenna_short'],
+  [AlarmBit.LOW_BATTERY, 'low_battery'],
+  [AlarmBit.POWER_CUT, 'power_cut'],
+  [AlarmBit.DRIVE_TIME_EXCEEDED, 'drive_time_exceeded'],
+  [AlarmBit.PARK_TIMEOUT, 'park_timeout'],
+  [AlarmBit.ILLEGAL_IGNITION, 'illegal_ignition'],
+  [AlarmBit.ILLEGAL_DISPLACEMENT, 'illegal_displacement'],
+  [AlarmBit.DOG_BARK, 'dog_bark'],
+];
+
+const EXT_ALARM_BIT_KINDS: Array<[number, AlarmKind]> = [
+  [ExtAlarmBit.SHOCK, 'shock'],
+  [ExtAlarmBit.SOS1, 'sos_call'],
+  [ExtAlarmBit.SOS2, 'sos_call'],
+  [ExtAlarmBit.SOS3, 'sos_call'],
+  [ExtAlarmBit.SLEEP_1H, 'sleep_1h'],
+  [ExtAlarmBit.DATA_QUOTA, 'data_quota'],
+  [ExtAlarmBit.POWER_ON, 'power_on'],
+  [ExtAlarmBit.POWER_OFF, 'power_off'],
+];
+
+
+export interface AlarmExtState {
+  /** 0xE7 第 1-2 字节：报警状态 WORD */
+  alarmWord: number;
+  /** 0xE7 第 3-4 字节：开关状态 WORD */
+  switchWord: number;
+  armed: boolean;
+  sleeping: boolean;
+}
+
+/**
+ * 解析附加信息 0xE7。长度不足按「没有这个字段」处理 —— 报文来自外部，不能因为短一个字节就抛。
+ */
+export function parseAlarmExt(buf?: Buffer | null): AlarmExtState | null {
+  if (!buf || buf.length < 4) return null;
+  const alarmWord = buf.readUInt16BE(0);
+  const switchWord = buf.readUInt16BE(2);
+  return {
+    alarmWord,
+    switchWord,
+    armed: (switchWord & (1 << ExtSwitchBit.ARMED)) !== 0,
+    sleeping: (switchWord & (1 << ExtSwitchBit.SLEEPING)) !== 0,
+  };
+}
+
+/**
+ * 报警标志 DWORD + 0xE7 扩展 -> 具名报警列表。纯函数，无 IO。
+ *
+ * 之所以要把 0xE7 一起传进来：owner 最关心的「震动报警」只在 0xE7 里，
+ * 只看报警标志 DWORD 会永远解不出震动。
+ */
+export function decodeAlarms(alarm: number, extras?: { alarmExt?: Buffer | null } | null): AlarmKind[] {
+  const out: AlarmKind[] = [];
+  const flags = Number.isFinite(alarm) ? (alarm >>> 0) : 0;
+  for (const [bit, kind] of ALARM_BIT_KINDS) {
+    // 位 31 用 >>> 0 之后仍可能超出 32 位有符号范围，统一用无符号除法判位
+    if (Math.floor(flags / 2 ** bit) % 2 === 1) out.push(kind);
+  }
+  const ext = parseAlarmExt(extras?.alarmExt);
+  if (ext) {
+    for (const [bit, kind] of EXT_ALARM_BIT_KINDS) {
+      if ((ext.alarmWord & (1 << bit)) !== 0 && !out.includes(kind)) out.push(kind);
+    }
+  }
+  return out;
+}
+
 /** 注册应答结果 */
 export const RegisterResult = {
   OK: 0,
@@ -248,7 +392,8 @@ export interface PositionExtras {
   batteryPercent?: number; // 0xE4
   externalPower?: boolean; // 0xE4 状态 0=接通外电
   moving?: boolean; // 0xE5
-  alarmExt?: Buffer; // 0xE7 8 字节
+  alarmExt?: Buffer; // 0xE7 8 字节（原始）
+  alarmExtState?: AlarmExtState; // 0xE7 解析后的报警/开关状态
   voltage?: number; // 0xF0 0.01V
   currentMa?: number; // 0xF1
   gpsSatellites?: number; // 0xF2
@@ -259,6 +404,8 @@ export interface PositionExtras {
 
 export interface Position {
   alarm: number;
+  /** 报警标志 + 0xE7 解出来的具名报警。空数组 = 这条定位没带任何报警。 */
+  alarms: AlarmKind[];
   status: number;
   acc: boolean;
   fixed: boolean;
@@ -310,7 +457,12 @@ export function parseExtras(buf: Buffer): PositionExtras {
         if (len >= 2) { ex.externalPower = val[0] === 0; ex.batteryPercent = val[1]; }
         break;
       case 0xe5: if (len >= 1) ex.moving = val[0] === 1; break;
-      case 0xe7: ex.alarmExt = Buffer.from(val); break;
+      case 0xe7: {
+        ex.alarmExt = Buffer.from(val);
+        const state = parseAlarmExt(ex.alarmExt);
+        if (state) ex.alarmExtState = state;
+        break;
+      }
       case 0xf0: if (len >= 2) ex.voltage = val.readUInt16BE(0) / 100; break;
       case 0xf1: if (len >= 2) ex.currentMa = val.readUInt16BE(0); break;
       case 0xf2: if (len >= 1) ex.gpsSatellites = val[0]; break;
@@ -332,8 +484,10 @@ export function parsePosition(body: Buffer, tzOffsetHours: number): Position | n
   const lngRaw = body.readUInt32BE(12) / 1e6;
   const south = (status & (1 << 2)) !== 0;
   const west = (status & (1 << 3)) !== 0;
+  const extras = parseExtras(body.subarray(28));
   return {
     alarm,
+    alarms: decodeAlarms(alarm, extras),
     status,
     acc: (status & 1) !== 0,
     fixed: (status & (1 << 1)) !== 0,
@@ -344,7 +498,7 @@ export function parsePosition(body: Buffer, tzOffsetHours: number): Position | n
     speedKmh: body.readUInt16BE(18) / 10,
     heading: body.readUInt16BE(20),
     time: bcdTimeToDate(body.subarray(22, 28), tzOffsetHours),
-    extras: parseExtras(body.subarray(28)),
+    extras,
   };
 }
 
@@ -475,6 +629,18 @@ export function buildReboot(phone: string, serial: number): Buffer {
 export function buildPositionQuery(phone: string, serial: number): Buffer {
   return encodeFrame(MsgId.POSITION_QUERY, phone, serial);
 }
+
+/**
+ * 这里没有 0x8600「设置圆形区域」/ 0x8601「删除圆形区域」，是查过文档之后的结论，不是漏写。
+ *
+ * 厂家文档 V1.54 全文（含《附录A 消息对照表》）没有 0x86xx 任何一条，位置汇报的附加信息表里
+ * 也没有标准的 0x12「区域/路线报警」项，表18 报警标志里同样没有标准的 bit20「进出区域」。
+ * 唯一带「电子围栏」字样的是终端参数 0x0031「电子围栏半径（非法位移阈值）」——
+ * 那是给 bit28「车辆非法位移」用的单一半径阈值，圆心是设备自己停车的位置，不能由平台指定，
+ * 也没有进/出方向，不是真正的地理围栏。
+ *
+ * 所以围栏一律由平台侧算（见 GeofenceService）：对每台设备都有效，也不用为了改围栏去重新烧设备参数。
+ */
 
 export function hex(buf: Buffer): string {
   return buf.toString('hex');

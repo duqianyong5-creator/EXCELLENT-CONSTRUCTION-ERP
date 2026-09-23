@@ -4,15 +4,19 @@ import { Logger } from '@nestjs/common';
 import { getMetadataArgsStorage } from 'typeorm';
 import { GpsDeviceSchemaGuard, GPS_DEVICE_DDL } from './gps-device.schema';
 import { GpsDevice } from './gps-device.entity';
+import { Geofence } from './geofence.entity';
 
 /**
  * 按 SQL 文本响应，而不是按调用顺序：DDL 语句增减时测试不会跟着碎掉。
  */
-function guardWith(opts: { columnOk?: boolean; tableOk?: boolean; ddlFails?: boolean | number } = {}) {
-  const { columnOk = true, tableOk = true, ddlFails = false } = opts;
+function guardWith(opts: {
+  columnOk?: boolean; tableOk?: boolean; geofencesOk?: boolean; ddlFails?: boolean | number;
+} = {}) {
+  const { columnOk = true, tableOk = true, geofencesOk = true, ddlFails = false } = opts;
   let ddlCalls = 0;
   const query = jest.fn(async (sql: string) => {
     if (sql.includes('information_schema.columns')) return [{ ok: columnOk }];
+    if (sql.includes("table_name = 'geofences'")) return [{ ok: geofencesOk }];
     if (sql.includes('information_schema.tables')) return [{ ok: tableOk }];
     ddlCalls++;
     const shouldFail = ddlFails === true || (typeof ddlFails === 'number' && ddlCalls === ddlFails);
@@ -30,7 +34,7 @@ describe('GpsDeviceSchemaGuard', () => {
     await guard.ensureSchema();
     const executed = query.mock.calls.map((c) => c[0]);
     for (const ddl of GPS_DEVICE_DDL) expect(executed).toContain(ddl);
-    expect(executed.filter((s) => s.includes('information_schema'))).toHaveLength(2);
+    expect(executed.filter((s) => s.includes('information_schema'))).toHaveLength(3);
   });
 
   it('sets the lock timeout in the same statement as the ALTER (pool hands out other connections)', () => {
@@ -44,12 +48,25 @@ describe('GpsDeviceSchemaGuard', () => {
     expect(GPS_DEVICE_DDL.some((s) => /gps_devices ENABLE ROW LEVEL SECURITY/.test(s))).toBe(true);
   });
 
+  it('enables row level security on geofences too', () => {
+    expect(GPS_DEVICE_DDL.some((s) => /geofences ENABLE ROW LEVEL SECURITY/.test(s))).toBe(true);
+  });
+
+  it('creates every column the Geofence entity maps (drift guard)', () => {
+    const createFences = GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE IF NOT EXISTS geofences')) as string;
+    const columns = getMetadataArgsStorage().columns
+      .filter((c) => c.target === Geofence)
+      .map((c) => c.options.name || c.propertyName);
+    expect(columns.length).toBeGreaterThan(8);
+    for (const name of columns) expect(createFences).toContain(name);
+  });
+
   it('keeps going after one statement fails, as long as the schema ends up valid', async () => {
     const { guard, query } = guardWith({ ddlFails: 1 });
     await expect(guard.ensureSchema()).resolves.toBeUndefined();
     // 第一条失败不应该跳过后面的建表
     expect(query.mock.calls.map((c) => c[0])).toContain(
-      GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE')),
+      GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE IF NOT EXISTS gps_devices')),
     );
   });
 
@@ -63,6 +80,12 @@ describe('GpsDeviceSchemaGuard', () => {
     await expect(guard.ensureSchema()).rejects.toThrow(/gps_devices table is missing/);
   });
 
+  it('refuses to start when the geofences table is missing (every fix would fail the fence check)', async () => {
+    const { guard } = guardWith({ geofencesOk: false });
+    await expect(guard.ensureSchema())
+      .rejects.toThrow(/geofences table is missing[\s\S]*2026-09-23_device_alarms_geofences\.sql/);
+  });
+
   it('onModuleInit propagates the failure so the deploy fails instead of booting broken', async () => {
     const { guard } = guardWith({ columnOk: false });
     await expect(guard.onModuleInit()).rejects.toThrow();
@@ -70,7 +93,7 @@ describe('GpsDeviceSchemaGuard', () => {
 });
 
 describe('GPS_DEVICE_DDL matches the code and the SQL migration', () => {
-  const createTable = GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE')) as string;
+  const createTable = GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE IF NOT EXISTS gps_devices')) as string;
   const migration = fs.readFileSync(
     path.join(__dirname, '../../../database/migrations/2026-09-14_gps_devices.sql'),
     'utf8',

@@ -6,6 +6,7 @@ import { GpsController } from './gps.controller';
 import { GpsService } from './gps.service';
 import { GpsAlarmService } from './gps-alarm.service';
 import { GpsCleanupService } from './gps-cleanup.service';
+import { GpsAnomalySchemaGuard } from './gps-anomaly.schema';
 import { AnomaliesController } from './anomalies.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SystemSettingsModule } from '../system-settings/system-settings.module';
@@ -18,7 +19,7 @@ import { Task } from '../tasks/task.entity';
     SystemSettingsModule,
   ],
   controllers: [GpsController, AnomaliesController],
-  providers: [GpsService, GpsAlarmService, GpsCleanupService],
-  exports: [GpsService],
+  providers: [GpsAnomalySchemaGuard, GpsService, GpsAlarmService, GpsCleanupService],
+  exports: [GpsService, TypeOrmModule],
 })
 export class GpsModule {}

@@ -257,17 +257,46 @@ BEGIN
   END IF;
 END $$;
 
--- 给 GPS 异常类型补充「静止报警」值（自动适配该列实际使用的枚举类型名）
+-- 给 GPS 异常类型补充「静止报警」与车载定位器报警（震动/断电/进出围栏）的值。
+-- 自动适配该列实际使用的枚举类型名；一个值一条 ALTER，且本文件不 INSERT 这些值
+-- （ALTER TYPE ... ADD VALUE 加进去的值不能在同一个事务里被使用）。
 DO $$
-DECLARE enum_type text;
+DECLARE enum_type text; v text;
 BEGIN
   SELECT udt_name INTO enum_type
   FROM information_schema.columns
   WHERE table_name = 'gps_anomalies' AND column_name = 'anomaly_type';
   IF enum_type IS NOT NULL THEN
-    EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, 'stationary');
+    FOREACH v IN ARRAY ARRAY['stationary', 'shock', 'power_cut', 'geofence_enter', 'geofence_leave'] LOOP
+      EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, v);
+    END LOOP;
   END IF;
 END $$;
+
+-- 车载定位器报警可能没有司机（车辆空闲时被撬），靠 device_no / vehicle_plate 定位到车
+ALTER TABLE gps_anomalies ALTER COLUMN driver_id DROP NOT NULL;
+ALTER TABLE gps_anomalies ADD COLUMN IF NOT EXISTS device_no     VARCHAR(32);
+ALTER TABLE gps_anomalies ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32);
+ALTER TABLE gps_anomalies ADD COLUMN IF NOT EXISTS geofence_id   UUID;
+CREATE INDEX IF NOT EXISTS idx_gps_anomalies_open_device
+  ON gps_anomalies(device_no, anomaly_type) WHERE resolved = FALSE;
+
+-- 圆形电子围栏（平台侧判定；厂家固件不支持 0x8600 设置圆形区域）
+CREATE TABLE IF NOT EXISTS geofences (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name           VARCHAR(128) NOT NULL,
+    center_lat     DECIMAL(10, 7) NOT NULL,
+    center_lng     DECIMAL(10, 7) NOT NULL,
+    radius_m       INT NOT NULL,
+    vehicle_plate  VARCHAR(32),
+    enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_on_enter BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_on_leave BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_geofences_plate ON geofences(vehicle_plate);
+ALTER TABLE geofences ENABLE ROW LEVEL SECURITY;
 
 -- 任务表：车牌 + 起点地址改为可空
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32);

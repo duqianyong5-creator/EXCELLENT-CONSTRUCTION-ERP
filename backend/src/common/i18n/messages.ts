@@ -31,6 +31,12 @@ export const ErrorCode = {
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
   DEVICE_OFFLINE: 'DEVICE_OFFLINE',
 
+  GEOFENCE_NOT_FOUND: 'GEOFENCE_NOT_FOUND',
+  GEOFENCE_NAME_REQUIRED: 'GEOFENCE_NAME_REQUIRED',
+  GEOFENCE_NAME_TOO_LONG: 'GEOFENCE_NAME_TOO_LONG',
+  GEOFENCE_CENTER_INVALID: 'GEOFENCE_CENTER_INVALID',
+  GEOFENCE_RADIUS_INVALID: 'GEOFENCE_RADIUS_INVALID',
+
   VEHICLE_NOT_FOUND: 'VEHICLE_NOT_FOUND',
   VEHICLE_PLATE_REQUIRED: 'VEHICLE_PLATE_REQUIRED',
   VEHICLE_PLATE_TOO_LONG: 'VEHICLE_PLATE_TOO_LONG',
@@ -113,6 +119,27 @@ const MESSAGES: Record<string, Record<Lang, string>> = {
   [ErrorCode.DEVICE_OFFLINE]: {
     zh: '设备不在线',
     en: 'Device is offline',
+  },
+
+  [ErrorCode.GEOFENCE_NOT_FOUND]: {
+    zh: '围栏不存在',
+    en: 'Geofence not found',
+  },
+  [ErrorCode.GEOFENCE_NAME_REQUIRED]: {
+    zh: '请填写围栏名称',
+    en: 'Geofence name is required',
+  },
+  [ErrorCode.GEOFENCE_NAME_TOO_LONG]: {
+    zh: '围栏名称过长（最多 128 字）',
+    en: 'Geofence name is too long (max 128 characters)',
+  },
+  [ErrorCode.GEOFENCE_CENTER_INVALID]: {
+    zh: '围栏圆心经纬度不合法',
+    en: 'Geofence centre coordinates are out of range',
+  },
+  [ErrorCode.GEOFENCE_RADIUS_INVALID]: {
+    zh: '围栏半径不合法（20 ~ 200000 米）',
+    en: 'Geofence radius must be between 20 and 200000 metres',
   },
 
   [ErrorCode.VEHICLE_NOT_FOUND]: {
