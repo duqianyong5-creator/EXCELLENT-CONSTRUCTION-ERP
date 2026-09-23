@@ -44,6 +44,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: frontend
+      # 710 个翻译键唯一的护栏。不进 CI 的话它就是个得有人记得去敲的命令。
+      # 它会检查：中英键对齐、占位符一致、调用处有没有传参（没传会把 {{n}} 原样显示出来）
+      - name: Locale check
+        run: npm run check:locales
+        working-directory: frontend
       - name: Build
         run: npm run build
         working-directory: frontend

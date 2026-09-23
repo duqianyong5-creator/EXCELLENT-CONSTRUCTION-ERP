@@ -109,7 +109,9 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   var LBL = ${JSON.stringify(labels)};
-  var map = L.map('map', { zoomControl: false }).setView([35.0, 105.0], 4);
+  // 车队在奥克兰。原来是 [35,105] 缩放 4——中国地理中心；
+  // 还没有车辆上报位置时，调度员打开定位页看到的就是整个中国
+  var map = L.map('map', { zoomControl: false }).setView([-36.8485, 174.7633], 11);
   // 缩放放到左下角，远离顶部状态栏；右上角放图层切换
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
   // 免费底图：街道(OSM) + 卫星(Esri)，右上角可切换，均无需 API Key

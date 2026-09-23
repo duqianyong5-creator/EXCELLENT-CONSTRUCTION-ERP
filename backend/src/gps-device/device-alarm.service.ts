@@ -49,6 +49,11 @@ export interface AlarmTarget {
  * 记录与通知的写法沿用 gps.service.ts / gps-alarm.service.ts 那一套（gps_anomalies + notifyAdmins），
  * 没有另起一套机制。
  */
+/** 有限且在范围内才保留，否则记 null——宁可没有坐标，也不要错的坐标 */
+function inRange(v: number, max: number): number | null {
+  return Number.isFinite(v) && Math.abs(v) <= max ? v : null;
+}
+
 @Injectable()
 export class DeviceAlarmService {
   private readonly logger = new Logger('DeviceAlarm');
@@ -59,6 +64,8 @@ export class DeviceAlarmService {
   private inside = new Map<string, Map<string, boolean>>();
   /** `deviceNo|fenceId` -> 上次进出事件时间 */
   private lastFenceEventAt = new Map<string, number>();
+  /** 每台设备上次记录过的「未处理报警位」集合，用来只在变化时记日志 */
+  private lastUnhandled = new Map<string, string>();
 
   constructor(
     @InjectRepository(GpsAnomaly) private anomalyRepo: Repository<GpsAnomaly>,
@@ -109,9 +116,19 @@ export class DeviceAlarmService {
    * 这次修的就是「解出来了却没人看」，不能再悄悄丢一批。
    */
   private logUnhandled(device: GpsDevice, kinds: AlarmKind[]): void {
-    const others = kinds.filter((k) => !ALARM_TO_ANOMALY[k]);
+    const others = kinds.filter((k) => !ALARM_TO_ANOMALY[k]).sort();
+    // 报警位是「条件解除前一直保持」的：一个卡住的低电或天线断开位，
+    // 实时模式下每 10 秒就会带一次。每帧都打 warn 就是 6 行/分钟/台，
+    // 正是 §7 说的那种会把日志写满、顶爆内存、连带拖垮同进程 API 的路径。只在集合变化时记。
+    const signature = others.join(',');
+    if (this.lastUnhandled.get(device.deviceNo) === signature) return;
+    this.lastUnhandled.set(device.deviceNo, signature);
+    if (this.lastUnhandled.size > MAX_TRACKED_DEVICES) {
+      const oldest = this.lastUnhandled.keys().next().value;
+      if (oldest !== undefined) this.lastUnhandled.delete(oldest);
+    }
     if (others.length) {
-      this.logger.warn(`device ${device.deviceNo} reports unhandled alarm(s): ${others.join(', ')}`);
+      this.logger.warn(`device ${device.deviceNo} reports unhandled alarm(s): ${signature}`);
     }
   }
 
@@ -120,7 +137,7 @@ export class DeviceAlarmService {
     device: GpsDevice,
     kinds: AlarmKind[],
     pos: Position,
-    opts: { target: AlarmTarget | null; pointTime: Date },
+    opts: { hasFix: boolean; target: AlarmTarget | null; pointTime: Date },
   ): Promise<void> {
     const now = new Set<AnomalyType>();
     for (const kind of kinds) {
@@ -151,7 +168,7 @@ export class DeviceAlarmService {
   private async checkGeofences(
     device: GpsDevice,
     pos: Position,
-    opts: { target: AlarmTarget | null; pointTime: Date },
+    opts: { hasFix: boolean; target: AlarmTarget | null; pointTime: Date },
   ): Promise<void> {
     const fences = await this.geofences.fencesFor(device.vehiclePlate);
     if (fences.length === 0) {
@@ -202,7 +219,7 @@ export class DeviceAlarmService {
     device: GpsDevice,
     type: AnomalyType,
     pos: Position,
-    opts: { target: AlarmTarget | null; pointTime: Date },
+    opts: { hasFix: boolean; target: AlarmTarget | null; pointTime: Date },
     extra: { dedupe: boolean; description: string; geofenceId?: string },
   ): Promise<void> {
     if (extra.dedupe) {
@@ -220,9 +237,12 @@ export class DeviceAlarmService {
       taskId: opts.target?.taskId ?? null,
       anomalyType: type,
       description: extra.description,
-      latitude: Number.isFinite(pos.latitude) ? pos.latitude : null,
-      longitude: Number.isFinite(pos.longitude) ? pos.longitude : null,
-      speed: Number.isFinite(pos.speedKmh) ? pos.speedKmh : null,
+      // 没有定位时绝不能写坐标。断电/防拆恰恰最常发生在没定位的时候（刚断电、在室内、被屏蔽），
+      // 而 Number.isFinite(0) 为真——以前会记成 0,0，最该有位置的那条防盗记录被钉在几内亚湾。
+      // 另外原始值最大到 4294.97，直接写 numeric(10,7) 会溢出，整条记录丢掉。
+      latitude: opts.hasFix ? inRange(pos.latitude, 90) : null,
+      longitude: opts.hasFix ? inRange(pos.longitude, 180) : null,
+      speed: opts.hasFix ? inRange(pos.speedKmh, 9999) : null,
       deviceNo: device.deviceNo,
       vehiclePlate: device.vehiclePlate ?? null,
       geofenceId: extra.geofenceId ?? null,

@@ -314,7 +314,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderStrong,
     ...shadow.raised,
   },
-  headerTexts: { flex: 1, minWidth: 0 },
+  // 不能用 flex:1：RN 里它等于 flexBasis 0，而外层药丸是按内容收缩的（没有 flexGrow），
+  // 结果文字列分到 0 宽，标题和「N 位司机在线」整个看不见，只剩一个绿点。
+  // 只要允许它在空间不够时收缩就行。
+  headerTexts: { flexShrink: 1, minWidth: 0 },
   onlineDot: {
     width: 10, height: 10, borderRadius: radius.pill,
     backgroundColor: colors.success, marginRight: space.sm,

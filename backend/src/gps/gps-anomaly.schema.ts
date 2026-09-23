@@ -100,6 +100,22 @@ export class GpsAnomalySchemaGuard implements OnModuleInit {
       );
     }
 
+    // driver_id 改成可空，是这次最可能失败的一条：它要拿排他锁，而且我们只给了 5 秒。
+    // 表忙的时候超时，错误会被收进 failures、启动照样成功——然后第一条「车停着、
+    // 没有司机」的断电报警插入就撞上 NOT NULL，记录无声丢失。那正是这次要修的 bug，
+    // 所以这里必须验证、不通过就拒绝启动。
+    const [nullable] = await this.dataSource.query(
+      `SELECT is_nullable FROM information_schema.columns
+       WHERE table_name = 'gps_anomalies' AND column_name = 'driver_id'`,
+    );
+    if (nullable && nullable.is_nullable !== 'YES') {
+      throw new Error(
+        'gps_anomalies.driver_id is still NOT NULL, so an alarm on a parked truck with no driver cannot be recorded — '
+        + 'run database/migrations/2026-09-23_device_alarms_geofences.sql, then redeploy. '
+        + `Details: ${failures.join(' | ') || 'no error reported'}`,
+      );
+    }
+
     if (failures.length) {
       this.logger.warn(`schema statements reported errors but the schema is valid: ${failures.join(' | ')}`);
     }

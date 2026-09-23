@@ -66,6 +66,27 @@ for (const file of walk(SRC_DIR)) {
   for (const m of src.matchAll(/i18nKey=["']([A-Za-z0-9_.]+)["']/g)) used.add(m[1]);
 }
 
+// ---- 3) 带占位符的键，调用时必须传参 ------------------------------------------
+// 只比对中英两边的 {{占位符}} 一致是不够的：值是 '{{n}} m'、调用处却写成
+// `${v} ${t('geofences.unitM')}`（自己在外面拼数字、不传 n），
+// i18next 会把没提供的占位符原样输出，界面上就是 "500 {{n}} m"。这一条专门抓这种。
+const valueOf = new Map();
+for (const file of bundleFiles) {
+  const src = readFileSync(join(LOCALES_DIR, file), 'utf8');
+  for (const [k, v] of valuesOfSection(src, 'zh')) valueOf.set(k, v);
+}
+for (const file of walk(SRC_DIR)) {
+  if (file.includes('locales')) continue;
+  const src = readFileSync(file, 'utf8');
+  // t('key') 后面紧跟 ')' —— 即没有第二个参数
+  for (const m of src.matchAll(/\bt\(\s*['"]([A-Za-z0-9_.]+)['"]\s*\)/g)) {
+    const needs = placeholders(valueOf.get(m[1]) ?? '');
+    if (needs.length) {
+      note(`${file.replace(/\\/g, '/')}: t('${m[1]}') is called without values, but it needs {{${needs.join('}}, {{')}}} — it will render the placeholder literally`);
+    }
+  }
+}
+
 const legacy = readFileSync('src/i18n.ts', 'utf8');
 const legacyKeys = new Set([...legacy.matchAll(/^\s{4}([a-zA-Z0-9_]+):/gm)].map((m) => m[1]));
 

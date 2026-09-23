@@ -102,7 +102,7 @@ export class WorkRecordsService {
   }
 
   async setFinalDuration(id: string, finalDuration: number): Promise<WorkRecord> {
-    const record = await this.findById(id);
+    const record = await this.findRaw(id);
     record.finalDuration = finalDuration;
     return this.repo.save(record);
   }
@@ -112,7 +112,9 @@ export class WorkRecordsService {
   }
 
   async delete(id: string): Promise<void> {
-    const record = await this.findById(id);
+    // 同样要用原始实体：findById 返回的是 spread 出来的副本，
+    // 不是 TypeORM 管理的实体，remove() 拿它删依赖主键能对上纯属侥幸
+    const record = await this.findRaw(id);
     await this.repo.remove(record);
   }
 }

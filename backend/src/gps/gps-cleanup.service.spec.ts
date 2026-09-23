@@ -70,6 +70,9 @@ describe('GpsCleanupService', () => {
     const purge = purgeQueries(queries)[0];
     const cutoff = new Date(purge.params[0]).getTime();
     expect(cutoff).toBeLessThanOrEqual(before - 60 * DAY + 5_000);
+    // 下界同样要卡：只有上界时 cutoff=1970 也算通过，
+    // 那等于清理什么都不回收，磁盘一路涨到满
+    expect(cutoff).toBeGreaterThanOrEqual(before - 60 * DAY - 5_000);
     expect(purge.sql).toContain('DELETE FROM gps_logs');
   });
 
@@ -82,7 +85,13 @@ describe('GpsCleanupService', () => {
       expect.objectContaining({ where: { status: TaskStatus.IN_PROGRESS } }),
     );
     for (const q of queries) {
-      expect(q.sql).toContain('task_id');
+      // 断言子句的「形状」而不是「包含 task_id」——
+      // 后者对正确写法和它的反面同时成立：PARTITION BY 里本来就有 task_id，
+      // 把排除改成「只删进行中任务」照样能通过。
+      expect(q.sql).toMatch(/NOT \(task_id = ANY\(/);
+      // 少了 IS NULL 这一支，NOT (NULL = ANY(...)) 求值为 NULL，
+      // 于是所有没有任务的设备点永远删不掉，清理静默失效
+      expect(q.sql).toContain('task_id IS NULL OR');
       expect(q.params).toContainEqual(['t1', 't2']);
     }
   });

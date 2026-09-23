@@ -269,17 +269,24 @@ export class GpsDeviceService {
         result = 'no_task';
         patch.lastTaskId = null; // 任务结束后别一直指着旧任务
       } else {
-        await this.gpsService.upload(target.driverId, target.taskId, {
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          speed: pos.speedKmh,
-          heading: pos.heading,
-          timestamp: pointTime,
-          source: 'device',
-          silent: !!opts.batch, // 盲区补报不实时广播
-        });
-        patch.lastTaskId = target.taskId;
-        result = 'stored';
+        // 这是 ingest 里唯一没有自己兜底的 await。它一旦抛错，下面的设备状态更新
+        // 和报警判定都不会执行——车会显示离线，防盗报警也会被吞掉。
+        // 存点失败只丢这一个点，别连带把报警也丢了。
+        try {
+          await this.gpsService.upload(target.driverId, target.taskId, {
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            speed: pos.speedKmh,
+            heading: pos.heading,
+            timestamp: pointTime,
+            source: 'device',
+            silent: !!opts.batch, // 盲区补报不实时广播
+          });
+          patch.lastTaskId = target.taskId;
+          result = 'stored';
+        } catch (e: any) {
+          this.logger.warn(`storing a point for ${device.deviceNo} failed: ${e?.message || e}`);
+        }
       }
     }
 

@@ -51,7 +51,7 @@ export default function AppDialog() {
                   <Text
                     style={[
                       styles.btnText,
-                      cancel ? styles.btnTextCancel : { color: danger ? colors.text : colors.onAccent },
+                      cancel ? styles.btnTextCancel : { color: colors.onAccent },
                     ]}
                   >
                     {b.text}
@@ -119,6 +119,8 @@ const styles = StyleSheet.create({
   btnPrimary: {
     backgroundColor: colors.accent,
   },
+  // 红色按钮上用深色字：白字在 #EF4444 上只有 3.60:1（不达标），深色是 4.93:1。
+  // 这是退出登录、删除任务、取消任务的确认按钮，最不该看不清。
   btnDanger: {
     backgroundColor: colors.danger,
   },

@@ -14,10 +14,13 @@ import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
 import { colors, space, font, weight, radius, hit } from '../../src/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GPS_UPLOAD_INTERVAL_MS = 10000;
 
 export default function TaskDetailScreen() {
+  // 顶部安全区按机型取：原来写死 56，iPhone Pro 的灵动岛是 59~62，标题会被压住
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const dispatch = useDispatch();
@@ -212,7 +215,7 @@ export default function TaskDetailScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: space.huge }}>
       {/* 顶部 */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top + space.lg }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={16} color={colors.accent} />
           <Text style={styles.backText}>{t('td.backBtn')}</Text>

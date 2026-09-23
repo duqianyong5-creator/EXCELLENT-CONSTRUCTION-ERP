@@ -496,7 +496,10 @@ export function parsePosition(body: Buffer, tzOffsetHours: number): Position | n
     longitude: west ? -lngRaw : lngRaw,
     altitude: body.readUInt16BE(16),
     speedKmh: body.readUInt16BE(18) / 10,
-    heading: body.readUInt16BE(20),
+    // 协议里是 0~359 的方向角，但字段本身是 16 位。固件出错或有人伪造时会来一个 ≥1000 的值，
+    // 直接写进 gps_logs.heading（numeric(5,2)，上限 999.99）会让整条插入抛错——
+    // 那一帧的定位、设备在线状态和报警判定会一起丢掉，而且每一帧都会重复。
+    heading: body.readUInt16BE(20) % 360,
     time: bcdTimeToDate(body.subarray(22, 28), tzOffsetHours),
     extras,
   };

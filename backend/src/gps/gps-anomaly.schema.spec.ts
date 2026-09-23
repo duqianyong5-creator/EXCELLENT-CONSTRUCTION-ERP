@@ -11,6 +11,7 @@ function guardWith(opts: {
   enumLabels?: string[];
   dataType?: string;
   columnsOk?: boolean;
+  driverNullable?: boolean;
   noColumn?: boolean;
   ddlFails?: boolean | number;
 } = {}) {
@@ -18,6 +19,7 @@ function guardWith(opts: {
     enumLabels = ['gps_disconnect', ...NEW_ANOMALY_VALUES],
     dataType = 'USER-DEFINED',
     columnsOk = true,
+    driverNullable = true,
     noColumn = false,
     ddlFails = false,
   } = opts;
@@ -25,6 +27,8 @@ function guardWith(opts: {
   const query = jest.fn(async (sql: string) => {
     if (sql.includes('data_type, udt_name')) return noColumn ? [] : [{ data_type: dataType, udt_name: 'anomaly_type' }];
     if (sql.includes('pg_enum')) return enumLabels.map((label) => ({ label }));
+    // 顺序要紧：is_nullable 的查询也包含 information_schema.columns，得先匹配它
+    if (sql.includes('is_nullable')) return [{ is_nullable: driverNullable ? 'YES' : 'NO' }];
     if (sql.includes('information_schema.columns')) return [{ ok: columnsOk }];
     ddlCalls++;
     const shouldFail = ddlFails === true || (typeof ddlFails === 'number' && ddlCalls === ddlFails);
@@ -36,6 +40,13 @@ function guardWith(opts: {
 
 describe('GpsAnomalySchemaGuard', () => {
   beforeAll(() => { Logger.overrideLogger(false); });
+
+  it('refuses to boot while driver_id is still NOT NULL', async () => {
+    // 这条 ALTER 要排他锁、只给 5 秒，表忙时最容易超时失败。
+    // 失败了还放行启动的话，第一条停着的车的断电报警就会撞 NOT NULL 无声丢失。
+    const { guard } = guardWith({ driverNullable: false });
+    await expect(guard.onModuleInit()).rejects.toThrow(/driver_id is still NOT NULL/);
+  });
 
   it('runs every DDL statement and then verifies the result', async () => {
     const { guard, query } = guardWith();

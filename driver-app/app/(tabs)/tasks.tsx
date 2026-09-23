@@ -17,6 +17,7 @@ import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
 import { startBackgroundGps, stopBackgroundGps } from '../../src/backgroundLocation';
 import { colors, space, font, weight, radius, hit } from '../../src/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GPS_UPLOAD_INTERVAL_MS = 10000;
 
@@ -30,6 +31,8 @@ const STATUS_COLOR: Record<string, { bg: string; text: string; border: string }>
 };
 
 export default function TasksScreen() {
+  // 顶部安全区按机型取：原来写死 56，iPhone Pro 的灵动岛是 59~62，标题会被压住
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const dispatch = useDispatch();
   const { user } = useSelector((s: RootState) => s.auth);
@@ -506,7 +509,7 @@ export default function TasksScreen() {
   if (role === 'driver') {
     return (
       <View style={styles.driverPage}>
-        <View style={styles.driverHeader}>
+        <View style={[styles.driverHeader, { paddingTop: insets.top + space.lg }]}>
               <Text style={styles.driverGreeting}>{t('d.greetingPrefix')}{driverName}</Text>
               <Text style={styles.driverSubTitle}>{driverSubtitle}</Text>
 
@@ -885,7 +888,7 @@ export default function TasksScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + space.lg }]}>
         <View style={styles.headerTopRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>{title}</Text>

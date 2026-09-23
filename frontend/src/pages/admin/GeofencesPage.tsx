@@ -41,11 +41,12 @@ type Geofence = {
  * 让人填经纬度是没法用的——没人知道自己院子的经纬度是多少。
  */
 function CirclePicker({
-  center, radiusM, onPick,
+  center, radiusM, onPick, open,
 }: {
   center: [number, number] | null;
   radiusM: number;
   onPick: (lat: number, lng: number) => void;
+  open: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -61,8 +62,6 @@ function CirclePicker({
     addBaseLayers(map);
     map.on('click', (e: L.LeafletMouseEvent) => onPickRef.current(e.latlng.lat, e.latlng.lng));
     mapRef.current = map;
-    // Modal 打开时容器尺寸还没算好，不 invalidate 会只渲染左上角一块
-    setTimeout(() => map.invalidateSize(), 0);
     return () => {
       map.remove();
       mapRef.current = null;
@@ -70,6 +69,20 @@ function CirclePicker({
       markerRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 弹窗是 forceRender 的：地图在页面加载时就初始化了，那时容器还是 display:none、尺寸为 0。
+  // 必须等弹窗真正打开、容器有了尺寸再重新测量，否则整块地图是灰的，圈选器根本用不了。
+  // Leaflet 只监听窗口 resize，弹窗打开不会触发它。
+  useEffect(() => {
+    if (!open) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const id = requestAnimationFrame(() => {
+      map.invalidateSize();
+      if (center) map.setView(center, Math.max(map.getZoom(), 14));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current;
@@ -233,7 +246,11 @@ export default function GeofencesPage() {
     {
       title: t('geofences.colRadius'), dataIndex: 'radiusM', key: 'radiusM', width: 110,
       render: (v: number) => (
-        <Text>{v >= 1000 ? `${(v / 1000).toFixed(1)} ${t('geofences.unitKm')}` : `${v} ${t('geofences.unitM')}`}</Text>
+        // 数字必须作为插值参数传进去：语言包里的值是 '{{n}} m'，
+        // 在外面自己拼数字、调用时不传 n，界面上就会原样显示 "500 {{n}} m"
+        <Text>{v >= 1000
+          ? t('geofences.unitKm', { n: (v / 1000).toFixed(1) })
+          : t('geofences.unitM', { n: v })}</Text>
       ),
     },
     {
@@ -324,6 +341,7 @@ export default function GeofencesPage() {
             <CirclePicker
               center={center}
               radiusM={radius}
+              open={open}
               onPick={(lat, lng) => setCenter([lat, lng])}
             />
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6, fontFamily: 'monospace' }}>
@@ -331,9 +349,11 @@ export default function GeofencesPage() {
             </Text>
           </Form.Item>
 
-          <Form.Item label={`${t('geofences.fieldRadius')} — ${radius} ${t('geofences.unitM')}`} extra={t('geofences.radiusExtra')}>
+          <Form.Item label={`${t('geofences.fieldRadius')} — ${t('geofences.unitM', { n: radius })}`} extra={t('geofences.radiusExtra')}>
+            {/* 上限取「默认上限」和「当前值」较大者：用接口建过更大半径的围栏时，
+                滑块不能把它悄悄夹回 5km 再存回去 */}
             <Slider
-              min={MIN_RADIUS_M} max={MAX_RADIUS_M} step={10}
+              min={MIN_RADIUS_M} max={Math.max(MAX_RADIUS_M, radius)} step={10}
               value={radius} onChange={setRadius}
               marks={{ [MIN_RADIUS_M]: `${MIN_RADIUS_M}m`, 1000: '1km', [MAX_RADIUS_M]: '5km' }}
             />

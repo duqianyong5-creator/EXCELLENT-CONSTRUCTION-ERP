@@ -58,6 +58,67 @@ const live = { hasFix: true, target: TARGET, pointTime: new Date() };
 
 beforeAll(() => { Logger.overrideLogger(false); });
 
+describe('DeviceAlarmService: alarms with no GPS fix', () => {
+  // 断电 / 防拆恰恰最常在没定位的时候发生：刚断电、在室内、被屏蔽。
+  // 以前 Number.isFinite(0) 为真，这条最要紧的防盗记录会被记成 0,0 —— 钉在几内亚湾。
+  it('records a power cut with no coordinates rather than 0,0', async () => {
+    const { service, anomalyRepo, notifService } = build();
+    const noFix = { hasFix: false, target: null, pointTime: new Date() };
+    await service.handle(DEVICE, pos({ alarms: ['power_cut'], latitude: 0, longitude: 0, fixed: false }), noFix);
+
+    expect(anomalyRepo.rows).toHaveLength(1);
+    const row = anomalyRepo.rows[0];
+    expect(row.anomalyType).toBe(AnomalyType.POWER_CUT);
+    expect(row.latitude).toBeNull();
+    expect(row.longitude).toBeNull();
+    // 没司机没任务也要能认出是哪台车
+    expect(row.driverId).toBeNull();
+    expect(row.vehiclePlate).toBe('ABC123');
+    expect(notifService.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses an out-of-range coordinate instead of losing the whole record', async () => {
+    // 原始值最大 4294.97，直接写 numeric(10,7) 会溢出、整条插入失败
+    const { service, anomalyRepo } = build();
+    await service.handle(DEVICE, pos({ alarms: ['shock'], latitude: 4294.96, longitude: 4294.96 }), live);
+    expect(anomalyRepo.rows).toHaveLength(1);
+    expect(anomalyRepo.rows[0].latitude).toBeNull();
+    expect(anomalyRepo.rows[0].longitude).toBeNull();
+  });
+
+  it('keeps real coordinates when there is a fix', async () => {
+    const { service, anomalyRepo } = build();
+    await service.handle(DEVICE, withAlarms('shock'), live);
+    expect(anomalyRepo.rows[0].latitude).toBe(YARD.lat);
+    expect(anomalyRepo.rows[0].longitude).toBe(YARD.lng);
+  });
+});
+
+describe('DeviceAlarmService: unhandled alarm bits', () => {
+  // 报警位在条件解除前一直保持。每帧都记 warn，实时模式下就是 6 行/分钟/台——
+  // §7 说过，不限流的日志会把内存顶爆、连带拖垮同进程的 HTTP API。
+  it('logs a stuck unhandled alarm once, not on every position', async () => {
+    const { service } = build();
+    const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+    for (let i = 0; i < 12; i++) {
+      await service.handle(DEVICE, withAlarms('low_battery' as AlarmKind), live);
+    }
+    const lines = warn.mock.calls.filter((c) => String(c[0]).includes('unhandled'));
+    expect(lines).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it('logs again when the set of unhandled alarms changes', async () => {
+    const { service } = build();
+    const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+    await service.handle(DEVICE, withAlarms('low_battery' as AlarmKind), live);
+    await service.handle(DEVICE, withAlarms('low_battery' as AlarmKind, 'sos' as AlarmKind), live);
+    const lines = warn.mock.calls.filter((c) => String(c[0]).includes('unhandled'));
+    expect(lines).toHaveLength(2);
+    warn.mockRestore();
+  });
+});
+
 describe('DeviceAlarmService: 震动 / 断电', () => {
   it('raises 震动 once: one anomaly row and one notification', async () => {
     const { service, anomalyRepo, notifService } = build();

@@ -134,20 +134,31 @@ export class GeofenceService {
     return name;
   }
 
+  /**
+   * 只接受真正的数字（或数字字符串）。Number() 会把 null / [] / '' 变成 0、true 变成 1：
+   * PATCH 里一个 {"centerLat": null} 就会把围栏悄悄搬到 0,0（几内亚湾），
+   * 然后对每辆车都报「驶离围栏」。
+   */
+  private toNumber(value: unknown): number {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string' && value.trim() !== '') return Number(value);
+    return NaN;
+  }
+
   private cleanLat(value: unknown): number {
-    const n = Number(value);
+    const n = this.toNumber(value);
     if (!Number.isFinite(n) || Math.abs(n) > 90) throw new BadRequestException(ErrorCode.GEOFENCE_CENTER_INVALID);
     return n;
   }
 
   private cleanLng(value: unknown): number {
-    const n = Number(value);
+    const n = this.toNumber(value);
     if (!Number.isFinite(n) || Math.abs(n) > 180) throw new BadRequestException(ErrorCode.GEOFENCE_CENTER_INVALID);
     return n;
   }
 
   private cleanRadius(value: unknown): number {
-    const n = Number(value);
+    const n = this.toNumber(value);
     if (!Number.isFinite(n) || n < MIN_GEOFENCE_RADIUS_M || n > MAX_GEOFENCE_RADIUS_M) {
       throw new BadRequestException(ErrorCode.GEOFENCE_RADIUS_INVALID);
     }

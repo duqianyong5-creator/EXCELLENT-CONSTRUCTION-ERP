@@ -24,7 +24,10 @@ export const colors = {
 
   text: '#F8FAFC',
   textMuted: '#94A3B8',
-  textFaint: '#64748B',
+  // 原来是 #64748B，在卡片上只有 3.73:1，达不到 WCAG AA 的 4.5——
+  // 它是全 App 所有输入框占位文字的颜色，司机在阳光下的驾驶室里看不清。
+  // 这个值在三种底色上是 5.04~5.44，同时仍明显比 textMuted（6.92）淡，层级不乱。
+  textFaint: '#7A8AA0',
   /** 放在琥珀色按钮上的文字：深色才够对比 */
   onAccent: '#1A1206',
 
