@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useDispatch } from 'react-redux';
@@ -11,15 +12,13 @@ import { authApi, getBaseUrl } from '../src/api';
 import { setCredentials } from '../src/store/authSlice';
 import { useLang } from '../src/i18n';
 import { showAppAlert } from '../src/AppDialog';
-
-const AMBER = '#F59E0B';
-const AMBER_DARK = '#D97706';
-const MUTED = '#6b7280';
+import { colors, space, font, weight, radius, hit } from '../src/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
   const { t, toggle } = useLang();
+  const insets = useSafeAreaInsets();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,7 +93,7 @@ export default function LoginScreen() {
         <View style={styles.card}>
           <Text style={styles.label}>{t('login.account')}</Text>
           <View style={[styles.inputContainer, focused === 'id' && styles.inputContainerFocused]}>
-            <Ionicons name="person-outline" size={20} color={focused === 'id' ? AMBER : MUTED} />
+            <Ionicons name="person-outline" size={20} color={focused === 'id' ? colors.accent : colors.textFaint} />
             <TextInput
               style={styles.input}
               placeholder={t('login.accountPh')}
@@ -105,13 +104,13 @@ export default function LoginScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               returnKeyType="next"
-              placeholderTextColor={MUTED}
+              placeholderTextColor={colors.textFaint}
             />
           </View>
 
           <Text style={styles.label}>{t('login.password')}</Text>
           <View style={[styles.inputContainer, focused === 'pw' && styles.inputContainerFocused]}>
-            <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? AMBER : MUTED} />
+            <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? colors.accent : colors.textFaint} />
             <TextInput
               style={styles.input}
               placeholder={t('login.passwordPh')}
@@ -122,13 +121,14 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
               returnKeyType="done"
               onSubmitEditing={handleLogin}
-              placeholderTextColor={MUTED}
+              placeholderTextColor={colors.textFaint}
             />
             <TouchableOpacity
+              style={styles.eyeBtn}
               onPress={() => setShowPassword(v => !v)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={MUTED} />
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
             </TouchableOpacity>
           </View>
 
@@ -139,7 +139,7 @@ export default function LoginScreen() {
             activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={colors.onAccent} />
             ) : (
               <Text style={styles.loginBtnText}>{t('login.login')}</Text>
             )}
@@ -148,15 +148,22 @@ export default function LoginScreen() {
 
         <View style={styles.registerRow}>
           <Text style={styles.tip}>{t('login.noAccount')}</Text>
-          <TouchableOpacity onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={styles.registerBtn} onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.registerLink}>{t('login.register')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={toggle} style={styles.langBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.langBtnText}>{t('login.langToggle')}</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.version}>v1.0.0</Text>
       </ScrollView>
+
+      {/* 语言切换挂在右上角：它是全局开关，不该挤在"注册"旁边当第二个按钮 */}
+      <TouchableOpacity
+        onPress={toggle}
+        style={[styles.langBtn, { top: insets.top + space.md }]}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.langBtnText}>{t('login.langToggle')}</Text>
+      </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
@@ -164,12 +171,12 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F1A',
+    backgroundColor: colors.bg,
   },
   inner: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: space.xxl,
   },
   topDecoration: {
     position: 'absolute',
@@ -185,8 +192,8 @@ const styles = StyleSheet.create({
     right: -100,
     width: 300,
     height: 300,
-    borderRadius: 150,
-    backgroundColor: '#fff',
+    borderRadius: radius.pill,
+    backgroundColor: colors.text,
     opacity: 0.08,
   },
   decorCircle2: {
@@ -195,101 +202,104 @@ const styles = StyleSheet.create({
     left: -100,
     width: 250,
     height: 250,
-    borderRadius: 125,
-    backgroundColor: AMBER_DARK,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentDark,
     opacity: 0.05,
   },
   logoBox: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: space.xxxl,
   },
   logoIconContainer: {
     width: 96,
     height: 96,
-    borderRadius: 24,
-    backgroundColor: '#fff',
+    borderRadius: radius.xl,
+    // logo 本身是深色图，需要一块浅色底板才看得清
+    backgroundColor: colors.text,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 18,
-    shadowColor: AMBER,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
+    marginBottom: space.lg,
   },
   logoImage: {
     width: 88,
     height: 88,
-    borderRadius: 22,
+    borderRadius: radius.lg,
   },
   logoTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 8,
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
+    color: colors.text,
+    marginBottom: space.sm,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
   logoSub: {
-    fontSize: 12,
-    color: AMBER,
+    fontSize: font.xs,
+    color: colors.accent,
     letterSpacing: 3,
-    fontWeight: '700',
+    fontWeight: weight.bold,
     textTransform: 'uppercase',
   },
   card: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    borderRadius: 24,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: space.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   label: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 8,
-    fontWeight: '600',
+    fontSize: font.sm,
+    color: colors.textMuted,
+    marginBottom: space.sm,
+    fontWeight: weight.semibold,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 18,
-    paddingHorizontal: 14,
-    gap: 10,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: space.lg,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+    minHeight: hit.min,
   },
   inputContainerFocused: {
-    borderColor: AMBER,
-    backgroundColor: '#0d1424',
+    borderColor: colors.accent,
+    backgroundColor: colors.bg,
   },
   input: {
     flex: 1,
-    paddingVertical: 15,
-    fontSize: 16,
-    color: '#fff',
+    minWidth: 0,
+    paddingVertical: space.md,
+    fontSize: font.base,
+    color: colors.text,
+  },
+  eyeBtn: {
+    width: hit.min,
+    height: hit.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 触区撑到 48，但视觉上仍贴着右边距
+    marginRight: -space.md,
   },
   btn: {
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    minHeight: hit.min,
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    marginTop: space.sm,
   },
   loginBtn: {
-    backgroundColor: AMBER,
-    marginTop: 8,
-    shadowColor: AMBER,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    elevation: 8,
+    backgroundColor: colors.accent,
+    marginTop: space.xl,
   },
   loginBtnText: {
-    color: '#1a1206',
-    fontSize: 17,
-    fontWeight: '800',
+    color: colors.onAccent,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
     letterSpacing: 0.3,
   },
   btnDisabled: {
@@ -299,35 +309,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
+    gap: space.sm,
+    marginTop: space.lg,
   },
   tip: {
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 13,
+    color: colors.textFaint,
+    fontSize: font.sm,
+  },
+  registerBtn: {
+    minHeight: hit.min,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
   },
   registerLink: {
-    color: AMBER,
-    fontSize: 13,
-    fontWeight: '700',
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
   },
   langBtn: {
-    marginLeft: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 4,
-    borderRadius: 999,
+    position: 'absolute',
+    right: space.lg,
+    zIndex: 10,
+    minHeight: hit.min,
+    paddingHorizontal: space.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.5)',
+    borderColor: colors.borderStrong,
   },
   langBtnText: {
-    color: AMBER,
-    fontSize: 12,
-    fontWeight: '700',
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
+    letterSpacing: 0.5,
   },
   version: {
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.15)',
-    marginTop: 8,
-    fontSize: 11,
+    color: colors.textFaint,
+    marginTop: space.lg,
+    fontSize: font.xs,
+    opacity: 0.6,
   },
 });

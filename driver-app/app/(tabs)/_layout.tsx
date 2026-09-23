@@ -1,12 +1,12 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import AnnouncementModal from '../../src/AnnouncementModal';
-
-const AMBER = '#F59E0B';
+import { colors, space, font, weight, radius, hit } from '../../src/theme';
 
 const ICONS: Record<string, { active: string; inactive: string }> = {
   tasks: { active: 'list', inactive: 'list-outline' },
@@ -20,8 +20,8 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
     <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
       <Ionicons
         name={(focused ? icon.active : icon.inactive) as any}
-        size={23}
-        color={focused ? AMBER : '#64748b'}
+        size={24}
+        color={focused ? colors.accent : colors.textFaint}
       />
     </View>
   );
@@ -30,6 +30,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
 export default function TabLayout() {
   const { user } = useSelector((s: RootState) => s.auth);
   const { t } = useLang();
+  const insets = useSafeAreaInsets();
   const role = user?.role || '';
   const showTracking = role === 'client' || role === 'admin' || role === 'dispatcher';
   const tasksTitle = t('tab.tasks');
@@ -42,23 +43,24 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: AMBER,
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textFaint,
         tabBarStyle: {
-          backgroundColor: '#0B0F1A',
+          backgroundColor: colors.bg,
           borderTopWidth: 1,
-          borderTopColor: 'rgba(255,255,255,0.08)',
-          height: 78,
-          paddingTop: 8,
-          paddingBottom: 14,
+          borderTopColor: colors.border,
+          // 图标区按 hit.min 给足，再留出标签行；底部加上手势条的安全区
+          height: hit.min + space.xxxl + insets.bottom,
+          paddingTop: space.sm,
+          paddingBottom: space.sm + insets.bottom,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '800',
-          marginTop: 4,
+          fontSize: font.xs,
+          fontWeight: weight.heavy,
+          marginTop: space.xs,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 0,
         },
       }}
     >
@@ -91,16 +93,17 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   iconContainer: {
-    width: 46,
-    height: 42,
-    borderRadius: 15,
-    backgroundColor: 'transparent',
+    width: 64,
+    height: 36,
+    borderRadius: radius.pill,
+    // 边框常驻，只换颜色，选中时不会因为多出一圈线而位移
+    borderWidth: 1,
+    borderColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconContainerActive: {
-    backgroundColor: 'rgba(245,158,11,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.22)',
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
   },
 });

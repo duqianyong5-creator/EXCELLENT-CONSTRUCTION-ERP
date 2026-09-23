@@ -13,6 +13,7 @@ import { setActiveTask, setGpsRunning } from '../../src/store/taskSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
+import { colors, space, font, weight, radius, hit } from '../../src/theme';
 
 const GPS_UPLOAD_INTERVAL_MS = 10000;
 
@@ -193,7 +194,7 @@ export default function TaskDetailScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={AMBER} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -209,11 +210,11 @@ export default function TaskDetailScreen() {
   const isActive = task.status === 'in_progress' && activeTaskId === id;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: space.huge }}>
       {/* 顶部 */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={16} color={AMBER} />
+          <Ionicons name="chevron-back" size={16} color={colors.accent} />
           <Text style={styles.backText}>{t('td.backBtn')}</Text>
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>{task.title}</Text>
@@ -250,10 +251,10 @@ export default function TaskDetailScreen() {
           activeOpacity={0.85}
         >
           {starting
-            ? <ActivityIndicator color="#fff" />
+            ? <ActivityIndicator color={colors.onAccent} />
             : (
               <View style={styles.actionBtnRow}>
-                <Ionicons name="play-circle" size={20} color="#0B0F1A" />
+                <Ionicons name="play-circle" size={20} color={colors.onAccent} />
                 <Text style={styles.actionBtnText}>{t('td.startBtn')}</Text>
               </View>
             )
@@ -272,15 +273,16 @@ export default function TaskDetailScreen() {
                   <Image source={{ uri }} style={styles.photo} />
                   <TouchableOpacity
                     style={styles.photoDelete}
+                    hitSlop={{ top: space.md, bottom: space.md, left: space.md, right: space.md }}
                     onPress={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
                   >
-                    <Ionicons name="close" size={13} color="#fff" />
+                    <Ionicons name="close" size={16} color={colors.text} />
                   </TouchableOpacity>
                 </View>
               ))}
               {photos.length < 5 && (
                 <TouchableOpacity style={styles.photoAdd} onPress={handlePickPhoto} activeOpacity={0.7}>
-                  <Ionicons name="camera" size={24} color="rgba(245,158,11,0.9)" />
+                  <Ionicons name="camera" size={24} color={colors.accent} />
                   <Text style={styles.photoAddText}>{t('td.addPhoto')}</Text>
                 </TouchableOpacity>
               )}
@@ -294,10 +296,10 @@ export default function TaskDetailScreen() {
             activeOpacity={0.85}
           >
             {completing
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.onAccent} />
               : (
                 <View style={styles.actionBtnRow}>
-                  <Ionicons name="checkmark-done-circle" size={20} color="#0B0F1A" />
+                  <Ionicons name="checkmark-done-circle" size={20} color={colors.onAccent} />
                   <Text style={styles.actionBtnText}>{t('td.completeBtn')}</Text>
                 </View>
               )
@@ -312,13 +314,13 @@ export default function TaskDetailScreen() {
             <View style={[
               styles.doneBadge,
               task.status === 'completed'
-                ? { backgroundColor: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.4)' }
-                : { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.4)' },
+                ? { backgroundColor: colors.successSoft, borderColor: colors.success }
+                : { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
             ]}>
               <Ionicons
                 name={task.status === 'completed' ? 'checkmark' : 'close'}
                 size={30}
-                color={task.status === 'completed' ? '#22c55e' : '#ef4444'}
+                color={task.status === 'completed' ? colors.success : colors.danger}
               />
             </View>
             <Text style={styles.doneText}>
@@ -333,9 +335,9 @@ export default function TaskDetailScreen() {
               <InfoRow label={t('td.duration')} value={workRecord.finalDuration != null ? `${Math.floor(workRecord.finalDuration / 60)}h ${workRecord.finalDuration % 60}m` : '—'} />
               {workRecord.completionNotes ? <InfoRow label={t('td.notes')} value={workRecord.completionNotes} /> : null}
               {Array.isArray(workRecord.imageUrls) && workRecord.imageUrls.length > 0 ? (
-                <View style={{ marginTop: 16 }}>
+                <View style={{ marginTop: space.lg }}>
                   <SectionTitle icon="images-outline" text={t('td.donePhotos')} />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md }}>
                     {workRecord.imageUrls.map((u: string, i: number) => (
                       <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => setViewerUrl(u)}>
                         <Image source={{ uri: u }} style={styles.remotePhoto} />
@@ -364,7 +366,7 @@ function SectionTitle({ icon, text }: { icon: any; text: string }) {
   return (
     <View style={styles.sectionTitleRow}>
       <View style={styles.sectionAccent} />
-      <Ionicons name={icon} size={16} color={AMBER} style={{ marginRight: 7 }} />
+      <Ionicons name={icon} size={16} color={colors.accent} style={{ marginRight: space.sm }} />
       <Text style={styles.sectionTitle}>{text}</Text>
     </View>
   );
@@ -379,119 +381,120 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-const AMBER = '#F59E0B';
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0F1A' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B0F1A' },
-  errorText: { color: 'rgba(255,255,255,0.5)', fontSize: 16 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+  errorText: { color: colors.textMuted, fontSize: font.base },
   topBar: {
-    backgroundColor: '#0B0F1A',
-    paddingTop: 56,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    backgroundColor: colors.bg,
+    paddingTop: space.huge + space.lg,
+    paddingBottom: space.md,
+    paddingHorizontal: space.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: space.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.border,
   },
   backBtn: {
-    marginRight: 12,
-    backgroundColor: 'rgba(245,158,11,0.12)',
+    minHeight: hit.min,
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.32)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 11,
+    borderColor: colors.accent,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
+    gap: space.xs,
   },
-  backText: { color: AMBER, fontSize: 14, fontWeight: '800' },
-  topTitle: { flex: 1, color: '#fff', fontSize: 18, fontWeight: '800' },
+  backText: { color: colors.accent, fontSize: font.sm, fontWeight: weight.heavy },
+  topTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: font.lg, fontWeight: weight.bold },
   gpsBanner: {
-    backgroundColor: 'rgba(34,197,94,0.12)',
+    backgroundColor: colors.successSoft,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(34,197,94,0.25)',
+    borderBottomColor: colors.success,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    paddingHorizontal: 16,
+    gap: space.sm,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
   },
   gpsIndicator: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', marginRight: 8,
+    width: space.sm, height: space.sm, borderRadius: radius.pill, backgroundColor: colors.success,
   },
-  gpsText: { color: '#22c55e', fontSize: 13, fontWeight: '600' },
+  gpsText: { color: colors.success, fontSize: font.sm, fontWeight: weight.semibold },
   section: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    marginHorizontal: 14,
-    marginTop: 14,
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: colors.surface,
+    marginHorizontal: space.lg,
+    marginTop: space.lg,
+    borderRadius: radius.lg,
+    padding: space.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  sectionAccent: { width: 3, height: 16, borderRadius: 2, backgroundColor: AMBER, marginRight: 9 },
-  sectionTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  infoLabel: { width: 92, fontSize: 13.5, color: 'rgba(148,163,184,0.85)', fontWeight: '600' },
-  infoValue: { flex: 1, fontSize: 14.5, color: '#f1f5f9', fontWeight: '600' },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md },
+  sectionAccent: { width: 3, height: font.lg, borderRadius: radius.pill, backgroundColor: colors.accent },
+  sectionTitle: { fontSize: font.base, fontWeight: weight.bold, color: colors.text, letterSpacing: 0.2 },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.md,
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  infoLabel: { width: 96, fontSize: font.sm, color: colors.textMuted, fontWeight: weight.semibold },
+  infoValue: { flex: 1, minWidth: 0, fontSize: font.base, color: colors.text, fontWeight: weight.semibold },
   actionBtn: {
-    marginHorizontal: 14,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 16,
+    marginHorizontal: space.lg,
+    marginTop: space.lg,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    minHeight: hit.min,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  startBtn: {
-    backgroundColor: AMBER,
-    shadowColor: AMBER, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6,
-  },
-  completeBtn: {
-    backgroundColor: '#22c55e',
-    shadowColor: '#22c55e', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
-  },
+  startBtn: { backgroundColor: colors.accent },
+  completeBtn: { backgroundColor: colors.success },
   btnDisabled: { opacity: 0.6 },
-  actionBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  actionBtnText: { color: '#0B0F1A', fontSize: 17, fontWeight: '800' },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  actionBtnRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  actionBtnText: { color: colors.onAccent, fontSize: font.lg, fontWeight: weight.heavy },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
   photoWrap: { position: 'relative' },
-  photo: { width: 90, height: 90, borderRadius: 12 },
-  remotePhoto: { width: 110, height: 110, borderRadius: 12 },
+  photo: { width: 88, height: 88, borderRadius: radius.md },
+  remotePhoto: { width: 112, height: 112, borderRadius: radius.md },
   photoDelete: {
-    position: 'absolute', top: -6, right: -6,
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute', top: -space.sm, right: -space.sm,
+    width: space.xxl, height: space.xxl, borderRadius: radius.pill,
+    backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center',
   },
-  photoDeleteText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   photoAdd: {
-    width: 90, height: 90, borderRadius: 12,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)', borderStyle: 'dashed',
-    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)',
+    width: 88, height: 88, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.borderStrong, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt,
   },
-  photoAddIcon: { fontSize: 24 },
-  photoAddText: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 },
+  photoAddText: { fontSize: font.xs, color: colors.textFaint, marginTop: space.xs },
   doneBox: {
-    alignItems: 'center', paddingVertical: 22, paddingHorizontal: 16,
-    marginHorizontal: 14, marginTop: 14,
-    backgroundColor: 'rgba(30, 41, 59, 0.55)', borderRadius: 18,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', paddingVertical: space.xxl, paddingHorizontal: space.lg,
+    marginHorizontal: space.lg, marginTop: space.lg,
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border,
   },
   doneBadge: {
-    width: 60, height: 60, borderRadius: 30,
-    borderWidth: 1.5,
+    width: 64, height: 64, borderRadius: radius.pill,
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: space.md,
   },
-  doneText: { fontSize: 16.5, color: '#fff', fontWeight: '800' },
+  doneText: { fontSize: font.lg, color: colors.text, fontWeight: weight.heavy },
   viewerBackdrop: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center', justifyContent: 'center',
   },
   viewerImage: { width: '100%', height: '80%' },
   viewerHint: {
-    position: 'absolute', bottom: 50,
-    color: 'rgba(255,255,255,0.55)', fontSize: 13,
+    position: 'absolute', bottom: space.huge + space.sm,
+    color: colors.textMuted, fontSize: font.sm,
   },
 });

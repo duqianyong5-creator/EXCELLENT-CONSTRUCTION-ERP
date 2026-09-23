@@ -16,17 +16,17 @@ import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
 import { startBackgroundGps, stopBackgroundGps } from '../../src/backgroundLocation';
+import { colors, space, font, weight, radius, hit } from '../../src/theme';
 
-const AMBER = '#F59E0B';
-const AMBER_DARK = '#D97706';
 const GPS_UPLOAD_INTERVAL_MS = 10000;
 
+// 状态配色只按语义取:待派=品牌琥珀,已派=信息蓝,进行中=绿,已完成=中性灰,已取消=红
 const STATUS_COLOR: Record<string, { bg: string; text: string; border: string }> = {
-  pending: { bg: 'rgba(250, 204, 21, 0.15)', text: '#eab308', border: 'rgba(250, 204, 21, 0.3)' },
-  assigned: { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6', border: 'rgba(59, 130, 246, 0.3)' },
-  in_progress: { bg: 'rgba(34, 197, 94, 0.15)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.3)' },
-  completed: { bg: 'rgba(107, 114, 128, 0.15)', text: '#6b7280', border: 'rgba(107, 114, 128, 0.3)' },
-  cancelled: { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' },
+  pending: { bg: colors.accentSoft, text: colors.accent, border: colors.accent },
+  assigned: { bg: colors.infoSoft, text: colors.info, border: colors.info },
+  in_progress: { bg: colors.successSoft, text: colors.success, border: colors.success },
+  completed: { bg: colors.border, text: colors.textMuted, border: colors.borderStrong },
+  cancelled: { bg: colors.dangerSoft, text: colors.danger, border: colors.danger },
 };
 
 export default function TasksScreen() {
@@ -399,11 +399,11 @@ export default function TasksScreen() {
   };
 
   const getDriverAccent = (task: any) => {
-    if (isDriverTaskOverdue(task)) return '#ef4444';
-    if (task.status === 'assigned') return AMBER;
-    if (task.status === 'in_progress') return '#3b82f6';
-    if (task.status === 'completed') return '#22c55e';
-    return '#64748b';
+    if (isDriverTaskOverdue(task)) return colors.danger;
+    if (task.status === 'assigned') return colors.accent;
+    if (task.status === 'in_progress') return colors.info;
+    if (task.status === 'completed') return colors.success;
+    return colors.textFaint;
   };
 
   // 车牌归一化规则与后端 normalizePlate 保持一致（大小写、空格、连字符、中点都忽略）
@@ -496,7 +496,7 @@ export default function TasksScreen() {
     return (
       <View style={styles.center}>
         <View style={styles.loadingSpinner}>
-          <ActivityIndicator size="large" color={AMBER} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
         <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
@@ -512,19 +512,19 @@ export default function TasksScreen() {
 
               <View style={styles.driverStatsGrid}>
                 <TouchableOpacity
-                  style={[styles.driverStatCard, styles.driverStatBlue, todayOnly && { borderColor: AMBER, backgroundColor: 'rgba(245,158,11,0.1)' }]}
+                  style={[styles.driverStatCard, styles.driverStatBlue, todayOnly && styles.driverStatCardOn]}
                   onPress={() => setTodayOnly(v => !v)}
                   activeOpacity={0.85}
                 >
-                  <Text style={[styles.driverStatValue, { color: todayOnly ? AMBER : '#60a5fa' }]}>{todayOnly ? todayCount : tasks.length}</Text>
+                  <Text style={[styles.driverStatValue, { color: todayOnly ? colors.accent : colors.info }]}>{todayOnly ? todayCount : tasks.length}</Text>
                   <Text style={styles.driverStatLabel}>{todayOnly ? t('d.statToday') : t('d.statTotal')}</Text>
                 </TouchableOpacity>
                 <View style={[styles.driverStatCard, styles.driverStatAmber]}>
-                  <Text style={[styles.driverStatValue, { color: AMBER }]}>{driverInProgressCount}</Text>
+                  <Text style={[styles.driverStatValue, { color: colors.accent }]}>{driverInProgressCount}</Text>
                   <Text style={styles.driverStatLabel}>{t('d.statActive')}</Text>
                 </View>
                 <View style={[styles.driverStatCard, styles.driverStatRed]}>
-                  <Text style={[styles.driverStatValue, { color: '#ff4d4f' }]}>{driverOverdueCount}</Text>
+                  <Text style={[styles.driverStatValue, { color: colors.danger }]}>{driverOverdueCount}</Text>
                   <Text style={styles.driverStatLabel}>{t('d.statOverdue')}</Text>
                 </View>
               </View>
@@ -552,13 +552,13 @@ export default function TasksScreen() {
               </ScrollView>
 
               <View style={styles.driverSearchBox}>
-                <Ionicons name="search" size={17} color="rgba(148,163,184,0.8)" style={{ marginRight: 10 }} />
+                <Ionicons name="search" size={20} color={colors.textMuted} style={{ marginRight: space.md }} />
                 <TextInput
                   value={searchText}
                   onChangeText={setSearchText}
                   style={styles.driverSearchInput}
                   placeholder={t('d.search')}
-                  placeholderTextColor="rgba(148,163,184,0.7)"
+                  placeholderTextColor={colors.textFaint}
                 />
               </View>
             </View>
@@ -574,14 +574,14 @@ export default function TasksScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={AMBER}
-              colors={[AMBER]}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
             />
           }
           ListEmptyComponent={
             <View style={styles.driverEmptyBox}>
               <View style={styles.driverEmptyIcon}>
-                <Ionicons name="clipboard-outline" size={38} color={AMBER} />
+                <Ionicons name="clipboard-outline" size={36} color={colors.accent} />
               </View>
               <Text style={styles.driverEmptyTitle}>{t('d.emptyTitle')}</Text>
               <Text style={styles.driverEmptySub}>{t('d.emptySub')}</Text>
@@ -613,11 +613,11 @@ export default function TasksScreen() {
                 <View style={styles.driverTaskBottom}>
                   <View style={{ flex: 1 }}>
                     <View style={styles.driverInfoLine}>
-                      <Ionicons name="time-outline" size={14} color="rgba(148,163,184,0.95)" />
+                      <Ionicons name="time-outline" size={16} color={colors.textMuted} />
                       <Text style={styles.driverTaskDate}>{t('d.due')} {formatDriverDateTime(item.scheduledAt)}</Text>
                     </View>
-                    <View style={[styles.driverInfoLine, { marginTop: 6 }]}>
-                      <Ionicons name="create-outline" size={13} color="rgba(100,116,139,0.8)" />
+                    <View style={[styles.driverInfoLine, { marginTop: space.sm }]}>
+                      <Ionicons name="create-outline" size={14} color={colors.textFaint} />
                       <Text style={styles.driverTaskCreated}>{t('d.createdAt')} {formatDriverDateTime(item.createdAt)}</Text>
                     </View>
                   </View>
@@ -639,7 +639,7 @@ export default function TasksScreen() {
                     activeOpacity={0.85}
                   >
                     {startingTaskId === item.id
-                      ? <ActivityIndicator color="#93c5fd" />
+                      ? <ActivityIndicator color={colors.accent} />
                       : <Text style={styles.driverAcceptInlineText}>{t('d.accept')}</Text>}
                   </TouchableOpacity>
                 )}
@@ -651,7 +651,7 @@ export default function TasksScreen() {
                     activeOpacity={0.85}
                   >
                     {completingTaskId === item.id
-                      ? <ActivityIndicator color="#bbf7d0" />
+                      ? <ActivityIndicator color={colors.success} />
                       : <Text style={styles.driverCompleteInlineText}>{t('d.finish')}</Text>}
                   </TouchableOpacity>
                 )}
@@ -666,7 +666,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('d.acceptConfirm')}</Text>
                 <TouchableOpacity onPress={() => setAcceptTask(null)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               {acceptTask && (
@@ -726,7 +726,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('d.plateTitle')}</Text>
                 <TouchableOpacity onPress={() => setPlateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.acceptContent}>
@@ -736,12 +736,12 @@ export default function TasksScreen() {
                   onChangeText={setVehiclePlate}
                   style={styles.plateInput}
                   placeholder={t('d.platePh')}
-                  placeholderTextColor="rgba(255,255,255,0.28)"
+                  placeholderTextColor={colors.textFaint}
                   autoCapitalize="characters"
                 />
                 {knownPlates.length > 0 && vehiclePlate.trim().length > 0 && !plateHasTracker && (
                   <View style={styles.plateWarnBox}>
-                    <Ionicons name="alert-circle-outline" size={15} color="#fbbf24" />
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.accent} />
                     <Text style={styles.plateWarnText}>
                       {t('d.plateNoTracker')}
                     </Text>
@@ -762,7 +762,7 @@ export default function TasksScreen() {
                             onPress={() => setVehiclePlate(item.plate)}
                             activeOpacity={0.85}
                           >
-                            <Ionicons name="car-outline" size={14} color={active ? '#111827' : AMBER} />
+                            <Ionicons name="car-outline" size={16} color={active ? colors.onAccent : colors.accent} />
                             <Text style={[styles.plateChipBtnText, active && styles.plateChipBtnTextActive]}>
                               {item.plate}
                             </Text>
@@ -779,7 +779,7 @@ export default function TasksScreen() {
                   activeOpacity={0.85}
                 >
                   {startingTaskId
-                    ? <ActivityIndicator color="#000" />
+                    ? <ActivityIndicator color={colors.onAccent} />
                     : <Text style={styles.modalBtnText}>{t('d.plateConfirm')}</Text>}
                 </TouchableOpacity>
               </View>
@@ -800,7 +800,7 @@ export default function TasksScreen() {
                   style={styles.modalClose}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.acceptContent}>
@@ -813,16 +813,17 @@ export default function TasksScreen() {
                       <Image source={{ uri }} style={styles.completePhoto} />
                       <TouchableOpacity
                         style={styles.completePhotoRemove}
+                        hitSlop={{ top: space.md, bottom: space.md, left: space.md, right: space.md }}
                         onPress={() => setCompletePhotos(prev => prev.filter((_, i) => i !== index))}
                         activeOpacity={0.8}
                       >
-                        <Ionicons name="close" size={13} color="#fff" />
+                        <Ionicons name="close" size={16} color={colors.text} />
                       </TouchableOpacity>
                     </View>
                   ))}
                   {completePhotos.length < 5 && (
                     <TouchableOpacity style={styles.completePhotoAdd} onPress={handleTakeCompletePhoto} activeOpacity={0.85}>
-                      <Ionicons name="camera-outline" size={26} color="rgba(226,232,240,0.8)" style={{ marginBottom: 6 }} />
+                      <Ionicons name="camera-outline" size={26} color={colors.textMuted} style={{ marginBottom: space.sm }} />
                       <Text style={styles.completePhotoAddText}>{t('d.takePhoto')}</Text>
                     </TouchableOpacity>
                   )}
@@ -835,7 +836,7 @@ export default function TasksScreen() {
                   activeOpacity={0.85}
                 >
                   {completingTaskId
-                    ? <ActivityIndicator color="#052e16" />
+                    ? <ActivityIndicator color={colors.onAccent} />
                     : <Text style={styles.completeSubmitText}>{t('d.submitFinish')}</Text>}
                 </TouchableOpacity>
               </View>
@@ -849,7 +850,7 @@ export default function TasksScreen() {
               <View style={styles.pickHeader}>
                 <Text style={styles.pickHeaderTitle}>{t('tasks.notifTitle0')}</Text>
                 <TouchableOpacity onPress={() => setNotificationsOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                  <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -869,8 +870,8 @@ export default function TasksScreen() {
                   </TouchableOpacity>
                 )}
                 ListEmptyComponent={
-                  <View style={{ padding: 24 }}>
-                    <Text style={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center' }}>{t('tasks.noNotif')}</Text>
+                  <View style={{ padding: space.xxl }}>
+                    <Text style={styles.emptyInlineText}>{t('tasks.noNotif')}</Text>
                   </View>
                 }
               />
@@ -891,25 +892,25 @@ export default function TasksScreen() {
             <Text style={styles.headerSub}>{getToday()}</Text>
           </View>
           <TouchableOpacity style={styles.headerIconBtn} onPress={load} activeOpacity={0.8}>
-            <Ionicons name="refresh" size={19} color={AMBER} />
+            <Ionicons name="refresh" size={22} color={colors.accent} />
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.driverStatsGrid, { marginTop: 16, marginBottom: 0 }]}>
+        <View style={[styles.driverStatsGrid, { marginTop: space.lg, marginBottom: 0 }]}>
           <TouchableOpacity
-            style={[styles.driverStatCard, styles.driverStatBlue, todayOnly && { borderColor: AMBER, backgroundColor: 'rgba(245,158,11,0.1)' }]}
+            style={[styles.driverStatCard, styles.driverStatBlue, todayOnly && styles.driverStatCardOn]}
             onPress={() => setTodayOnly(v => !v)}
             activeOpacity={0.85}
           >
-            <Text style={[styles.driverStatValue, { color: todayOnly ? AMBER : '#60a5fa' }]}>{todayOnly ? todayCount : tasks.length}</Text>
+            <Text style={[styles.driverStatValue, { color: todayOnly ? colors.accent : colors.info }]}>{todayOnly ? todayCount : tasks.length}</Text>
             <Text style={styles.driverStatLabel}>{todayOnly ? t('d.statToday') : t('d.statTotal')}</Text>
           </TouchableOpacity>
           <View style={[styles.driverStatCard, styles.driverStatAmber]}>
-            <Text style={[styles.driverStatValue, { color: AMBER }]}>{getInProgressCount()}</Text>
+            <Text style={[styles.driverStatValue, { color: colors.accent }]}>{getInProgressCount()}</Text>
             <Text style={styles.driverStatLabel}>{t('tasks.inProgress')}</Text>
           </View>
-          <View style={[styles.driverStatCard, { borderColor: 'rgba(34,197,94,0.35)' }]}>
-            <Text style={[styles.driverStatValue, { color: '#22c55e' }]}>{getCompletedCount()}</Text>
+          <View style={[styles.driverStatCard, styles.driverStatGreen]}>
+            <Text style={[styles.driverStatValue, { color: colors.success }]}>{getCompletedCount()}</Text>
             <Text style={styles.driverStatLabel}>{t('tasks.completed')}</Text>
           </View>
         </View>
@@ -936,14 +937,14 @@ export default function TasksScreen() {
             }}
             activeOpacity={0.85}
           >
-            <Ionicons name="add-circle" size={19} color="#000" />
+            <Ionicons name="add-circle" size={20} color={colors.onAccent} />
             <Text style={styles.createBtnText}>{t('tasks.createTask')}</Text>
           </TouchableOpacity>
         )}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 14 }}
+          style={{ marginTop: space.lg }}
           contentContainerStyle={styles.driverFilterRow}
         >
           {adminFilterItems.map((item) => {
@@ -961,13 +962,13 @@ export default function TasksScreen() {
           })}
         </ScrollView>
         <View style={[styles.driverSearchBox, { marginBottom: 0 }]}>
-          <Ionicons name="search" size={17} color="rgba(148,163,184,0.8)" style={{ marginRight: 10 }} />
+          <Ionicons name="search" size={20} color={colors.textMuted} style={{ marginRight: space.md }} />
           <TextInput
             value={searchText}
             onChangeText={setSearchText}
             style={styles.driverSearchInput}
             placeholder={t('d.search')}
-            placeholderTextColor="rgba(148,163,184,0.7)"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
       </View>
@@ -976,19 +977,19 @@ export default function TasksScreen() {
       <FlatList
         data={filteredAdminTasks}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={tasks.length === 0 ? styles.empty : { padding: 16 }}
+        contentContainerStyle={tasks.length === 0 ? styles.empty : { padding: space.lg }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={AMBER}
-            colors={[AMBER]}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <View style={styles.emptyIconContainer}>
-              <Ionicons name="clipboard-outline" size={36} color={AMBER} />
+              <Ionicons name="clipboard-outline" size={36} color={colors.accent} />
             </View>
             <Text style={styles.emptyText}>{t('tasks.emptyTitle')}</Text>
             <Text style={styles.emptySub}>{t('tasks.emptySub')}</Text>
@@ -1022,21 +1023,21 @@ export default function TasksScreen() {
               </View>
 
               <View style={styles.destRow}>
-                <Ionicons name="location" size={15} color="#ef4444" />
+                <Ionicons name="location" size={16} color={colors.danger} />
                 <Text style={styles.destText} numberOfLines={1}>{item.endLocation}</Text>
               </View>
 
               <View style={styles.cardMetaGrid}>
                 <View style={styles.cardMetaItem}>
-                  <Ionicons name="business-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Ionicons name="business-outline" size={14} color={colors.textMuted} />
                   <Text style={styles.cardMetaText} numberOfLines={1}>{getPersonName(item.client)}</Text>
                 </View>
                 <View style={styles.cardMetaItem}>
-                  <Ionicons name="person-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Ionicons name="person-outline" size={14} color={colors.textMuted} />
                   <Text style={styles.cardMetaText} numberOfLines={1}>{getPersonName(item.driver)}</Text>
                 </View>
                 <View style={[styles.cardMetaItem, { flexBasis: '100%' }]}>
-                  <Ionicons name="time-outline" size={13} color="rgba(148,163,184,0.85)" />
+                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
                   <Text style={styles.cardMetaText} numberOfLines={1}>
                     {item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : t('tasks.unscheduled')}
                   </Text>
@@ -1045,7 +1046,7 @@ export default function TasksScreen() {
 
               {item.cargo && (
                 <View style={styles.cargoContainer}>
-                  <Ionicons name="cube-outline" size={15} color={AMBER} style={{ marginRight: 8 }} />
+                  <Ionicons name="cube-outline" size={16} color={colors.accent} style={{ marginRight: space.sm }} />
                   <Text style={styles.cargoText}>
                     {item.cargo}
                     {item.cargoWeight ? ` · ${item.cargoWeight} ${t('tasks.ton')}` : ''}
@@ -1071,7 +1072,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="person-add-outline" size={14} color={AMBER} />
+                      <Ionicons name="person-add-outline" size={16} color={colors.accent} />
                       <Text style={styles.smallBtnTextPrimary}>{t('tasks.assignDriver')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1095,7 +1096,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="close-circle-outline" size={14} color="#ef4444" />
+                      <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
                       <Text style={styles.smallBtnTextDanger}>{t('tasks.cancel')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1119,7 +1120,7 @@ export default function TasksScreen() {
                       }}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
                       <Text style={styles.smallBtnTextDanger}>{t('tasks.delete')}</Text>
                     </TouchableOpacity>
                   )}
@@ -1134,7 +1135,7 @@ export default function TasksScreen() {
                   activeOpacity={0.85}
                 >
                   {startingTaskId === item.id
-                    ? <ActivityIndicator color="#000" />
+                    ? <ActivityIndicator color={colors.onAccent} />
                     : <Text style={styles.acceptBtnText}>{t('d.accept')}</Text>}
                 </TouchableOpacity>
               )}
@@ -1157,11 +1158,11 @@ export default function TasksScreen() {
                   <Text style={styles.footerText}>{t('d.viewTask')}</Text>
                   {item.vehiclePlate ? (
                     <View style={styles.plateChip}>
-                      <Ionicons name="car-outline" size={14} color={AMBER} />
+                      <Ionicons name="car-outline" size={16} color={colors.accent} />
                       <Text style={styles.plateChipText}>{item.vehiclePlate}</Text>
                     </View>
                   ) : (
-                    <Ionicons name="chevron-forward" size={18} color="rgba(245,158,11,0.6)" />
+                    <Ionicons name="chevron-forward" size={20} color={colors.accent} />
                   )}
                 </View>
               )}
@@ -1176,7 +1177,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('d.acceptConfirm')}</Text>
               <TouchableOpacity onPress={() => setAcceptTask(null)} style={styles.modalClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             {acceptTask && (
@@ -1236,7 +1237,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('d.plateTitle')}</Text>
               <TouchableOpacity onPress={() => setPlateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <View style={styles.acceptContent}>
@@ -1246,7 +1247,7 @@ export default function TasksScreen() {
                 onChangeText={setVehiclePlate}
                 style={styles.plateInput}
                 placeholder={t('d.platePh')}
-                placeholderTextColor="rgba(255,255,255,0.28)"
+                placeholderTextColor={colors.textFaint}
                 autoCapitalize="characters"
               />
               <TouchableOpacity
@@ -1256,7 +1257,7 @@ export default function TasksScreen() {
                 activeOpacity={0.85}
               >
                 {startingTaskId
-                  ? <ActivityIndicator color="#000" />
+                  ? <ActivityIndicator color={colors.onAccent} />
                   : <Text style={styles.modalBtnText}>{t('d.plateConfirm')}</Text>}
               </TouchableOpacity>
             </View>
@@ -1270,7 +1271,7 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{t('tasks.notifTitle0')}</Text>
               <TouchableOpacity onPress={() => setNotificationsOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -1290,8 +1291,8 @@ export default function TasksScreen() {
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
-                <View style={{ padding: 24 }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center' }}>{t('tasks.noNotif')}</Text>
+                <View style={{ padding: space.xxl }}>
+                  <Text style={styles.emptyInlineText}>{t('tasks.noNotif')}</Text>
                 </View>
               }
             />
@@ -1308,7 +1309,7 @@ export default function TasksScreen() {
                 <Text style={styles.modalSubtitle}>{taskNamePreview}</Text>
               </View>
               <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.modalClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -1325,7 +1326,7 @@ export default function TasksScreen() {
                 <View style={[styles.selectAvatar, selectedClient && styles.selectAvatarFilled]}>
                   {selectedClient
                     ? <Text style={styles.selectAvatarText}>{String(selectedClient.fullName || selectedClient.username || '?').slice(0, 1).toUpperCase()}</Text>
-                    : <Ionicons name="business-outline" size={18} color="rgba(148,163,184,0.9)" />}
+                    : <Ionicons name="business-outline" size={20} color={colors.textMuted} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.selectRowLabel}>{t('tasks.client')} <Text style={styles.requiredMark}>*</Text></Text>
@@ -1333,7 +1334,7 @@ export default function TasksScreen() {
                     {selectedClient ? (selectedClient.fullName || selectedClient.username || selectedClient.email) : t('tasks.selectClient')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={17} color="rgba(148,163,184,0.6)" />
+                <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.selectRow, selectedDriver && styles.selectRowFilled]}
@@ -1343,7 +1344,7 @@ export default function TasksScreen() {
                 <View style={[styles.selectAvatar, selectedDriver && styles.selectAvatarFilled]}>
                   {selectedDriver
                     ? <Text style={styles.selectAvatarText}>{String(selectedDriver.fullName || selectedDriver.username || '?').slice(0, 1).toUpperCase()}</Text>
-                    : <Ionicons name="person-outline" size={18} color="rgba(148,163,184,0.9)" />}
+                    : <Ionicons name="person-outline" size={20} color={colors.textMuted} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.selectRowLabel}>{t('tasks.driver')} <Text style={styles.requiredMark}>*</Text></Text>
@@ -1351,7 +1352,7 @@ export default function TasksScreen() {
                     {selectedDriver ? (selectedDriver.fullName || selectedDriver.username || selectedDriver.email) : t('tasks.selectDriver')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={17} color="rgba(148,163,184,0.6)" />
+                <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
               </TouchableOpacity>
 
               {/* 第 2 步 运输信息 */}
@@ -1361,18 +1362,18 @@ export default function TasksScreen() {
               </View>
               <Text style={styles.formLabel}>{t('tasks.endAddr')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="location-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
-                <TextInput value={endLocation} onChangeText={setEndLocation} style={styles.inputRowField} placeholder={t('tasks.endAddrPh')} placeholderTextColor="#6b7280" />
+                <Ionicons name="location-outline" size={20} color={colors.textMuted} style={styles.inputRowIcon} />
+                <TextInput value={endLocation} onChangeText={setEndLocation} style={styles.inputRowField} placeholder={t('tasks.endAddrPh')} placeholderTextColor={colors.textFaint} />
               </View>
               <Text style={styles.formLabel}>{t('tasks.cargo')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="cube-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
-                <TextInput value={cargo} onChangeText={setCargo} style={styles.inputRowField} placeholder={t('tasks.cargoPh')} placeholderTextColor="#6b7280" />
+                <Ionicons name="cube-outline" size={20} color={colors.textMuted} style={styles.inputRowIcon} />
+                <TextInput value={cargo} onChangeText={setCargo} style={styles.inputRowField} placeholder={t('tasks.cargoPh')} placeholderTextColor={colors.textFaint} />
               </View>
               <Text style={styles.formLabel}>{t('tasks.weight')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="scale-outline" size={17} color="rgba(148,163,184,0.75)" style={styles.inputRowIcon} />
-                <TextInput value={cargoWeight} onChangeText={setCargoWeight} style={styles.inputRowField} placeholder={t('tasks.weightPh')} placeholderTextColor="#6b7280" keyboardType="numeric" />
+                <Ionicons name="scale-outline" size={20} color={colors.textMuted} style={styles.inputRowIcon} />
+                <TextInput value={cargoWeight} onChangeText={setCargoWeight} style={styles.inputRowField} placeholder={t('tasks.weightPh')} placeholderTextColor={colors.textFaint} keyboardType="numeric" />
                 <Text style={styles.inputSuffix}>{t('tasks.ton')}</Text>
               </View>
 
@@ -1387,11 +1388,11 @@ export default function TasksScreen() {
                 onPress={() => { setTempDate(scheduledAt || new Date()); setPicker('date'); }}
                 activeOpacity={0.85}
               >
-                <Ionicons name="calendar-outline" size={17} color={scheduledAt ? AMBER : 'rgba(148,163,184,0.75)'} style={styles.inputRowIcon} />
-                <Text style={[styles.inputRowField, { color: scheduledAt ? '#fff' : '#6b7280', paddingVertical: 13 }]}>
+                <Ionicons name="calendar-outline" size={20} color={scheduledAt ? colors.accent : colors.textMuted} style={styles.inputRowIcon} />
+                <Text style={[styles.inputRowField, !scheduledAt && styles.inputRowFieldPlaceholder]}>
                   {scheduledAt ? formatDriverDateTime(scheduledAt.toISOString()) : t('tasks.pickTime')}
                 </Text>
-                <Ionicons name="chevron-down" size={15} color="rgba(148,163,184,0.6)" />
+                <Ionicons name="chevron-down" size={18} color={colors.textFaint} />
               </TouchableOpacity>
               {picker && (
                 <DateTimePicker
@@ -1402,7 +1403,7 @@ export default function TasksScreen() {
                 />
               )}
               <Text style={styles.formLabel}>{t('tasks.notes')}</Text>
-              <TextInput value={notes} onChangeText={setNotes} style={[styles.formInput, styles.formTextarea]} placeholder={t('common.optional')} placeholderTextColor="#6b7280" multiline />
+              <TextInput value={notes} onChangeText={setNotes} style={[styles.formInput, styles.formTextarea]} placeholder={t('common.optional')} placeholderTextColor={colors.textFaint} multiline />
 
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnRow, (saving || !createFormValid) && styles.btnDisabled]}
@@ -1446,9 +1447,9 @@ export default function TasksScreen() {
                 disabled={saving}
                 activeOpacity={0.85}
               >
-                {saving ? <ActivityIndicator color="#000" /> : (
+                {saving ? <ActivityIndicator color={colors.onAccent} /> : (
                   <>
-                    <Ionicons name="paper-plane" size={17} color="#000" />
+                    <Ionicons name="paper-plane" size={18} color={colors.onAccent} />
                     <Text style={styles.modalBtnText}>{t('tasks.createDispatch')}</Text>
                   </>
                 )}
@@ -1464,17 +1465,17 @@ export default function TasksScreen() {
             <View style={styles.pickHeader}>
               <Text style={styles.pickHeaderTitle}>{pickOpen === 'client' ? t('tasks.selectClient') : t('tasks.selectDriver')}</Text>
               <TouchableOpacity onPress={() => { setPickOpen(null); setAssigningTask(null); }} style={styles.modalClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={19} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <View style={styles.pickSearchBox}>
-              <Ionicons name="search" size={16} color="rgba(148,163,184,0.8)" />
+              <Ionicons name="search" size={18} color={colors.textMuted} />
               <TextInput
                 value={pickSearch}
                 onChangeText={setPickSearch}
                 style={styles.pickSearchInput}
                 placeholder={t('d.search')}
-                placeholderTextColor="rgba(148,163,184,0.6)"
+                placeholderTextColor={colors.textFaint}
               />
             </View>
             <FlatList
@@ -1509,7 +1510,7 @@ export default function TasksScreen() {
                     }}
                     activeOpacity={0.85}
                   >
-                    <View style={[styles.selectAvatar, styles.selectAvatarFilled, { marginRight: 12 }]}>
+                    <View style={[styles.selectAvatar, styles.selectAvatarFilled, { marginRight: space.md }]}>
                       <Text style={styles.selectAvatarText}>
                         {String(item.fullName || item.username || '?').slice(0, 1).toUpperCase()}
                       </Text>
@@ -1520,13 +1521,13 @@ export default function TasksScreen() {
                       </Text>
                       <Text style={styles.pickItemSub} numberOfLines={1}>{item.email}</Text>
                     </View>
-                    {selected && <Ionicons name="checkmark-circle" size={21} color={AMBER} />}
+                    {selected && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
                   </TouchableOpacity>
                 );
               }}
               ListEmptyComponent={
-                <View style={{ padding: 20 }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>{t('common.noData')}</Text>
+                <View style={{ padding: space.xl }}>
+                  <Text style={styles.emptyInlineText}>{t('common.noData')}</Text>
                 </View>
               }
             />
@@ -1538,273 +1539,279 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ===== 司机端列表 =====
   driverPage: {
     flex: 1,
-    backgroundColor: '#0B0F1A',
+    backgroundColor: colors.bg,
   },
   driverListContentScroll: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 28,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.xxxl,
   },
   driverHeader: {
-    paddingTop: 56,
-    paddingHorizontal: 18,
-    paddingBottom: 4,
-    backgroundColor: '#0B0F1A',
+    paddingTop: space.huge + space.lg,
+    paddingHorizontal: space.lg,
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.border,
   },
   driverGreeting: {
-    color: '#f8fafc',
-    fontSize: 30,
-    fontWeight: '900',
-    lineHeight: 38,
+    color: colors.text,
+    fontSize: font.xxl,
+    fontWeight: weight.heavy,
+    lineHeight: 36,
   },
   driverSubTitle: {
-    color: 'rgba(148,163,184,0.72)',
-    fontSize: 14,
-    marginTop: 8,
-    marginBottom: 24,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    marginTop: space.sm,
+    marginBottom: space.xxl,
   },
   driverStatsGrid: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
+    gap: space.md,
+    marginBottom: space.md,
   },
   driverStatCard: {
     flex: 1,
-    minHeight: 68,
-    paddingVertical: 12,
-    borderRadius: 14,
+    minHeight: hit.min + space.xxl,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
+    backgroundColor: colors.surface,
   },
   driverStatBlue: {
-    borderColor: 'rgba(96,165,250,0.35)',
+    borderColor: colors.info,
   },
   driverStatAmber: {
-    borderColor: 'rgba(245,158,11,0.35)',
+    borderColor: colors.accent,
   },
   driverStatRed: {
-    borderColor: 'rgba(239,68,68,0.35)',
+    borderColor: colors.danger,
+  },
+  driverStatGreen: {
+    borderColor: colors.success,
+  },
+  /** 「只看今天」选中态 */
+  driverStatCardOn: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
   driverStatValue: {
-    fontSize: 24,
-    fontWeight: '900',
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
     lineHeight: 28,
   },
   driverStatLabel: {
-    color: 'rgba(148,163,184,0.78)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 5,
+    color: colors.textMuted,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
+    marginTop: space.xs,
   },
   driverFilterRow: {
-    gap: 8,
-    paddingRight: 8,
-    marginBottom: 14,
+    gap: space.sm,
+    paddingRight: space.sm,
+    marginBottom: space.lg,
   },
   driverFilterPill: {
     minWidth: 64,
-    height: 36,
-    borderRadius: 18,
-    paddingHorizontal: 16,
+    minHeight: hit.min,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   driverFilterPillActive: {
-    backgroundColor: AMBER,
-    borderColor: AMBER,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   driverFilterText: {
-    color: 'rgba(203,213,225,0.72)',
-    fontSize: 14,
-    fontWeight: '800',
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
   },
   driverFilterTextActive: {
-    color: '#111827',
+    color: colors.onAccent,
   },
   driverSearchBox: {
-    height: 46,
-    borderRadius: 14,
+    height: hit.min,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    marginBottom: 14,
-  },
-  driverSearchIcon: {
-    color: 'rgba(148,163,184,0.8)',
-    fontSize: 24,
-    marginRight: 10,
+    paddingHorizontal: space.lg,
+    marginBottom: space.lg,
   },
   driverSearchInput: {
     flex: 1,
-    color: '#f8fafc',
-    fontSize: 15,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.base,
     height: '100%',
   },
   driverTaskCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
     borderLeftWidth: 4,
-    padding: 14,
-    marginBottom: 12,
-  },
-  driverTaskTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    padding: space.lg,
+    marginBottom: space.md,
   },
   driverStatusBadge: {
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
   },
   driverStatusBadgeAbs: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: space.md,
+    right: space.md,
     zIndex: 1,
   },
+  /** 给右上角绝对定位的状态标签让位,标题才不会压到它下面 */
   driverTaskTitlePad: {
-    paddingRight: 80,
+    paddingRight: space.huge * 2,
   },
   driverStatusText: {
-    fontSize: 13,
-    fontWeight: '900',
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
   },
   driverTaskTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 5,
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+    marginBottom: space.xs,
   },
   driverTaskMeta: {
-    color: 'rgba(148,163,184,0.78)',
-    fontSize: 14,
-    fontWeight: '700',
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
   },
   driverTaskRoute: {
-    color: 'rgba(148,163,184,0.68)',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 8,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
+    marginTop: space.sm,
   },
   driverTaskDivider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginTop: 12,
+    backgroundColor: colors.border,
+    marginTop: space.md,
   },
   driverTaskBottom: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: space.md,
   },
   driverInfoLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: space.sm,
   },
+  /** flex + minWidth:0 才不会把右边的吨数挤出卡片 */
   driverTaskDate: {
-    color: 'rgba(148,163,184,0.82)',
-    fontSize: 13.5,
-    fontWeight: '700',
-    marginLeft: 6,
+    flex: 1,
+    minWidth: 0,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
   },
   driverTaskCreated: {
-    color: 'rgba(100,116,139,0.72)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginLeft: 6,
+    flex: 1,
+    minWidth: 0,
+    color: colors.textFaint,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
   },
   driverTaskAmount: {
-    color: AMBER,
-    fontSize: 16,
-    fontWeight: '900',
-    marginLeft: 14,
+    color: colors.accent,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+    marginLeft: space.md,
   },
   driverAmountPill: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginLeft: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(245,158,11,0.12)',
+    marginLeft: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: colors.accent,
   },
   driverAmountValue: {
-    color: AMBER,
-    fontSize: 17,
-    fontWeight: '900',
+    color: colors.accent,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   driverAmountUnit: {
-    color: AMBER,
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 3,
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: weight.heavy,
+    marginLeft: space.xs,
   },
   driverAcceptInline: {
-    marginTop: 16,
-    borderRadius: 16,
+    marginTop: space.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.5)',
-    backgroundColor: 'rgba(245,158,11,0.15)',
-    height: 48,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+    minHeight: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   driverAcceptInlineText: {
-    color: AMBER,
-    fontSize: 16,
-    fontWeight: '900',
+    color: colors.accent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
   driverCompleteInline: {
-    marginTop: 16,
-    borderRadius: 16,
+    marginTop: space.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.48)',
-    backgroundColor: 'rgba(22,163,74,0.18)',
-    height: 48,
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+    minHeight: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   driverCompleteInlineText: {
-    color: '#bbf7d0',
-    fontSize: 16,
-    fontWeight: '900',
+    color: colors.success,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
+
+  // ===== 完工弹窗 =====
   completeHint: {
-    color: 'rgba(203,213,225,0.62)',
-    fontSize: 13,
+    color: colors.textMuted,
+    fontSize: font.sm,
     lineHeight: 20,
-    marginBottom: 14,
+    marginBottom: space.lg,
   },
   completePhotoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
+    gap: space.md,
+    marginBottom: space.lg,
   },
   completePhotoWrap: {
-    width: 86,
-    height: 86,
-    borderRadius: 14,
+    width: 88,
+    height: 88,
+    borderRadius: radius.md,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#111827',
+    backgroundColor: colors.surfaceAlt,
   },
   completePhoto: {
     width: '100%',
@@ -1812,253 +1819,71 @@ const styles = StyleSheet.create({
   },
   completePhotoRemove: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.62)',
+    top: space.xs,
+    right: space.xs,
+    width: space.xxl,
+    height: space.xxl,
+    borderRadius: radius.pill,
+    backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  completePhotoRemoveText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '900',
   },
   completePhotoAdd: {
-    width: 86,
-    height: 86,
-    borderRadius: 14,
+    width: 88,
+    height: 88,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: 'rgba(148,163,184,0.48)',
-    backgroundColor: 'rgba(15,23,42,0.78)',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  completePhotoAddIcon: {
-    fontSize: 26,
-    marginBottom: 6,
-  },
   completePhotoAddText: {
-    color: 'rgba(226,232,240,0.72)',
-    fontSize: 13,
-    fontWeight: '800',
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
   },
   completeSubmitBtn: {
-    backgroundColor: '#22c55e',
-    borderRadius: 14,
-    height: 50,
+    backgroundColor: colors.success,
+    borderRadius: radius.md,
+    minHeight: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   completeSubmitText: {
-    color: '#052e16',
-    fontSize: 16,
-    fontWeight: '900',
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
+
+  // ===== 空状态 =====
   driverEmptyBox: {
     flex: 1,
     minHeight: 360,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 50,
+    paddingBottom: space.huge,
   },
   driverEmptyIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 28,
-    backgroundColor: `${AMBER}16`,
+    width: 80,
+    height: 80,
+    borderRadius: radius.xl,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
-  },
-  driverEmptyIconText: {
-    fontSize: 42,
+    marginBottom: space.lg,
   },
   driverEmptyTitle: {
-    color: 'rgba(226,232,240,0.82)',
-    fontSize: 21,
-    fontWeight: '900',
+    color: colors.text,
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
   },
   driverEmptySub: {
-    color: 'rgba(148,163,184,0.5)',
-    fontSize: 14,
-    marginTop: 12,
-    fontWeight: '700',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#0B0F1A',
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0B0F1A',
-  },
-  loadingSpinner: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    backgroundColor: `${AMBER}20`,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  loadingText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
-  },
-  header: {
-    backgroundColor: '#0B0F1A',
-    paddingTop: 52,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 23,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
-  },
-  statsBadge: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  headerBtn: {
-    flex: 1,
-    backgroundColor: AMBER,
-    paddingVertical: 11,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  headerBtnGhost: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.35)',
-  },
-  headerBtnText: {
-    color: '#000',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  headerBtnGhostText: {
-    color: AMBER,
-  },
-  statItem: {
-    alignItems: 'center',
-    minWidth: 50,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: AMBER,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: 12,
-  },
-  notificationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 12,
-    marginTop: 16,
-  },
-  notificationBarUnread: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderColor: 'rgba(245, 158, 11, 0.35)',
-  },
-  notificationIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: `${AMBER}25`,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  notificationIconText: {
-    color: AMBER,
-    fontWeight: '900',
-    fontSize: 18,
-  },
-  notificationTitle: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  notificationSub: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  notificationArrow: {
-    color: AMBER,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  notificationItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  notificationItemUnread: {
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-  },
-  notificationItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  notificationItemTitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-  },
-  notificationItemBody: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 12,
-    marginTop: 5,
-    lineHeight: 18,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: AMBER,
+    color: colors.textFaint,
+    fontSize: font.sm,
+    marginTop: space.md,
+    fontWeight: weight.bold,
   },
   empty: {
     flex: 1,
@@ -2067,486 +1892,86 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingTop: space.huge * 2,
   },
   emptyIconContainer: {
     width: 80,
     height: 80,
-    borderRadius: 24,
-    backgroundColor: `${AMBER}15`,
+    borderRadius: radius.xl,
+    backgroundColor: colors.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptyIcon: {
-    fontSize: 40,
+    marginBottom: space.lg,
   },
   emptyText: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '600',
+    fontSize: font.xl,
+    color: colors.text,
+    fontWeight: weight.heavy,
   },
   emptySub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.3)',
-    marginTop: 8,
+    fontSize: font.sm,
+    color: colors.textFaint,
+    marginTop: space.md,
+    fontWeight: weight.bold,
   },
-  card: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+  emptyInlineText: {
+    color: colors.textMuted,
+    fontSize: font.sm,
+    textAlign: 'center',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // ===== 管理端 / 客户端 =====
+  container: {
     flex: 1,
-    marginRight: 12,
+    backgroundColor: colors.bg,
   },
-  cardNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: `${AMBER}20`,
+  center: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    backgroundColor: colors.bg,
   },
-  cardNumberText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: AMBER,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    flex: 1,
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  destRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  destLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    marginLeft: 8,
-    marginRight: 10,
-  },
-  destText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  routeContainer: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-  },
-  routeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  routeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  routeLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    width: 32,
-  },
-  routeText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    flex: 1,
-  },
-  routeLine: {
-    width: 2,
-    height: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginLeft: 4,
-    marginVertical: 4,
-  },
-  cargoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.2)',
-  },
-  cargoIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  cargoText: {
-    fontSize: 13,
-    color: AMBER,
-    fontWeight: '600',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  smallBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  smallBtnPrimary: {
-    backgroundColor: `${AMBER}20`,
-    borderWidth: 1,
-    borderColor: `${AMBER}35`,
-  },
-  smallBtnDanger: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-  },
-  smallBtnTextPrimary: {
-    color: AMBER,
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  smallBtnTextDanger: {
-    color: '#ef4444',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  footerText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.3)',
-  },
-  arrowIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: `${AMBER}20`,
+  loadingSpinner: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.xl,
+    backgroundColor: colors.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: space.lg,
   },
-  arrowText: {
-    fontSize: 14,
-    color: AMBER,
-    fontWeight: '700',
+  loadingText: {
+    color: colors.textMuted,
+    fontSize: font.sm,
   },
-  plateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.45)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  header: {
+    backgroundColor: colors.bg,
+    paddingTop: space.huge + space.lg,
+    paddingBottom: space.lg,
+    paddingHorizontal: space.lg,
   },
-  plateChipIcon: { fontSize: 13 },
-  plateChipText: { color: AMBER, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  viewChevron: { color: 'rgba(245,158,11,0.6)', fontSize: 22, fontWeight: '700' },
-  acceptBtn: {
-    backgroundColor: AMBER,
-    borderRadius: 14,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 2,
-    shadowColor: AMBER,
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  acceptBtnText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  continueBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.28)',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  continueBtnText: {
-    color: '#93c5fd',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  modalWrap: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#0B0F1A',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 18,
-    maxHeight: '88%',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-  },
-  modalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  modalClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCloseText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '900',
-  },
-  pickField: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 14,
-    marginBottom: 12,
-  },
-  pickLabel: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  pickValue: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  formLabel: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  formInput: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    color: '#fff',
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  formTextarea: {
-    minHeight: 90,
-    textAlignVertical: 'top',
-  },
-  modalBtn: {
-    backgroundColor: AMBER,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  modalBtnText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  pickWrap: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  pickCard: {
-    backgroundColor: '#0B0F1A',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    overflow: 'hidden',
-    maxHeight: '80%',
-  },
-  acceptCard: {
-    backgroundColor: '#0B0F1A',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  acceptContent: {
-    padding: 16,
-  },
-  acceptTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  acceptInfoBox: {
-    backgroundColor: 'rgba(255,255,255,0.045)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    overflow: 'hidden',
-  },
-  acceptInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  acceptInfoLabel: {
-    width: 70,
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  acceptInfoValue: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  acceptActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  modalBtnSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  modalBtnSecondaryText: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  plateHint: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  plateInput: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.35)',
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 1,
-    marginBottom: 14,
-  },
-  pickHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  pickHeaderTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  pickItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  pickItemTitle: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  pickItemSub: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  // ===== 商用化改版新增样式 =====
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: space.md,
+  },
+  headerTitle: {
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
+    color: colors.text,
+    marginBottom: space.xs,
+  },
+  headerSub: {
+    fontSize: font.sm,
+    color: colors.textMuted,
   },
   headerIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: 'rgba(245,158,11,0.12)',
+    width: hit.min,
+    height: hit.min,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2554,228 +1979,672 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: AMBER,
-    borderRadius: 13,
-    height: 46,
-    marginTop: 14,
-    shadowColor: AMBER,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    gap: space.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    minHeight: hit.min,
+    marginTop: space.lg,
   },
   createBtnText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: '900',
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
+  },
+
+  // ===== 通知 =====
+  notificationItem: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: hit.min,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  notificationItemUnread: {
+    backgroundColor: colors.accentSoft,
+  },
+  notificationItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  notificationItemTitle: {
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
+    flex: 1,
+    minWidth: 0,
+  },
+  notificationItemBody: {
+    color: colors.textMuted,
+    fontSize: font.sm,
+    marginTop: space.xs,
+    lineHeight: 20,
+  },
+  unreadDot: {
+    width: space.sm,
+    height: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+
+  // ===== 任务卡片 =====
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    marginBottom: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: space.md,
+    marginBottom: space.md,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTitle: {
+    fontSize: font.lg,
+    fontWeight: weight.bold,
+    color: colors.text,
+    flex: 1,
+    minWidth: 0,
+  },
+  /** 状态标签不参与压缩,否则长标题会把它挤成两行 */
+  badge: {
+    flexShrink: 0,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: font.sm,
+    fontWeight: weight.bold,
+  },
+  destRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginBottom: space.md,
+  },
+  destText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: font.base,
+    color: colors.text,
+    fontWeight: weight.semibold,
+  },
+  cardMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: space.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    marginBottom: space.md,
+  },
+  cardMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    flexBasis: '50%',
+    paddingRight: space.sm,
+  },
+  cardMetaText: {
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.semibold,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  cargoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    marginBottom: space.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  cargoText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: font.sm,
+    color: colors.accent,
+    fontWeight: weight.semibold,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: space.md,
+  },
+  footerText: {
+    fontSize: font.xs,
+    color: colors.textFaint,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: space.md,
+    marginBottom: space.md,
+  },
+  smallBtn: {
+    minHeight: hit.min,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+  },
+  smallBtnPrimary: {
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  smallBtnDanger: {
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  smallBtnTextPrimary: {
+    color: colors.accent,
+    fontWeight: weight.heavy,
+    fontSize: font.sm,
+  },
+  smallBtnTextDanger: {
+    color: colors.danger,
+    fontWeight: weight.heavy,
+    fontSize: font.sm,
+  },
+  arrowIcon: {
+    width: space.xxl + space.xs,
+    height: space.xxl + space.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowText: {
+    fontSize: font.base,
+    color: colors.accent,
+    fontWeight: weight.bold,
+  },
+  plateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+  },
+  plateChipText: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
+    letterSpacing: 1,
+  },
+  acceptBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    minHeight: hit.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: space.xs,
+  },
+  acceptBtnText: {
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
+  },
+  continueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.infoSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.info,
+    minHeight: hit.min,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+  },
+  continueBtnText: {
+    color: colors.info,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
+  },
+
+  // ===== 弹窗外壳 =====
+  modalWrap: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: space.lg,
+    maxHeight: '88%',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    paddingBottom: space.md,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   modalSubtitle: {
-    color: 'rgba(245,158,11,0.85)',
-    fontSize: 12.5,
-    fontWeight: '700',
-    marginTop: 4,
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
+    marginTop: space.xs,
   },
+  modalClose: {
+    width: hit.min,
+    height: hit.min,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickWrap: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: space.lg,
+  },
+  pickCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    maxHeight: '80%',
+  },
+  pickHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickHeaderTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+  },
+  pickSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    marginBottom: space.xs,
+  },
+  pickSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.base,
+    paddingVertical: space.md,
+  },
+  pickItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: hit.min,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickItemSelected: {
+    backgroundColor: colors.accentSoft,
+  },
+  pickItemTitle: {
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
+  },
+  pickItemSub: {
+    color: colors.textFaint,
+    fontSize: font.sm,
+    marginTop: space.xs,
+  },
+
+  // ===== 接单 / 车牌弹窗 =====
+  acceptCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  acceptContent: {
+    padding: space.lg,
+  },
+  acceptTitle: {
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+    marginBottom: space.md,
+  },
+  acceptInfoBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  acceptInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  acceptInfoLabel: {
+    width: 96,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.semibold,
+  },
+  acceptInfoValue: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.semibold,
+    lineHeight: 20,
+  },
+  acceptActions: {
+    flexDirection: 'row',
+    gap: space.md,
+    marginTop: space.lg,
+  },
+  plateHint: {
+    color: colors.textMuted,
+    fontSize: font.sm,
+    lineHeight: 20,
+    marginBottom: space.md,
+  },
+  plateInput: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    minHeight: hit.min,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+    letterSpacing: 1,
+    marginBottom: space.lg,
+  },
+  plateWarnBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    marginBottom: space.md,
+  },
+  plateWarnText: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.accent,
+    fontSize: font.sm,
+    lineHeight: 20,
+    fontWeight: weight.semibold,
+  },
+  platePickBox: {
+    marginBottom: space.lg,
+  },
+  platePickLabel: {
+    color: colors.textMuted,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
+    marginBottom: space.sm,
+  },
+  platePickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.sm,
+  },
+  plateChipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    minHeight: hit.min,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  plateChipBtnActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  plateChipBtnText: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
+    letterSpacing: 0.6,
+  },
+  plateChipBtnTextActive: {
+    color: colors.onAccent,
+  },
+
+  // ===== 发布任务表单 =====
   formSectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
-    marginBottom: 10,
+    gap: space.sm,
+    marginTop: space.lg,
+    marginBottom: space.md,
   },
   formSectionBar: {
-    width: 3.5,
-    height: 15,
-    borderRadius: 2,
-    backgroundColor: AMBER,
-    marginRight: 8,
+    width: 3,
+    height: font.base,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
   },
   formSectionTitle: {
-    color: 'rgba(226,232,240,0.92)',
-    fontSize: 14.5,
-    fontWeight: '800',
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
   requiredMark: {
-    color: '#ef4444',
-    fontWeight: '900',
+    color: colors.danger,
+    fontWeight: weight.heavy,
+  },
+  formLabel: {
+    color: colors.textMuted,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
+    marginTop: space.sm,
+    marginBottom: space.sm,
+  },
+  formInput: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    minHeight: hit.min,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    color: colors.text,
+    fontSize: font.base,
+    marginBottom: space.md,
+  },
+  formTextarea: {
+    minHeight: 88,
+    textAlignVertical: 'top',
   },
   selectRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
+    gap: space.md,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    marginBottom: 10,
+    borderColor: colors.border,
+    minHeight: hit.min,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    marginBottom: space.md,
   },
   selectRowFilled: {
-    borderColor: 'rgba(245,158,11,0.4)',
-    backgroundColor: 'rgba(245,158,11,0.06)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
   selectAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(148,163,184,0.14)',
+    width: hit.compact,
+    height: hit.compact,
+    borderRadius: radius.md,
+    backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   selectAvatarFilled: {
-    backgroundColor: 'rgba(245,158,11,0.18)',
+    backgroundColor: colors.accentSoft,
   },
   selectAvatarText: {
-    color: AMBER,
-    fontSize: 16,
-    fontWeight: '900',
+    color: colors.accent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
   selectRowLabel: {
-    color: 'rgba(148,163,184,0.85)',
-    fontSize: 11.5,
-    fontWeight: '700',
-    marginBottom: 3,
+    color: colors.textMuted,
+    fontSize: font.xs,
+    fontWeight: weight.bold,
+    marginBottom: space.xs,
   },
   selectRowValue: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
   selectRowPlaceholder: {
-    color: 'rgba(148,163,184,0.55)',
-    fontWeight: '600',
+    color: colors.textFaint,
+    fontWeight: weight.semibold,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 13,
-    marginBottom: 12,
+    borderColor: colors.borderStrong,
+    minHeight: hit.min,
+    paddingHorizontal: space.md,
+    marginBottom: space.md,
   },
   inputRowIcon: {
-    marginRight: 9,
+    marginRight: space.sm,
   },
   inputRowField: {
     flex: 1,
-    color: '#fff',
-    fontSize: 15,
-    paddingVertical: 12,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.base,
+    paddingVertical: space.md,
+  },
+  inputRowFieldPlaceholder: {
+    color: colors.textFaint,
   },
   inputSuffix: {
-    color: 'rgba(148,163,184,0.8)',
-    fontSize: 14,
-    fontWeight: '800',
-    marginLeft: 8,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
+    marginLeft: space.sm,
+  },
+
+  // ===== 弹窗按钮 =====
+  modalBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    minHeight: hit.min,
+    paddingVertical: space.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: space.sm,
+    marginBottom: space.md,
   },
   modalBtnRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: space.sm,
   },
-  cardMetaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 7,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+  modalBtnText: {
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
-  cardMetaItem: {
-    flexDirection: 'row',
+  modalBtnSecondary: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    minHeight: hit.min,
+    paddingVertical: space.md,
     alignItems: 'center',
-    gap: 6,
-    flexBasis: '50%',
-    paddingRight: 8,
-  },
-  cardMetaText: {
-    color: 'rgba(203,213,225,0.88)',
-    fontSize: 13,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  pickSearchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
-    paddingHorizontal: 12,
-    marginHorizontal: 14,
-    marginTop: 12,
-    marginBottom: 4,
+    borderColor: colors.borderStrong,
   },
-  pickSearchInput: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 14.5,
-    paddingVertical: 10,
+  modalBtnSecondaryText: {
+    color: colors.textMuted,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
-  pickItemSelected: {
-    backgroundColor: 'rgba(245,158,11,0.08)',
-  },
-  plateWarnBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(251,191,36,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.35)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  plateWarnText: {
-    flex: 1,
-    color: '#fcd34d',
-    fontSize: 12.5,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
-  platePickBox: {
-    marginBottom: 14,
-  },
-  platePickLabel: {
-    color: 'rgba(148,163,184,0.85)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  platePickRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  plateChipBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.4)',
-    backgroundColor: 'rgba(245,158,11,0.1)',
-  },
-  plateChipBtnActive: {
-    backgroundColor: AMBER,
-    borderColor: AMBER,
-  },
-  plateChipBtnText: {
-    color: AMBER,
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  plateChipBtnTextActive: {
-    color: '#111827',
+  btnDisabled: {
+    opacity: 0.6,
   },
 });

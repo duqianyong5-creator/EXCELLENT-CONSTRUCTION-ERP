@@ -8,14 +8,14 @@ import { useSelector } from 'react-redux';
 import type { RootState } from './store';
 import { announcementsApi } from './api';
 import { useLang } from './i18n';
+import { colors, space, font, weight, radius, hit, shadow } from './theme';
 
-const AMBER = '#F59E0B';
 const SEEN_KEY = 'seen_announcements';
 
-const TARGET_LABEL: Record<string, { key: string; color: string }> = {
-  all: { key: 'ann.targetAll', color: '#3b82f6' },
-  client: { key: 'role.client', color: '#22c55e' },
-  driver: { key: 'role.driver', color: AMBER },
+const TARGET_LABEL: Record<string, { key: string; color: string; soft: string }> = {
+  all: { key: 'ann.targetAll', color: colors.info, soft: colors.infoSoft },
+  client: { key: 'role.client', color: colors.success, soft: colors.successSoft },
+  driver: { key: 'role.driver', color: colors.accent, soft: colors.accentSoft },
 };
 
 export default function AnnouncementModal() {
@@ -81,7 +81,7 @@ export default function AnnouncementModal() {
         <View style={styles.card}>
           <View style={styles.header}>
             <View style={styles.headerIcon}>
-              <Ionicons name="megaphone" size={20} color={AMBER} />
+              <Ionicons name="megaphone" size={20} color={colors.accent} />
             </View>
             <Text style={styles.headerTitle}>{t('ann.title')}</Text>
           </View>
@@ -93,7 +93,7 @@ export default function AnnouncementModal() {
                 <View key={a.id} style={styles.item}>
                   <View style={styles.itemTop}>
                     <Text style={styles.itemTitle} numberOfLines={2}>{a.title}</Text>
-                    <View style={[styles.badge, { backgroundColor: `${tg.color}22`, borderColor: `${tg.color}55` }]}>
+                    <View style={[styles.badge, { backgroundColor: tg.soft, borderColor: tg.color }]}>
                       <Text style={[styles.badgeText, { color: tg.color }]}>{t(tg.key)}</Text>
                     </View>
                   </View>
@@ -117,94 +117,103 @@ export default function AnnouncementModal() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    // 遮罩没有对应的色板 token：它压的是任意页面，只能是半透明黑
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: space.xxl,
   },
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#0F1626',
-    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.2)',
-    padding: 20,
+    borderColor: colors.borderStrong,
+    padding: space.xl,
+    ...shadow.raised,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
+    gap: space.md,
+    marginBottom: space.lg,
   },
   headerIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(245,158,11,0.14)',
+    width: hit.compact,
+    height: hit.compact,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
   },
   item: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: space.lg,
+    marginBottom: space.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   itemTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: space.md,
   },
   itemTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
+    // 标题长了要自己收窄，不能顶到右边的标签上
     flex: 1,
-    marginRight: 8,
-    lineHeight: 22,
+    minWidth: 0,
+    marginRight: space.sm,
+    lineHeight: 24,
   },
   itemContentBox: {
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    borderRadius: 10,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
   },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    flexShrink: 0,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: font.xs,
+    fontWeight: weight.bold,
   },
   itemContent: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 13,
-    lineHeight: 20,
+    color: colors.textMuted,
+    fontSize: font.base,
+    lineHeight: 24,
   },
   button: {
-    marginTop: 4,
-    backgroundColor: AMBER,
-    borderRadius: 14,
-    paddingVertical: 13,
+    marginTop: space.xs,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    minHeight: hit.min,
+    paddingVertical: space.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
-    color: '#1a1206',
-    fontSize: 15,
-    fontWeight: '800',
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
 });

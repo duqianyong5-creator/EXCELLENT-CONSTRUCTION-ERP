@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { colors, space, font, weight, radius, hit } from './theme';
 
-const AMBER = '#F59E0B';
 
 type Btn = { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' };
 type DialogState = { visible: boolean; title: string; message?: string; buttons: Btn[] };
@@ -69,43 +69,46 @@ export default function AppDialog() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    // 遮罩盖的是任意页面，不属于色板里的任何一种"表面"，所以保留字面值
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 28,
+    padding: space.xxl,
   },
   card: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#0F1626',
-    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.22)',
-    padding: 22,
+    borderColor: colors.border,
+    padding: space.xl,
   },
   title: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   message: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 14,
+    color: colors.textMuted,
+    fontSize: font.sm,
     lineHeight: 21,
-    marginTop: 10,
+    marginTop: space.md,
   },
   btnRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 22,
+    gap: space.md,
+    marginTop: space.xl,
   },
   btnCol: {
     flexDirection: 'column',
   },
   btn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 13,
+    // 对话框按钮是最常被误点的地方，给足可点高度（司机可能戴手套）
+    minHeight: hit.min,
+    paddingVertical: space.md,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -114,21 +117,21 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   btnPrimary: {
-    backgroundColor: AMBER,
+    backgroundColor: colors.accent,
   },
   btnDanger: {
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
   },
   btnCancel: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
   },
   btnText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: font.base,
+    fontWeight: weight.heavy,
   },
   btnTextCancel: {
-    color: 'rgba(255,255,255,0.78)',
+    color: colors.textMuted,
   },
 });

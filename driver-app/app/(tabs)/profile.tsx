@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   TextInput, ScrollView, ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,15 +13,14 @@ import { logout, updateUser } from '../../src/store/authSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
-
-const AMBER = '#F59E0B';
-const AMBER_DARK = '#D97706';
+import { colors, space, font, weight, radius, hit } from '../../src/theme';
 
 export default function ProfileScreen() {
   const dispatch = useDispatch();
   const router = useRouter();
   const { user } = useSelector((s: RootState) => s.auth);
   const { t } = useLang();
+  const insets = useSafeAreaInsets();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -88,7 +88,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* 头部 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + space.xxl }]}>
         <View style={styles.headerBg}>
           <View style={styles.decorCircle1} />
           <View style={styles.decorCircle2} />
@@ -104,7 +104,7 @@ export default function ProfileScreen() {
         <Text style={styles.name}>{user?.fullName || user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.roleBadge}>
-          <Ionicons name="id-card-outline" size={14} color={AMBER} style={{ marginRight: 6 }} />
+          <Ionicons name="id-card-outline" size={16} color={colors.accent} style={{ marginRight: space.sm }} />
           <Text style={styles.roleText}>{t('role.' + (user?.role || 'driver'))}</Text>
         </View>
       </View>
@@ -113,7 +113,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionIconBox}>
-            <Ionicons name="person-outline" size={15} color={AMBER} />
+            <Ionicons name="person-outline" size={16} color={colors.accent} />
           </View>
           <Text style={styles.sectionTitle}>{t('profile.basicInfo')}</Text>
         </View>
@@ -125,7 +125,7 @@ export default function ProfileScreen() {
             value={fullName}
             onChangeText={setFullName}
             placeholder={t('profile.namePh')}
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
 
@@ -137,7 +137,7 @@ export default function ProfileScreen() {
             onChangeText={setPhone}
             placeholder={t('profile.phonePh')}
             keyboardType="phone-pad"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
 
@@ -150,7 +150,7 @@ export default function ProfileScreen() {
             placeholder={t('profile.emailPh')}
             keyboardType="email-address"
             autoCapitalize="none"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
 
@@ -161,7 +161,7 @@ export default function ProfileScreen() {
           activeOpacity={0.8}
         >
           {saving ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.btnText}>{t('profile.save')}</Text>
           )}
@@ -172,7 +172,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionIconBox}>
-            <Ionicons name="lock-closed-outline" size={15} color={AMBER} />
+            <Ionicons name="lock-closed-outline" size={16} color={colors.accent} />
           </View>
           <Text style={styles.sectionTitle}>{t('profile.changePw')}</Text>
         </View>
@@ -185,7 +185,7 @@ export default function ProfileScreen() {
             onChangeText={setOldPwd}
             secureTextEntry
             placeholder={t('profile.oldPwPh')}
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
 
@@ -197,7 +197,7 @@ export default function ProfileScreen() {
             onChangeText={setNewPwd}
             secureTextEntry
             placeholder={t('profile.min6')}
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textFaint}
           />
         </View>
 
@@ -208,7 +208,7 @@ export default function ProfileScreen() {
           activeOpacity={0.8}
         >
           {changingPwd ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.btnText}>{t('profile.changePw')}</Text>
           )}
@@ -221,7 +221,7 @@ export default function ProfileScreen() {
         onPress={confirmLogout}
         activeOpacity={0.8}
       >
-        <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+        <Ionicons name="log-out-outline" size={20} color={colors.danger} />
         <Text style={styles.logoutText}>{t('profile.logout')}</Text>
       </TouchableOpacity>
 
@@ -233,12 +233,12 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F1A',
+    backgroundColor: colors.bg,
   },
   header: {
     alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 30,
+    paddingHorizontal: space.xl,
+    paddingBottom: space.xxxl,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 200,
-    backgroundColor: '#111827',
+    backgroundColor: colors.surface,
   },
   decorCircle1: {
     position: 'absolute',
@@ -256,8 +256,8 @@ const styles = StyleSheet.create({
     right: -50,
     width: 150,
     height: 150,
-    borderRadius: 75,
-    backgroundColor: AMBER,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
     opacity: 0.08,
   },
   decorCircle2: {
@@ -266,168 +266,158 @@ const styles = StyleSheet.create({
     left: -30,
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: AMBER_DARK,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentDark,
     opacity: 0.05,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: space.lg,
   },
   avatar: {
     width: 88,
     height: 88,
-    borderRadius: 28,
-    backgroundColor: AMBER,
+    borderRadius: radius.xl,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: AMBER,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
   },
   avatarText: {
-    fontSize: 36,
-    color: '#000',
-    fontWeight: '800',
+    fontSize: font.display,
+    color: colors.onAccent,
+    fontWeight: weight.heavy,
   },
   statusIndicator: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
+    bottom: space.xs,
+    right: space.xs,
     width: 20,
     height: 20,
-    borderRadius: 10,
-    backgroundColor: '#22c55e',
+    borderRadius: radius.pill,
+    backgroundColor: colors.success,
     borderWidth: 3,
-    borderColor: '#0B0F1A',
+    borderColor: colors.bg,
   },
   name: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 4,
+    fontSize: font.xl,
+    fontWeight: weight.heavy,
+    color: colors.text,
+    marginBottom: space.xs,
+    textAlign: 'center',
   },
   email: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 12,
+    fontSize: font.sm,
+    color: colors.textMuted,
+    marginBottom: space.md,
+    textAlign: 'center',
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: `${AMBER}20`,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: `${AMBER}30`,
-  },
-  roleIcon: {
-    fontSize: 14,
-    marginRight: 6,
+    borderColor: colors.accent,
   },
   roleText: {
-    color: AMBER,
-    fontSize: 13,
-    fontWeight: '700',
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
   },
   section: {
-    backgroundColor: 'rgba(30, 41, 59, 0.6)',
-    margin: 16,
+    backgroundColor: colors.surface,
+    margin: space.lg,
     marginBottom: 0,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: radius.lg,
+    padding: space.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionIcon: {
-    fontSize: 18,
-    marginRight: 8,
+    marginBottom: space.lg,
   },
   sectionIconBox: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: 'rgba(245,158,11,0.14)',
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 9,
+    marginRight: space.md,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
+    flex: 1,
+    minWidth: 0,
+    fontSize: font.lg,
+    fontWeight: weight.bold,
+    color: colors.text,
   },
   label: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 8,
-    fontWeight: '500',
+    fontSize: font.sm,
+    color: colors.textMuted,
+    marginBottom: space.sm,
+    fontWeight: weight.medium,
   },
   inputContainer: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 14,
+    borderColor: colors.border,
+    marginBottom: space.lg,
   },
   input: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: '#fff',
+    minHeight: hit.min,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    fontSize: font.base,
+    color: colors.text,
   },
   btn: {
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    minHeight: hit.min,
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    marginTop: space.sm,
   },
   primaryBtn: {
-    backgroundColor: AMBER,
-    shadowColor: AMBER,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: colors.accent,
   },
   logoutBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    margin: 16,
-    marginTop: 20,
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: colors.dangerSoft,
+    margin: space.lg,
+    marginTop: space.xl,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    minHeight: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: space.sm,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: colors.danger,
   },
   logoutText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '700',
+    color: colors.danger,
+    fontSize: font.base,
+    fontWeight: weight.bold,
   },
   btnDisabled: {
     opacity: 0.6,
   },
   btnText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '700',
+    color: colors.onAccent,
+    fontSize: font.base,
+    fontWeight: weight.bold,
   },
   version: {
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.2)',
-    fontSize: 12,
-    marginVertical: 20,
+    color: colors.textFaint,
+    fontSize: font.xs,
+    marginVertical: space.xl,
   },
 });

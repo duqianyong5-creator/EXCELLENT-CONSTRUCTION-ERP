@@ -3,14 +3,14 @@ import {
   View, Text, StyleSheet, ActivityIndicator,
   TouchableOpacity, FlatList,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import LeafletMap from '../../src/LeafletMap';
 import { gpsApi, tasksApi } from '../../src/api';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
-
-const AMBER = '#F59E0B';
+import { colors, space, font, weight, radius, hit, shadow } from '../../src/theme';
 
 type DriverPos = {
   driverId: string;
@@ -25,6 +25,7 @@ type DriverPos = {
 export default function TrackingScreen() {
   const { user } = useSelector((s: RootState) => s.auth);
   const { t } = useLang();
+  const insets = useSafeAreaInsets();
   const role = user?.role || '';
   const [positions, setPositions] = useState<DriverPos[]>([]);
   const [driverTodayTasks, setDriverTodayTasks] = useState<any[]>([]);
@@ -98,7 +99,7 @@ export default function TrackingScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#1677ff" />
+        <ActivityIndicator size="large" color={colors.accent} />
         <Text style={styles.loadingText}>{t('trk.loadingMap')}</Text>
       </View>
     );
@@ -107,7 +108,7 @@ export default function TrackingScreen() {
   if (role === 'driver') {
     return (
       <View style={styles.driverTodayContainer}>
-        <View style={styles.driverTodayHeader}>
+        <View style={[styles.driverTodayHeader, { paddingTop: insets.top + space.xl }]}>
           <Text style={styles.driverTodayTitle}>{t('trk.todayTitle')}</Text>
           <Text style={styles.driverTodaySub}>{t('trk.todaySub')}</Text>
         </View>
@@ -132,7 +133,7 @@ export default function TrackingScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.driverTodayEmpty}>
-              <Ionicons name="clipboard-outline" size={40} color="rgba(245,158,11,0.85)" style={{ marginBottom: 4 }} />
+              <Ionicons name="clipboard-outline" size={40} color={colors.accent} style={{ marginBottom: space.md }} />
               <Text style={styles.driverTodayEmptyTitle}>{t('tasks.emptyTitle')}</Text>
               <Text style={styles.driverTodayEmptySub}>{t('trk.todayEmptySub')}</Text>
             </View>
@@ -156,12 +157,12 @@ export default function TrackingScreen() {
       <View style={styles.topScrim} pointerEvents="none" />
 
       {/* 悬浮标题胶囊（全屏地图） */}
-      <View style={styles.floatingHeader} pointerEvents="box-none">
+      <View style={[styles.floatingHeader, { paddingTop: insets.top + space.md }]} pointerEvents="box-none">
         <View style={styles.headerPill}>
           <View style={[styles.onlineDot, positions.length === 0 && styles.onlineDotOff]} />
-          <View>
-            <Text style={styles.headerTitle}>{title}</Text>
-            <Text style={styles.headerSub}>
+          <View style={styles.headerTexts}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>
               {positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
             </Text>
           </View>
@@ -176,7 +177,7 @@ export default function TrackingScreen() {
             keyExtractor={(p) => p.driverId}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 12 }}
+            contentContainerStyle={{ paddingHorizontal: space.md }}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
@@ -204,7 +205,7 @@ export default function TrackingScreen() {
       {positions.length === 0 && (
         <View style={styles.emptyOverlay} pointerEvents="none">
           <View style={styles.emptyIconWrap}>
-            <Ionicons name="location-outline" size={30} color="rgba(255,255,255,0.85)" />
+            <Ionicons name="location-outline" size={30} color={colors.textMuted} />
           </View>
           <Text style={styles.emptyText}>{t('trk.emptyTitle')}</Text>
           <Text style={styles.emptySub}>{t('trk.emptySub')}</Text>
@@ -212,7 +213,7 @@ export default function TrackingScreen() {
       )}
 
       <TouchableOpacity style={styles.refreshBtn} onPress={fetchPositions} activeOpacity={0.85}>
-        <Ionicons name="refresh" size={16} color={AMBER} />
+        <Ionicons name="refresh" size={18} color={colors.accent} />
         <Text style={styles.refreshText}>{t('tasks.refresh')}</Text>
       </TouchableOpacity>
     </View>
@@ -222,166 +223,178 @@ export default function TrackingScreen() {
 const styles = StyleSheet.create({
   driverTodayContainer: {
     flex: 1,
-    backgroundColor: '#070b15',
+    backgroundColor: colors.bg,
   },
   driverTodayHeader: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
+    paddingHorizontal: space.xl,
+    paddingBottom: space.lg,
   },
   driverTodayTitle: {
-    color: '#f8fafc',
-    fontSize: 30,
-    fontWeight: '900',
+    color: colors.text,
+    fontSize: font.xxl,
+    fontWeight: weight.heavy,
   },
   driverTodaySub: {
-    color: 'rgba(148,163,184,0.68)',
-    fontSize: 14,
-    marginTop: 8,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    marginTop: space.sm,
   },
   driverTodayList: {
-    paddingHorizontal: 18,
-    paddingBottom: 28,
+    paddingHorizontal: space.xl,
+    paddingBottom: space.xxxl,
   },
   driverTodayCard: {
-    backgroundColor: '#0d1320',
-    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(71,85,105,0.34)',
-    padding: 18,
-    marginBottom: 14,
+    borderColor: colors.border,
+    padding: space.lg,
+    marginBottom: space.md,
   },
   driverTodayNo: {
-    color: '#F59E0B',
-    fontSize: 15,
-    fontWeight: '900',
-    marginBottom: 12,
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.heavy,
+    marginBottom: space.sm,
   },
   driverTodayName: {
-    color: '#f8fafc',
-    fontSize: 19,
-    fontWeight: '900',
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   driverTodayMeta: {
-    color: 'rgba(148,163,184,0.72)',
-    fontSize: 14,
-    marginTop: 8,
-    fontWeight: '700',
+    color: colors.textMuted,
+    fontSize: font.sm,
+    marginTop: space.sm,
+    fontWeight: weight.medium,
   },
   driverTodayStatus: {
-    color: '#93c5fd',
-    fontSize: 14,
-    fontWeight: '900',
-    marginTop: 16,
+    color: colors.info,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
+    marginTop: space.md,
   },
   driverTodayEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  driverTodayEmptyIcon: {
-    fontSize: 48,
-    marginBottom: 14,
+    paddingHorizontal: space.xl,
   },
   driverTodayEmptyTitle: {
-    color: 'rgba(226,232,240,0.82)',
-    fontSize: 21,
-    fontWeight: '900',
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   driverTodayEmptySub: {
-    color: 'rgba(148,163,184,0.5)',
-    fontSize: 14,
-    marginTop: 10,
+    color: colors.textFaint,
+    fontSize: font.sm,
+    marginTop: space.sm,
+    textAlign: 'center',
   },
-  container: { flex: 1, backgroundColor: '#070b15' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#070b15' },
-  loadingText: { marginTop: 12, color: 'rgba(148,163,184,0.8)', fontSize: 14 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+  loadingText: { marginTop: space.md, color: colors.textMuted, fontSize: font.sm },
 
+  // 压在地图瓦片上的元素一律用实色底：半透明的底在卫星图上会糊掉
   topScrim: {
     position: 'absolute', top: 0, left: 0, right: 0, height: 64,
-    backgroundColor: 'rgba(7,11,21,0.5)',
+    backgroundColor: colors.bg,
+    opacity: 0.55,
   },
   floatingHeader: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    paddingTop: 60, paddingHorizontal: 16,
+    paddingHorizontal: space.lg,
     alignItems: 'flex-start',
   },
   headerPill: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(7,11,21,0.85)',
-    borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+    maxWidth: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.lg, paddingVertical: space.md,
+    borderWidth: 1, borderColor: colors.borderStrong,
+    ...shadow.raised,
   },
-  onlineDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 },
-  onlineDotOff: { backgroundColor: '#64748b' },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  headerSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
+  headerTexts: { flex: 1, minWidth: 0 },
+  onlineDot: {
+    width: 10, height: 10, borderRadius: radius.pill,
+    backgroundColor: colors.success, marginRight: space.sm,
+  },
+  onlineDotOff: { backgroundColor: colors.textFaint },
+  headerTitle: { fontSize: font.base, fontWeight: weight.heavy, color: colors.text },
+  headerSub: { fontSize: font.xs, color: colors.textMuted, marginTop: space.xs },
 
   panel: {
     position: 'absolute',
-    bottom: 104,
+    // 让开右下角的刷新按钮（48 高 + 底部留白）
+    bottom: hit.min + space.xxxl,
     left: 0,
     right: 0,
-    paddingVertical: 10,
+    paddingVertical: space.sm,
   },
   driverCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    backgroundColor: 'rgba(13,19,32,0.92)',
-    borderRadius: 13,
-    paddingVertical: 10,
-    paddingHorizontal: 13,
-    marginHorizontal: 6,
+    gap: space.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    marginHorizontal: space.xs,
+    minHeight: hit.min,
     minWidth: 150,
     maxWidth: 210,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    // 描边常驻 2px，选中时只换颜色，卡片不会跳动
+    borderWidth: 2,
+    borderColor: colors.border,
+    ...shadow.raised,
   },
   driverCardActive: {
-    borderWidth: 2,
-    borderColor: AMBER,
+    borderColor: colors.accent,
   },
-  driverCardIcon: { fontSize: 24 },
-  driverCardName: { fontSize: 13.5, color: '#f1f5f9', fontWeight: '800' },
-  driverCardSpeed: { fontSize: 11.5, color: '#4ade80', marginTop: 2, fontWeight: '700' },
+  driverCardIcon: { fontSize: font.xl },
+  driverCardName: { fontSize: font.sm, color: colors.text, fontWeight: weight.bold },
+  driverCardSpeed: { fontSize: font.xs, color: colors.success, marginTop: space.xs, fontWeight: weight.bold },
   emptyOverlay: {
     position: 'absolute',
     top: '40%',
     left: 0,
     right: 0,
     alignItems: 'center',
+    paddingHorizontal: space.xl,
   },
   emptyIconWrap: {
-    width: 64, height: 64, borderRadius: 20,
-    backgroundColor: 'rgba(7,11,21,0.8)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+    width: 64, height: 64, borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.borderStrong,
+    alignItems: 'center', justifyContent: 'center', marginBottom: space.md,
   },
-  emptyText: { fontSize: 16, color: '#f1f5f9', fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 },
-  emptySub: { fontSize: 13, color: 'rgba(241,245,249,0.85)', marginTop: 6, textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 6 },
+  // 文字直接压在瓦片上会看不清，所以自己带一块实色底
+  emptyText: {
+    fontSize: font.lg, color: colors.text, fontWeight: weight.heavy,
+    backgroundColor: colors.surface, overflow: 'hidden',
+    borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.xs,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontSize: font.sm, color: colors.textMuted, marginTop: space.sm,
+    backgroundColor: colors.surface, overflow: 'hidden',
+    borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.xs,
+    textAlign: 'center',
+  },
   refreshBtn: {
     position: 'absolute',
-    bottom: 24,
-    right: 20,
+    bottom: space.xl,
+    right: space.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(7,11,21,0.88)',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 22,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: space.lg,
+    minHeight: hit.min,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.4)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    borderColor: colors.accent,
+    ...shadow.raised,
   },
-  refreshText: { fontSize: 14, color: AMBER, fontWeight: '800', marginLeft: 6 },
+  refreshText: { fontSize: font.sm, color: colors.accent, fontWeight: weight.heavy, marginLeft: space.sm },
 });
