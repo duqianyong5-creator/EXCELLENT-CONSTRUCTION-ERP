@@ -28,6 +28,7 @@ import {
   CarOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import { RootState } from '../../store';
@@ -50,12 +51,13 @@ const ROLE_COLOR: Record<string, string> = {
   monitor: 'gold',
 };
 
+// 模块级常量拿不到 t()，所以这里存的是翻译键，渲染时再 t(...)
 const ROLE_LABEL: Record<string, string> = {
-  admin: '管理员',
-  dispatcher: '调度员',
-  driver: '司机',
-  client: '客户',
-  monitor: '监控大屏',
+  admin: 'users.role_admin',
+  dispatcher: 'users.role_dispatcher',
+  driver: 'users.role_driver',
+  client: 'users.role_client',
+  monitor: 'users.role_monitor',
 };
 
 function StatCard({ icon, color, value, label }: { icon: React.ReactNode; color: string; value: number; label: string }) {
@@ -91,14 +93,16 @@ const STATUS_COLOR: Record<string, string> = {
   disabled: 'default',
 };
 
+// 同上：存翻译键，渲染时再 t(...)
 const STATUS_LABEL: Record<string, string> = {
-  pending: '待审核',
-  active: '正常',
-  rejected: '已拒绝',
-  disabled: '已禁用',
+  pending: 'users.status_pending',
+  active: 'users.status_active',
+  rejected: 'users.status_rejected',
+  disabled: 'users.status_disabled',
 };
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const currentUser = useSelector((s: RootState) => s.auth.user);
   const isAdmin = currentUser?.role === 'admin';
 
@@ -135,27 +139,20 @@ export default function UsersPage() {
 
   // 审核通过邮件正文
   const buildApprovalBody = (u: any) =>
-    `尊敬的 ${u.fullName || u.username}，您好！\n\n` +
-    `您的账户已通过管理员审核，现已可以正常登录使用。\n` +
-    `登录账号：${u.username}\n\n` +
-    `请使用注册时的账号与密码登录系统。\n\n` +
-    `——ECT 货运调度管理系统`;
+    t('users.mail_body_approved', { name: u.fullName || u.username, username: u.username });
 
   // 审核拒绝邮件正文
   const buildRejectBody = (u: any) =>
-    `尊敬的 ${u.fullName || u.username}，您好！\n\n` +
-    `很抱歉，您申请的账户（${u.username}）未通过管理员审核。\n` +
-    `如有疑问，请联系管理员。\n\n` +
-    `——ECT 货运调度管理系统`;
+    t('users.mail_body_rejected', { name: u.fullName || u.username, username: u.username });
 
   // 审核通过：先通过，再弹出邮件让管理员手动发送通知
   const handleApprove = async (record: any) => {
     await usersApi.approve(record.id);
-    message.success('用户已通过');
+    message.success(t('users.approved'));
     load();
     if (record.email) {
       setNotifyTarget(record);
-      setNotifySubject('账户审核通过通知 - ECT 货运调度管理系统');
+      setNotifySubject(t('users.mail_subject_approved'));
       setNotifyBody(buildApprovalBody(record));
     }
   };
@@ -163,11 +160,11 @@ export default function UsersPage() {
   // 审核拒绝：先拒绝，再弹出邮件让管理员手动发送通知
   const handleReject = async (record: any) => {
     await usersApi.reject(record.id);
-    message.success('用户已拒绝');
+    message.success(t('users.rejected'));
     load();
     if (record.email) {
       setNotifyTarget(record);
-      setNotifySubject('账户审核结果通知 - ECT 货运调度管理系统');
+      setNotifySubject(t('users.mail_subject_rejected'));
       setNotifyBody(buildRejectBody(record));
     }
   };
@@ -197,22 +194,22 @@ export default function UsersPage() {
     if (!editTarget) return;
     try {
       await usersApi.update(editTarget.id, values);
-      message.success('账户已更新');
+      message.success(t('users.updated'));
       setEditOpen(false);
       setEditTarget(null);
       editForm.resetFields();
       load();
     } catch (e: any) {
-      message.error(e?.message || e?.error || '更新失败');
+      message.error(e?.message || e?.error || t('users.update_failed'));
     }
   };
   const handleDelete = async (id: string) => {
     try {
       await usersApi.delete(id);
-      message.success('用户已删除');
+      message.success(t('users.deleted'));
       load();
     } catch (e: any) {
-      message.error(e?.message || e?.error || '删除失败');
+      message.error(e?.message || e?.error || t('users.delete_failed'));
     }
   };
 
@@ -220,34 +217,34 @@ export default function UsersPage() {
     if (!resetTargetId) return;
     try {
       await usersApi.resetPassword(resetTargetId, values.newPassword);
-      message.success('密码已重置');
+      message.success(t('users.password_reset'));
       setResetOpen(false);
       resetForm.resetFields();
       setResetTargetId(null);
     } catch (e: any) {
-      message.error(e?.message || '重置失败');
+      message.error(e?.message || t('users.reset_failed'));
     }
   };
 
   const handleCreate = async (values: any) => {
     try {
       await usersApi.create(values);
-      message.success('账号已创建');
+      message.success(t('users.created'));
       setCreateOpen(false);
       form.resetFields();
       load();
     } catch (e: any) {
-      message.error(e?.message || e?.error || '创建失败');
+      message.error(e?.message || e?.error || t('users.create_failed'));
     }
   };
 
   const columns = [
     {
-      title: '用户名', dataIndex: 'username', key: 'username',
+      title: t('users.col_username'), dataIndex: 'username', key: 'username',
       render: (v: string) => <Text style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v}</Text>,
     },
     {
-      title: '姓名', key: 'name',
+      title: t('users.col_name'), key: 'name',
       render: (_: any, record: any) => (
         <div>
           <div style={{ fontWeight: 600 }}>{record.fullName || record.username}</div>
@@ -256,22 +253,22 @@ export default function UsersPage() {
       ),
     },
     {
-      title: '角色', dataIndex: 'role', key: 'role',
-      render: (role: string) => <Tag color={ROLE_COLOR[role]}>{ROLE_LABEL[role]}</Tag>,
+      title: t('users.col_role'), dataIndex: 'role', key: 'role',
+      render: (role: string) => <Tag color={ROLE_COLOR[role]}>{t(ROLE_LABEL[role])}</Tag>,
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status',
-      render: (status: string) => <Tag color={STATUS_COLOR[status]}>{STATUS_LABEL[status]}</Tag>,
+      title: t('users.col_status'), dataIndex: 'status', key: 'status',
+      render: (status: string) => <Tag color={STATUS_COLOR[status]}>{t(STATUS_LABEL[status])}</Tag>,
     },
     {
-      title: '操作',
+      title: t('users.col_actions'),
       key: 'actions',
       align: 'right' as const,
       render: (_: any, record: any) => (
         <Space size={6}>
           {isAdmin && record.id !== currentUser?.id && (
             <Button size="small" icon={<EditOutlined />} style={BTN.edit} onClick={() => openEdit(record)}>
-              编辑
+              {t('users.btn_edit')}
             </Button>
           )}
           {isAdmin && record.id !== currentUser?.id && (
@@ -281,19 +278,19 @@ export default function UsersPage() {
               style={BTN.reset}
               onClick={() => { setResetTargetId(record.id); setResetOpen(true); }}
             >
-              重置密码
+              {t('users.btn_reset')}
             </Button>
           )}
           {isAdmin && record.id !== currentUser?.id && (
             <Popconfirm
-              title="确定删除该账号？"
-              description="此操作不可撤销。"
+              title={t('users.delete_confirm_title')}
+              description={t('users.delete_confirm_desc')}
               onConfirm={() => handleDelete(record.id)}
-              okText="删除"
-              cancelText="取消"
+              okText={t('users.btn_delete')}
+              cancelText={t('users.btn_cancel')}
               okButtonProps={{ danger: true }}
             >
-              <Button size="small" icon={<DeleteOutlined />} style={BTN.del}>删除</Button>
+              <Button size="small" icon={<DeleteOutlined />} style={BTN.del}>{t('users.btn_delete')}</Button>
             </Popconfirm>
           )}
         </Space>
@@ -303,7 +300,7 @@ export default function UsersPage() {
 
   const pendingColumns = [
     {
-      title: '用户',
+      title: t('users.col_user'),
       key: 'user',
       render: (_: any, record: any) => (
         <div>
@@ -313,27 +310,27 @@ export default function UsersPage() {
       ),
     },
     {
-      title: '申请角色',
+      title: t('users.col_requested_role'),
       dataIndex: 'role',
       key: 'role',
-      render: (role: string) => <Tag color={ROLE_COLOR[role]}>{ROLE_LABEL[role]}</Tag>,
+      render: (role: string) => <Tag color={ROLE_COLOR[role]}>{t(ROLE_LABEL[role])}</Tag>,
     },
     {
-      title: '申请时间',
+      title: t('users.col_requested_at'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (value: string) => dayjs(value).format('MM-DD HH:mm'),
     },
     {
-      title: '审核',
+      title: t('users.col_review'),
       key: 'actions',
       render: (_: any, record: any) => (
         <Space>
           <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record)}>
-            通过
+            {t('users.btn_approve')}
           </Button>
           <Button danger size="small" icon={<CloseOutlined />} onClick={() => handleReject(record)}>
-            拒绝
+            {t('users.btn_reject')}
           </Button>
         </Space>
       ),
@@ -345,23 +342,23 @@ export default function UsersPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <Title level={4} style={{ margin: 0 }}>
-            用户管理
+            {t('users.title')}
           </Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            {isAdmin ? '管理员可创建、编辑、删除及重置账号。' : '调度员可审核待处理账号。'}
+            {isAdmin ? t('users.subtitle_admin') : t('users.subtitle_dispatcher')}
           </Text>
         </div>
         {isAdmin && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            创建账号
+            {t('users.btn_create')}
           </Button>
         )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
-        <StatCard icon={<TeamOutlined />} color="#3b82f6" value={users.length} label="账户总数" />
-        <StatCard icon={<CarOutlined />} color="#22c55e" value={users.filter((u) => u.role === 'driver').length} label="司机" />
-        <StatCard icon={<SafetyCertificateOutlined />} color="#F59E0B" value={users.filter((u) => u.role === 'admin').length} label="管理员" />
+        <StatCard icon={<TeamOutlined />} color="#3b82f6" value={users.length} label={t('users.stat_total')} />
+        <StatCard icon={<CarOutlined />} color="#22c55e" value={users.filter((u) => u.role === 'driver').length} label={t('users.stat_drivers')} />
+        <StatCard icon={<SafetyCertificateOutlined />} color="#F59E0B" value={users.filter((u) => u.role === 'admin').length} label={t('users.stat_admins')} />
       </div>
 
       <Card bordered={false} styles={{ body: { padding: 0 } }} style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -372,7 +369,7 @@ export default function UsersPage() {
               key: 'all',
               label: (
                 <span>
-                  全部用户 <Badge count={users.length} color="blue" />
+                  {t('users.tab_all')} <Badge count={users.length} color="blue" />
                 </span>
               ),
               children: (
@@ -390,7 +387,7 @@ export default function UsersPage() {
               key: 'pending',
               label: (
                 <span>
-                  待审核 <Badge count={pending.length} />
+                  {t('users.tab_pending')} <Badge count={pending.length} />
                 </span>
               ),
               children: (
@@ -409,7 +406,7 @@ export default function UsersPage() {
       </Card>
 
       <Modal
-        title="编辑账户"
+        title={t('users.edit_title')}
         open={editOpen}
         onCancel={() => {
           setEditOpen(false);
@@ -423,33 +420,33 @@ export default function UsersPage() {
         styles={compactModalStyles}
       >
         <Form form={editForm} onFinish={handleEdit} layout="vertical" size="small" style={{ paddingTop: 0 }}>
-          <Form.Item name="username" label="用户名" style={compactFormItemStyle} rules={[{ required: true, message: '请输入用户名' }]}>
+          <Form.Item name="username" label={t('users.f_username')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_username_required') }]}>
             <Input prefix={<UserOutlined />} />
           </Form.Item>
-          <Form.Item name="email" label="邮箱" style={compactFormItemStyle} rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
+          <Form.Item name="email" label={t('users.f_email')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_email_required') }, { type: 'email', message: t('users.f_email_invalid') }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="fullName" label="姓名" style={compactFormItemStyle}>
+          <Form.Item name="fullName" label={t('users.f_fullname')} style={compactFormItemStyle}>
             <Input />
           </Form.Item>
-          <Form.Item name="phone" label="电话" style={compactFormItemStyle}>
+          <Form.Item name="phone" label={t('users.f_phone')} style={compactFormItemStyle}>
             <Input />
           </Form.Item>
-          <Form.Item name="role" label="角色" style={compactFormItemStyle} rules={[{ required: true, message: '请选择角色' }]}>
+          <Form.Item name="role" label={t('users.f_role')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_role_required') }]}>
             <Select>
-              <Option value="admin">管理员</Option>
-              <Option value="dispatcher">调度员</Option>
-              <Option value="driver">司机</Option>
-              <Option value="client">客户</Option>
-              <Option value="monitor">监控大屏</Option>
+              <Option value="admin">{t('users.role_admin')}</Option>
+              <Option value="dispatcher">{t('users.role_dispatcher')}</Option>
+              <Option value="driver">{t('users.role_driver')}</Option>
+              <Option value="client">{t('users.role_client')}</Option>
+              <Option value="monitor">{t('users.role_monitor')}</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="status" label="状态" style={compactFormItemStyle} rules={[{ required: true, message: '请选择状态' }]}>
+          <Form.Item name="status" label={t('users.f_status')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_status_required') }]}>
             <Select>
-              <Option value="active">正常</Option>
-              <Option value="pending">待审核</Option>
-              <Option value="rejected">已拒绝</Option>
-              <Option value="disabled">已禁用</Option>
+              <Option value="active">{t('users.status_active')}</Option>
+              <Option value="pending">{t('users.status_pending')}</Option>
+              <Option value="rejected">{t('users.status_rejected')}</Option>
+              <Option value="disabled">{t('users.status_disabled')}</Option>
             </Select>
           </Form.Item>
           <div style={{ textAlign: 'right', marginTop: 4 }}>
@@ -462,10 +459,10 @@ export default function UsersPage() {
                   editForm.resetFields();
                 }}
               >
-                取消
+                {t('users.btn_cancel')}
               </Button>
               <Button size="small" type="primary" htmlType="submit">
-                保存
+                {t('users.btn_save')}
               </Button>
             </Space>
           </div>
@@ -473,7 +470,7 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        title="重置密码"
+        title={t('users.reset_title')}
         open={resetOpen}
         onCancel={() => {
           setResetOpen(false);
@@ -489,28 +486,28 @@ export default function UsersPage() {
         <Form form={resetForm} onFinish={handleResetPassword} layout="vertical" size="small" style={{ paddingTop: 0 }}>
           <Form.Item
             name="newPassword"
-            label="新密码"
+            label={t('users.f_new_password')}
             style={compactFormItemStyle}
-            rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '密码至少 6 位' }]}
+            rules={[{ required: true, message: t('users.f_new_password_required') }, { min: 6, message: t('users.f_password_min6') }]}
           >
-            <Input.Password placeholder="至少 6 位" />
+            <Input.Password placeholder={t('users.f_new_password_ph')} />
           </Form.Item>
           <Form.Item
             name="confirm"
-            label="确认密码"
+            label={t('users.f_confirm_password')}
             dependencies={['newPassword']}
             style={compactFormItemStyle}
             rules={[
-              { required: true, message: '请再次输入密码' },
+              { required: true, message: t('users.f_confirm_required') },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
-                  return Promise.reject(new Error('两次输入的密码不一致'));
+                  return Promise.reject(new Error(t('users.f_confirm_mismatch')));
                 },
               }),
             ]}
           >
-            <Input.Password placeholder="再次输入新密码" />
+            <Input.Password placeholder={t('users.f_confirm_ph')} />
           </Form.Item>
           <div style={{ textAlign: 'right', marginTop: 8 }}>
             <Space size={8}>
@@ -522,10 +519,10 @@ export default function UsersPage() {
                   setResetTargetId(null);
                 }}
               >
-                取消
+                {t('users.btn_cancel')}
               </Button>
               <Button size="small" type="primary" htmlType="submit">
-                重置
+                {t('users.btn_reset_submit')}
               </Button>
             </Space>
           </div>
@@ -533,12 +530,12 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        title="发送审核结果通知邮件"
+        title={t('users.mail_title')}
         open={!!notifyTarget}
         onCancel={() => setNotifyTarget(null)}
         onOk={handleOpenMail}
-        okText="打开邮箱发送"
-        cancelText="取消"
+        okText={t('users.mail_ok')}
+        cancelText={t('users.btn_cancel')}
         okButtonProps={{ icon: <MailOutlined /> }}
         centered
         width={480}
@@ -546,10 +543,10 @@ export default function UsersPage() {
         styles={compactModalStyles}
       >
         <div style={{ marginBottom: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 10, fontSize: 13 }}>
-          <div style={{ marginBottom: 4 }}><Text type="secondary">收件人：</Text>{notifyTarget?.fullName || notifyTarget?.username}</div>
-          <div><Text type="secondary">邮箱：</Text><Text strong>{notifyTarget?.email}</Text></div>
+          <div style={{ marginBottom: 4 }}><Text type="secondary">{t('users.mail_to')}</Text>{notifyTarget?.fullName || notifyTarget?.username}</div>
+          <div><Text type="secondary">{t('users.mail_address')}</Text><Text strong>{notifyTarget?.email}</Text></div>
         </div>
-        <Text type="secondary" style={{ fontSize: 13 }}>邮件正文（可编辑）：</Text>
+        <Text type="secondary" style={{ fontSize: 13 }}>{t('users.mail_body_label')}</Text>
         <Input.TextArea
           rows={7}
           style={{ marginTop: 6 }}
@@ -557,41 +554,41 @@ export default function UsersPage() {
           onChange={(e) => setNotifyBody(e.target.value)}
         />
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-          点击「打开邮箱发送」会用你电脑的邮箱客户端新建一封已填好的邮件，由你手动点击发送。无需配置服务器 SMTP。
+          {t('users.mail_hint')}
         </Text>
       </Modal>
 
-      <Modal title="创建账号" open={createOpen} onCancel={() => setCreateOpen(false)} footer={null} destroyOnClose centered width={400} styles={compactModalStyles}>
+      <Modal title={t('users.create_title')} open={createOpen} onCancel={() => setCreateOpen(false)} footer={null} destroyOnClose centered width={400} styles={compactModalStyles}>
         <Form form={form} onFinish={handleCreate} layout="vertical" size="small" style={{ paddingTop: 0 }}>
-          <Form.Item name="username" label="用户名" style={compactFormItemStyle} rules={[{ required: true, message: '请输入用户名' }]}>
+          <Form.Item name="username" label={t('users.f_username')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_username_required') }]}>
             <Input prefix={<UserOutlined />} />
           </Form.Item>
-          <Form.Item name="fullName" label="姓名" style={compactFormItemStyle} rules={[{ required: true, message: '请输入姓名' }]}>
+          <Form.Item name="fullName" label={t('users.f_fullname')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_fullname_required') }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="email" label="邮箱" style={compactFormItemStyle} rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
+          <Form.Item name="email" label={t('users.f_email')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_email_required') }, { type: 'email', message: t('users.f_email_invalid') }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="phone" label="电话" style={compactFormItemStyle}>
+          <Form.Item name="phone" label={t('users.f_phone')} style={compactFormItemStyle}>
             <Input />
           </Form.Item>
-          <Form.Item name="role" label="角色" style={compactFormItemStyle} rules={[{ required: true, message: '请选择角色' }]}>
-            <Select placeholder="请选择角色">
-              <Option value="admin">管理员</Option>
-              <Option value="dispatcher">调度员</Option>
-              <Option value="driver">司机</Option>
-              <Option value="client">客户</Option>
-              <Option value="monitor">监控大屏</Option>
+          <Form.Item name="role" label={t('users.f_role')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_role_required') }]}>
+            <Select placeholder={t('users.f_role_placeholder')}>
+              <Option value="admin">{t('users.role_admin')}</Option>
+              <Option value="dispatcher">{t('users.role_dispatcher')}</Option>
+              <Option value="driver">{t('users.role_driver')}</Option>
+              <Option value="client">{t('users.role_client')}</Option>
+              <Option value="monitor">{t('users.role_monitor')}</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="password" label="密码" style={compactFormItemStyle} rules={[{ required: true, message: '请输入密码' }, { min: 6, message: '密码至少 6 位' }]}>
+          <Form.Item name="password" label={t('users.f_password')} style={compactFormItemStyle} rules={[{ required: true, message: t('users.f_password_required') }, { min: 6, message: t('users.f_password_min6') }]}>
             <Input.Password />
           </Form.Item>
           <div style={{ textAlign: 'right', marginTop: 4 }}>
             <Space size={8}>
-              <Button size="small" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button size="small" onClick={() => setCreateOpen(false)}>{t('users.btn_cancel')}</Button>
               <Button size="small" type="primary" htmlType="submit">
-                创建
+                {t('users.btn_create_submit')}
               </Button>
             </Space>
           </div>

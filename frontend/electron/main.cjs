@@ -12,6 +12,8 @@ function createWindow() {
     minHeight: 680,
     title: 'ECT ERP',
     backgroundColor: '#0b1220',
+    // 先不显示：最大化之后再 show，避免先弹出一个小窗再跳大
+    show: false,
     icon: path.join(__dirname, '..', 'dist', 'log.png'),
     webPreferences: {
       contextIsolation: true,
@@ -23,6 +25,10 @@ function createWindow() {
 
   // 去掉菜单栏（同时也去掉了 View → Toggle DevTools 入口）
   Menu.setApplicationMenu(null);
+
+  // 调度台是要一直开着看的，默认铺满屏幕；上面的 width/height 作为还原尺寸保留
+  win.maximize();
+  win.once('ready-to-show', () => win.show());
 
   if (isDev) {
     win.loadURL('http://localhost:5173');

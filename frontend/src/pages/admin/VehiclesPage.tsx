@@ -26,12 +26,13 @@ type Vehicle = {
   projectedDays: number | null; projectedExhaustedAt: string | null; daysSinceCalibration: number | null;
 };
 
-const LEVEL_META: Record<Level, { color: string; zh: string; en: string }> = {
-  unknown: { color: 'default', zh: '未登记', en: 'No licence' },
-  ok: { color: 'green', zh: '正常', en: 'OK' },
-  warn: { color: 'gold', zh: '需安排购买', en: 'Buy soon' },
-  critical: { color: 'orange', zh: '即将用完', en: 'Almost out' },
-  exceeded: { color: 'red', zh: '已超出许可', en: 'Exceeded' },
+// level 本身是后端给的标识，不翻译；只有 label 走 i18n
+const LEVEL_META: Record<Level, { color: string; label: string }> = {
+  unknown: { color: 'default', label: 'vehicles.levelUnknown' },
+  ok: { color: 'green', label: 'vehicles.levelOk' },
+  warn: { color: 'gold', label: 'vehicles.levelWarn' },
+  critical: { color: 'orange', label: 'vehicles.levelCritical' },
+  exceeded: { color: 'red', label: 'vehicles.levelExceeded' },
 };
 
 const num = (v: unknown): number | null => {
@@ -44,8 +45,7 @@ const km = (v: unknown): string => {
 };
 
 export default function VehiclesPage() {
-  const { i18n } = useTranslation();
-  const zh = i18n.language === 'zh';
+  const { t } = useTranslation();
   const { user } = useSelector((s: RootState) => s.auth);
   const isAdmin = user?.role === 'admin';
 
@@ -65,11 +65,11 @@ export default function VehiclesPage() {
       const data: any = await vehiclesApi.list();
       setList(Array.isArray(data) ? data : []);
     } catch {
-      if (!silent) message.error(zh ? '加载失败' : 'Failed to load');
+      if (!silent) message.error(t('vehicles.loadFailed'));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [zh]);
+  }, [t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -81,7 +81,7 @@ export default function VehiclesPage() {
       setAddOpen(false); setRucTarget(null); setOdoTarget(null);
       load(true);
     } catch (e: any) {
-      message.error(e?.response?.data?.message || e?.message || (zh ? '操作失败' : 'Failed'));
+      message.error(e?.response?.data?.message || e?.message || t('vehicles.actionFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -106,7 +106,7 @@ export default function VehiclesPage() {
 
   const columns = [
     {
-      title: zh ? '车牌' : 'Plate', key: 'plate', width: 150, fixed: 'left' as const,
+      title: t('vehicles.colPlate'), key: 'plate', width: 150, fixed: 'left' as const,
       render: (_: any, r: Vehicle) => (
         <Space direction="vertical" size={0}>
           <Text strong style={{ letterSpacing: 1 }}>{r.displayPlate}</Text>
@@ -115,25 +115,25 @@ export default function VehiclesPage() {
       ),
     },
     {
-      title: zh ? 'RUC 状态' : 'RUC status', key: 'level', width: 130,
+      title: t('vehicles.colRucStatus'), key: 'level', width: 130,
       render: (_: any, r: Vehicle) => {
         const meta = LEVEL_META[r.level] || LEVEL_META.unknown;
-        return <Tag color={meta.color} style={{ fontWeight: 600 }}>{zh ? meta.zh : meta.en}</Tag>;
+        return <Tag color={meta.color} style={{ fontWeight: 600 }}>{t(meta.label)}</Tag>;
       },
     },
     {
-      title: zh ? '剩余里程' : 'Remaining', key: 'remaining', width: 190,
+      title: t('vehicles.colRemaining'), key: 'remaining', width: 190,
       render: (_: any, r: Vehicle) => {
         const remaining = num(r.remainingKm);
         if (remaining == null) {
-          return <Text type="secondary">{zh ? '未登记许可' : 'No licence recorded'}</Text>;
+          return <Text type="secondary">{t('vehicles.noLicence')}</Text>;
         }
         const total = Math.max(1, (num(r.rucEndKm) ?? 0) - (num(r.rucStartKm) ?? 0));
         const used = Math.min(100, Math.max(0, ((total - remaining) / total) * 100));
         return (
           <Space direction="vertical" size={0} style={{ width: '100%' }}>
             <Text strong style={{ color: remaining <= 0 ? '#dc2626' : remaining <= 200 ? '#ea580c' : undefined }}>
-              {remaining <= 0 ? (zh ? `已超出 ${Math.abs(Math.round(remaining))} km` : `${Math.abs(Math.round(remaining))} km over`) : km(remaining)}
+              {remaining <= 0 ? t('vehicles.kmOver', { km: Math.abs(Math.round(remaining)) }) : km(remaining)}
             </Text>
             <Progress
               percent={used} size="small" showInfo={false}
@@ -144,37 +144,35 @@ export default function VehiclesPage() {
       },
     },
     {
-      title: zh ? '预计用完' : 'Runs out', key: 'projected', width: 150,
+      title: t('vehicles.colProjected'), key: 'projected', width: 150,
       render: (_: any, r: Vehicle) => {
         const days = num(r.projectedDays);
         if (days == null) {
-          return <Text type="secondary" style={{ fontSize: 12 }}>{zh ? '用量不足，暂不预估' : 'Not enough data'}</Text>;
+          return <Text type="secondary" style={{ fontSize: 12 }}>{t('vehicles.notEnoughData')}</Text>;
         }
         return (
           <Space direction="vertical" size={0}>
-            <Text>{zh ? `约 ${Math.floor(days)} 天后` : `~${Math.floor(days)} days`}</Text>
+            <Text>{t('vehicles.inDays', { n: Math.floor(days) })}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {r.projectedExhaustedAt ? dayjs(r.projectedExhaustedAt).format('MM-DD') : ''}
-              {r.avgDailyKm > 0 ? ` · ${Math.round(r.avgDailyKm)} km/${zh ? '天' : 'd'}` : ''}
+              {r.avgDailyKm > 0 ? ` · ${t('vehicles.kmPerDay', { n: Math.round(r.avgDailyKm) })}` : ''}
             </Text>
           </Space>
         );
       },
     },
     {
-      title: zh ? '里程（估算）' : 'Odometer (est.)', key: 'odo', width: 180,
+      title: t('vehicles.colOdometer'), key: 'odo', width: 180,
       render: (_: any, r: Vehicle) => {
         const stale = (r.daysSinceCalibration ?? 999) > 30 || r.daysSinceCalibration == null;
         return (
           <Space direction="vertical" size={0}>
             <Text>{km(r.odometerKm)}</Text>
-            <Tooltip title={zh
-              ? '系统按定位器里程估算，与车上 hubodometer 会有误差。定期用实际读数校准可以让提醒更准。'
-              : 'Estimated from tracker mileage; recalibrate from the hubodometer to keep it accurate.'}>
+            <Tooltip title={t('vehicles.odoTip')}>
               <Text type={stale ? 'warning' : 'secondary'} style={{ fontSize: 12 }}>
                 {r.daysSinceCalibration == null
-                  ? (zh ? '从未校准' : 'never calibrated')
-                  : (zh ? `${r.daysSinceCalibration} 天前校准` : `calibrated ${r.daysSinceCalibration}d ago`)}
+                  ? t('vehicles.neverCalibrated')
+                  : t('vehicles.calibratedDaysAgo', { n: r.daysSinceCalibration })}
               </Text>
             </Tooltip>
           </Space>
@@ -182,32 +180,32 @@ export default function VehiclesPage() {
       },
     },
     {
-      title: zh ? '许可' : 'Licence', key: 'licence', width: 190,
+      title: t('vehicles.colLicence'), key: 'licence', width: 190,
       render: (_: any, r: Vehicle) => num(r.rucEndKm) == null ? <Text type="secondary">—</Text> : (
         <Space direction="vertical" size={0}>
           <Text style={{ fontSize: 13 }}>{km(r.rucStartKm)} → {km(r.rucEndKm)}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {r.rucLicenceNo || (zh ? '无单号' : 'no number')}
+            {r.rucLicenceNo || t('vehicles.noLicenceNo')}
             {r.rucPurchasedAt ? ` · ${dayjs(r.rucPurchasedAt).format('YYYY-MM-DD')}` : ''}
           </Text>
         </Space>
       ),
     },
     {
-      title: zh ? '操作' : 'Actions', key: 'actions', width: 210,
+      title: t('vehicles.colActions'), key: 'actions', width: 210,
       render: (_: any, r: Vehicle) => (
         <Space size={4} wrap>
           <Button size="small" type="primary" ghost icon={<FileProtectOutlined />} onClick={() => openRuc(r)}>
-            {zh ? '登记许可' : 'Licence'}
+            {t('vehicles.btnRecordLicence')}
           </Button>
           <Button size="small" icon={<DashboardOutlined />} onClick={() => openOdo(r)}>
-            {zh ? '校准里程' : 'Calibrate'}
+            {t('vehicles.btnCalibrate')}
           </Button>
           {isAdmin && (
             <Popconfirm
-              title={zh ? '确定删除这辆车？' : 'Delete this vehicle?'}
-              onConfirm={() => submit(() => vehiclesApi.delete(r.id), zh ? '已删除' : 'Deleted')}
-              okText={zh ? '删除' : 'Delete'} okButtonProps={{ danger: true }} cancelText={zh ? '取消' : 'Cancel'}
+              title={t('vehicles.deleteConfirm')}
+              onConfirm={() => submit(() => vehiclesApi.delete(r.id), t('vehicles.deleted'))}
+              okText={t('vehicles.delete')} okButtonProps={{ danger: true }} cancelText={t('vehicles.cancel')}
             >
               <Button size="small" danger icon={<DeleteOutlined />} />
             </Popconfirm>
@@ -224,12 +222,12 @@ export default function VehiclesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
           <CarOutlined style={{ marginRight: 8, color: AMBER }} />
-          {zh ? '车辆与 RUC 路税' : 'Vehicles & RUC'}
+          {t('vehicles.title')}
         </Title>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => load()} loading={loading}>{zh ? '刷新' : 'Refresh'}</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => load()} loading={loading}>{t('vehicles.refresh')}</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setAddOpen(true); }}>
-            {zh ? '登记车辆' : 'Add vehicle'}
+            {t('vehicles.add')}
           </Button>
         </Space>
       </div>
@@ -238,9 +236,7 @@ export default function VehiclesPage() {
         <Alert
           type={needAttention.some((v) => v.level === 'exceeded') ? 'error' : 'warning'}
           showIcon icon={<WarningOutlined />} style={{ marginBottom: 16, borderRadius: 10 }}
-          message={zh
-            ? `${needAttention.length} 辆车的 RUC 路税需要处理`
-            : `${needAttention.length} vehicle(s) need RUC attention`}
+          message={t('vehicles.attentionTitle', { n: needAttention.length })}
           description={
             <Space wrap size={[8, 4]}>
               {needAttention.map((v) => (
@@ -248,8 +244,8 @@ export default function VehiclesPage() {
                   <Text strong>{v.displayPlate}</Text>
                   <Text style={{ marginLeft: 6, fontSize: 12 }}>
                     {(num(v.remainingKm) ?? 0) <= 0
-                      ? (zh ? `已超出 ${Math.abs(Math.round(num(v.remainingKm) ?? 0))} km` : `${Math.abs(Math.round(num(v.remainingKm) ?? 0))} km over`)
-                      : (zh ? `剩 ${Math.round(num(v.remainingKm) ?? 0)} km` : `${Math.round(num(v.remainingKm) ?? 0)} km left`)}
+                      ? t('vehicles.kmOver', { km: Math.abs(Math.round(num(v.remainingKm) ?? 0)) })
+                      : t('vehicles.kmLeft', { km: Math.round(num(v.remainingKm) ?? 0) })}
                   </Text>
                 </Tag>
               ))}
@@ -260,49 +256,45 @@ export default function VehiclesPage() {
 
       <Alert
         type="info" showIcon style={{ marginBottom: 16, borderRadius: 10 }}
-        message={zh
-          ? '里程为系统估算值，购买 RUC 时请以车上 hubodometer 的实际读数为准'
-          : 'Mileage here is an estimate — buy RUC using the actual hubodometer reading'}
-        description={zh
-          ? '系统按车载定位器上报的里程累计，用于提前提醒；购买本身仍需在 NZTA 或代理处办理（自动购买需要 NZTA 认证的电子里程记录资质）。'
-          : 'Distance is accumulated from tracker mileage for early warning only. Purchase is still done through NZTA or an agent.'}
+        message={t('vehicles.infoTitle')}
+        description={t('vehicles.infoDesc')}
       />
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           columns={columns} dataSource={list} rowKey="id" loading={loading}
           pagination={{ pageSize: 20 }} scroll={{ x: 1100 }}
-          locale={{ emptyText: zh ? '还没有登记车辆。登记后即可跟踪 RUC 路税剩余里程。' : 'No vehicles yet.' }}
+          locale={{ emptyText: t('vehicles.emptyText') }}
         />
       </Card>
 
       {/* 登记车辆 */}
       <Modal
-        title={zh ? '登记车辆' : 'Add vehicle'} open={addOpen} onCancel={() => setAddOpen(false)}
+        title={t('vehicles.add')} open={addOpen} onCancel={() => setAddOpen(false)}
         onOk={async () => {
           const v = await addForm.validateFields();
-          submit(() => vehiclesApi.create(v), zh ? '已登记' : 'Added');
+          submit(() => vehiclesApi.create(v), t('vehicles.added'));
         }}
-        confirmLoading={submitting} okText={zh ? '登记' : 'Add'} cancelText={zh ? '取消' : 'Cancel'}
+        confirmLoading={submitting} okText={t('vehicles.okAdd')} cancelText={t('vehicles.cancel')}
         centered width={420} forceRender
       >
         <Form form={addForm} layout="vertical">
           <Form.Item
-            name="plate" label={zh ? '车牌' : 'Plate'}
-            rules={[{ required: true, message: zh ? '请输入车牌' : 'Required' }]}
-            extra={zh ? '要与定位器登记、司机接单时填写的车牌一致' : 'Must match the tracker and what drivers type'}
+            name="plate" label={t('vehicles.fieldPlate')}
+            rules={[{ required: true, message: t('vehicles.plateRequired') }]}
+            extra={t('vehicles.plateExtra')}
           >
             <Input placeholder="ABC123" maxLength={32} style={{ textTransform: 'uppercase' }} />
           </Form.Item>
-          <Form.Item name="label" label={zh ? '备注名称' : 'Label'}>
-            <Input placeholder={zh ? '例如：1 号车' : 'e.g. Truck #1'} maxLength={128} />
+          <Form.Item name="label" label={t('vehicles.fieldLabel')}>
+            <Input placeholder={t('vehicles.labelPlaceholder')} maxLength={128} />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* 登记 RUC 许可 */}
       <Modal
-        title={zh ? `登记 RUC 许可 · ${rucTarget?.displayPlate ?? ''}` : `Record RUC licence · ${rucTarget?.displayPlate ?? ''}`}
+        title={t('vehicles.rucModalTitle', { plate: rucTarget?.displayPlate ?? '' })}
         open={!!rucTarget} onCancel={() => setRucTarget(null)}
         onOk={async () => {
           const v = await rucForm.validateFields();
@@ -311,41 +303,39 @@ export default function VehiclesPage() {
             startKm: v.startKm,
             endKm: v.endKm,
             purchasedAt: v.purchasedAt ? v.purchasedAt.toISOString() : undefined,
-          }), zh ? '许可已登记' : 'Licence recorded');
+          }), t('vehicles.licenceRecorded'));
         }}
-        confirmLoading={submitting} okText={zh ? '保存' : 'Save'} cancelText={zh ? '取消' : 'Cancel'}
+        confirmLoading={submitting} okText={t('vehicles.save')} cancelText={t('vehicles.cancel')}
         centered width={460} forceRender
       >
         <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-          {zh
-            ? '按购买到的 RUC 许可上的里程范围填写。保存后提醒会重新开始计算。'
-            : 'Enter the distance range printed on the RUC licence you purchased.'}
+          {t('vehicles.rucModalHint')}
         </Paragraph>
         <Form form={rucForm} layout="vertical">
-          <Form.Item name="licenceNo" label={zh ? '许可编号' : 'Licence number'}>
-            <Input placeholder={zh ? '选填' : 'Optional'} maxLength={64} />
+          <Form.Item name="licenceNo" label={t('vehicles.fieldLicenceNo')}>
+            <Input placeholder={t('vehicles.optional')} maxLength={64} />
           </Form.Item>
           <Form.Item
-            name="startKm" label={zh ? '起始里程 (km)' : 'Start reading (km)'}
-            rules={[{ required: true, message: zh ? '请填写' : 'Required' }]}
+            name="startKm" label={t('vehicles.fieldStartKm')}
+            rules={[{ required: true, message: t('vehicles.required') }]}
           >
             <InputNumber style={{ width: '100%' }} min={0} step={1000} />
           </Form.Item>
           <Form.Item
-            name="endKm" label={zh ? '截止里程 (km)' : 'End reading (km)'}
+            name="endKm" label={t('vehicles.fieldEndKm')}
             rules={[
-              { required: true, message: zh ? '请填写' : 'Required' },
+              { required: true, message: t('vehicles.required') },
               ({ getFieldValue }) => ({
                 validator: (_, value) => value > getFieldValue('startKm')
                   ? Promise.resolve()
-                  : Promise.reject(new Error(zh ? '截止里程必须大于起始里程' : 'End must be greater than start')),
+                  : Promise.reject(new Error(t('vehicles.endGreaterThanStart'))),
               }),
             ]}
-            extra={zh ? '跑到这个里程之前必须续买' : 'The vehicle must not travel past this reading'}
+            extra={t('vehicles.endKmExtra')}
           >
             <InputNumber style={{ width: '100%' }} min={0} step={1000} />
           </Form.Item>
-          <Form.Item name="purchasedAt" label={zh ? '购买日期' : 'Purchased on'}>
+          <Form.Item name="purchasedAt" label={t('vehicles.fieldPurchasedAt')}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
         </Form>
@@ -353,24 +343,22 @@ export default function VehiclesPage() {
 
       {/* 校准里程 */}
       <Modal
-        title={zh ? `校准里程 · ${odoTarget?.displayPlate ?? ''}` : `Calibrate odometer · ${odoTarget?.displayPlate ?? ''}`}
+        title={t('vehicles.odoModalTitle', { plate: odoTarget?.displayPlate ?? '' })}
         open={!!odoTarget} onCancel={() => setOdoTarget(null)}
         onOk={async () => {
           const v = await odoForm.validateFields();
-          submit(() => vehiclesApi.calibrate(odoTarget!.id, v.odometerKm), zh ? '里程已校准' : 'Calibrated');
+          submit(() => vehiclesApi.calibrate(odoTarget!.id, v.odometerKm), t('vehicles.calibrated'));
         }}
-        confirmLoading={submitting} okText={zh ? '保存' : 'Save'} cancelText={zh ? '取消' : 'Cancel'}
+        confirmLoading={submitting} okText={t('vehicles.save')} cancelText={t('vehicles.cancel')}
         centered width={420} forceRender
       >
         <Paragraph type="secondary" style={{ fontSize: 12.5 }}>
-          {zh
-            ? '填写车上 hubodometer（里程计）的实际读数。这会成为新的基准，之后继续按定位器里程累加。'
-            : 'Enter the actual hubodometer reading; it becomes the new baseline.'}
+          {t('vehicles.odoModalHint')}
         </Paragraph>
         <Form form={odoForm} layout="vertical">
           <Form.Item
-            name="odometerKm" label={zh ? '当前实际里程 (km)' : 'Current reading (km)'}
-            rules={[{ required: true, message: zh ? '请填写' : 'Required' }]}
+            name="odometerKm" label={t('vehicles.fieldCurrentKm')}
+            rules={[{ required: true, message: t('vehicles.required') }]}
           >
             <InputNumber style={{ width: '100%' }} min={0} step={100} />
           </Form.Item>

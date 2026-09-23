@@ -11,6 +11,7 @@ const zh: Dict = {
   'tab.tasks': '任务',
   'tab.location': '位置',
   'tab.profile': '个人中心',
+  'tab.todayJobs': '当日任务',
   // login
   'login.portal': '运营门户',
   'login.account': '账号',
@@ -25,6 +26,8 @@ const zh: Dict = {
   'login.loginFailed': '登录失败',
   'login.noServer': '连不上服务器，请检查手机网络后重试。服务器地址：',
   'login.tryAgain': '请稍后重试',
+  'login.monitorOnly': '该账号为网页端监控账号，请在电脑网页端登录',
+  'login.langToggle': 'EN',
   // register
   'reg.title': '申请注册',
   'reg.subtitle': '提交后等待管理员审核',
@@ -59,6 +62,7 @@ const zh: Dict = {
   'common.loading': '加载中...',
   'common.optional': '可选',
   'common.back': '返回',
+  'common.dateLocale': 'zh-CN',
   // role
   'role.driver': '司机',
   'role.client': '客户',
@@ -151,6 +155,11 @@ const zh: Dict = {
   'tasks.createDispatch': '创建并下发',
   'tasks.driverAssigned': '司机已分配',
   'tasks.assignFailed': '分配失败',
+  'tasks.unscheduled': '未排期',
+  'tasks.namePreview': '任务名: {{name}}',
+  'tasks.secClientDriver': '客户与司机',
+  'tasks.secShipment': '运输信息',
+  'tasks.secSchedule': '时间与备注',
   // driver home
   'd.greetingPrefix': '你好，',
   'd.subIdle': '今日无进行中任务',
@@ -209,6 +218,10 @@ const zh: Dict = {
   'd.finishDoneMsg': '工作照片已提交',
   'd.continue': '继续任务 / 上传完成记录',
   'd.viewTask': '点击查看任务',
+  'd.subActive': '今日有 {{count}} 个进行中任务',
+  'd.plateConfirmed': '车牌 {{plate}} 已确认，GPS定位已启动',
+  'd.plateNoTracker': '这个车牌没有登记车载定位器，轨迹只会来自手机',
+  'd.plateTrackerList': '装了定位器的车（点一下自动填）',
   // task detail
   'td.error': '错误',
   'td.errLoad': '无法加载任务详情',
@@ -256,6 +269,34 @@ const zh: Dict = {
   'td.duration': 'GPS工时',
   'td.donePhotos': '完成照片',
   'td.backBtn': '返回',
+  'td.tapClose': '点击任意处关闭',
+  // tracking
+  'trk.title': '位置追踪',
+  'trk.titleClient': '追踪司机',
+  'trk.loadingMap': '加载地图中...',
+  'trk.todayTitle': '当日任务',
+  'trk.todaySub': '今天需要关注的运输任务',
+  'trk.noDest': '未设置终点',
+  'trk.todayEmptySub': '下拉任务页刷新试试',
+  'trk.onlineCount': '{{count}} 名司机在线',
+  'trk.noneOnline': '暂无在线司机',
+  'trk.emptyTitle': '暂无司机在线',
+  'trk.emptySub': '任务进行中时司机会上传位置',
+  // map
+  'map.street': '街道',
+  'map.satellite': '卫星',
+  'map.speed': '速度:',
+  'map.coords': '坐标:',
+  // announcements
+  'ann.title': '系统公告',
+  'ann.gotIt': '我知道了',
+  'ann.targetAll': '全体',
+  // background location service
+  'bg.permTitle': '允许「始终」后台定位',
+  'bg.permMsg': '任务进行中需要持续上报 GPS 位置,请选择「始终允许」',
+  'bg.permAction': '去设置',
+  'bg.notifTitle': '运输任务进行中',
+  'bg.notifText': '正在上传 GPS 位置',
 };
 
 const en: Dict = {
@@ -264,6 +305,7 @@ const en: Dict = {
   'tab.tasks': 'Tasks',
   'tab.location': 'Location',
   'tab.profile': 'Profile',
+  'tab.todayJobs': "Today's jobs",
   // login
   'login.portal': 'Operations Portal',
   'login.account': 'Account',
@@ -278,6 +320,8 @@ const en: Dict = {
   'login.loginFailed': 'Login failed',
   'login.noServer': 'Cannot reach the server. Check your connection and try again. Server:',
   'login.tryAgain': 'Please try again',
+  'login.monitorOnly': 'This is a web monitoring account. Please log in on a computer.',
+  'login.langToggle': 'CN',
   // register
   'reg.title': 'Sign Up',
   'reg.subtitle': 'Submit and wait for admin approval',
@@ -312,6 +356,7 @@ const en: Dict = {
   'common.loading': 'Loading...',
   'common.optional': 'Optional',
   'common.back': 'Back',
+  'common.dateLocale': 'en-NZ',
   // role
   'role.driver': 'Driver',
   'role.client': 'Client',
@@ -404,6 +449,11 @@ const en: Dict = {
   'tasks.createDispatch': 'Create & Dispatch',
   'tasks.driverAssigned': 'Driver assigned',
   'tasks.assignFailed': 'Assign failed',
+  'tasks.unscheduled': 'Unscheduled',
+  'tasks.namePreview': 'Task: {{name}}',
+  'tasks.secClientDriver': 'Client & Driver',
+  'tasks.secShipment': 'Shipment',
+  'tasks.secSchedule': 'Schedule & Notes',
   // driver home
   'd.greetingPrefix': 'Hi, ',
   'd.subIdle': 'No tasks in progress today',
@@ -462,6 +512,10 @@ const en: Dict = {
   'd.finishDoneMsg': 'Work photos submitted',
   'd.continue': 'Continue / upload completion',
   'd.viewTask': 'Tap to view task',
+  'd.subActive': '{{count}} job(s) in progress today',
+  'd.plateConfirmed': 'Plate {{plate}} confirmed, GPS tracking started',
+  'd.plateNoTracker': 'No tracker registered for this plate — tracking will come from the phone only',
+  'd.plateTrackerList': 'Vehicles with a tracker (tap to fill)',
   // task detail
   'td.error': 'Error',
   'td.errLoad': 'Unable to load task details',
@@ -509,15 +563,69 @@ const en: Dict = {
   'td.duration': 'GPS Hours',
   'td.donePhotos': 'Completion photos',
   'td.backBtn': 'Back',
+  'td.tapClose': 'Tap anywhere to close',
+  // tracking
+  'trk.title': 'Tracking',
+  'trk.titleClient': 'Track Driver',
+  'trk.loadingMap': 'Loading map...',
+  'trk.todayTitle': "Today's jobs",
+  'trk.todaySub': 'Jobs to keep an eye on today',
+  'trk.noDest': 'No destination set',
+  'trk.todayEmptySub': 'Pull to refresh on the jobs tab',
+  'trk.onlineCount': '{{count}} driver(s) online',
+  'trk.noneOnline': 'No drivers online',
+  'trk.emptyTitle': 'No drivers online',
+  'trk.emptySub': 'Drivers upload their location while a job is running',
+  // map
+  'map.street': 'Street',
+  'map.satellite': 'Satellite',
+  'map.speed': 'Speed:',
+  'map.coords': 'Coords:',
+  // announcements
+  'ann.title': 'Announcements',
+  'ann.gotIt': 'Got it',
+  'ann.targetAll': 'All',
+  // background location service
+  'bg.permTitle': 'Allow location "Always"',
+  'bg.permMsg': 'A job in progress needs to keep reporting GPS. Please choose "Allow all the time".',
+  'bg.permAction': 'Settings',
+  'bg.notifTitle': 'Job in progress',
+  'bg.notifText': 'Uploading GPS location',
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
+
+export type TParams = Record<string, string | number>;
+
+// 词条里的 {{name}} 占位符用 params 替换；不传 params 时与原来的行为完全一致。
+function translate(l: Lang, key: string, params?: TParams): string {
+  const raw = DICTS[l][key] ?? key;
+  if (!params) return raw;
+  return raw.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match,
+  );
+}
+
+// 非组件模块(后台定位服务、本地通知)拿不到 Hook,这里记住最后一次的语言供它们同步读取。
+let currentLang: Lang = 'zh';
+SecureStore.getItemAsync('lang')
+  .then((l) => { if (l === 'zh' || l === 'en') currentLang = l; })
+  .catch(() => {});
+
+export function getLang(): Lang {
+  return currentLang;
+}
+
+/** 给非组件模块用的同步翻译函数,读最后已知语言。 */
+export function tr(key: string, params?: TParams): string {
+  return translate(currentLang, key, params);
+}
 
 interface LangCtx {
   lang: Lang;
   setLang: (l: Lang) => void;
   toggle: () => void;
-  t: (key: string) => string;
+  t: (key: string, params?: TParams) => string;
 }
 
 const Ctx = createContext<LangCtx>({
@@ -532,11 +640,12 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     SecureStore.getItemAsync('lang').then((l) => {
-      if (l === 'zh' || l === 'en') setLangState(l);
+      if (l === 'zh' || l === 'en') { currentLang = l; setLangState(l); }
     });
   }, []);
 
   const setLang = useCallback((l: Lang) => {
+    currentLang = l;
     setLangState(l);
     SecureStore.setItemAsync('lang', l).catch(() => {});
   }, []);
@@ -544,12 +653,13 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   const toggle = useCallback(() => {
     setLangState((prev) => {
       const next: Lang = prev === 'zh' ? 'en' : 'zh';
+      currentLang = next;
       SecureStore.setItemAsync('lang', next).catch(() => {});
       return next;
     });
   }, []);
 
-  const t = useCallback((key: string) => DICTS[lang][key] ?? key, [lang]);
+  const t = useCallback((key: string, params?: TParams) => translate(lang, key, params), [lang]);
 
   return <Ctx.Provider value={{ lang, setLang, toggle, t }}>{children}</Ctx.Provider>;
 }

@@ -43,8 +43,8 @@ const menuItems = [
   { key: '/admin/settings', icon: <SettingOutlined />, label: '系统设置', labelEn: 'Settings' },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理员', dispatcher: '调度员', monitor: '监控大屏',
+const ROLE_LABEL_KEYS: Record<string, string> = {
+  admin: 'layout.role_admin', dispatcher: 'layout.role_dispatcher', monitor: 'layout.role_monitor',
 };
 
 export default function AdminLayout() {
@@ -190,7 +190,7 @@ export default function AdminLayout() {
             <LogoutOutlined />
           </div>
           {!collapsed && (
-            <span style={{ color: '#fca5a5', fontSize: 14, fontWeight: 600 }}>退出登录</span>
+            <span style={{ color: '#fca5a5', fontSize: 14, fontWeight: 600 }}>{t('layout.logout')}</span>
           )}
         </div>
       </Sider>
@@ -280,7 +280,7 @@ export default function AdminLayout() {
                     {user?.fullName || user?.username}
                   </Text>
                   <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
-                    {ROLE_LABELS[user?.role || ''] || '调度员'}
+                    {t(ROLE_LABEL_KEYS[user?.role || ''] || 'layout.role_dispatcher')}
                   </Text>
                 </div>
               </Space>

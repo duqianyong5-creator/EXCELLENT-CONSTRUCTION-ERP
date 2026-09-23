@@ -3,12 +3,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { Button, Typography } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
+import { useTranslation, Trans } from 'react-i18next';
 import { RootState } from '../../store';
 import { logout } from '../../store/slices/authSlice';
 
 const { Title, Text } = Typography;
 
 export default function DriverLayout() {
+  const { t } = useTranslation();
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((s: RootState) => s.auth);
@@ -40,10 +42,11 @@ export default function DriverLayout() {
       }}>
         <div style={{ fontSize: 72, marginBottom: 16 }}>📱</div>
 
-        <Title level={3} style={{ color: '#fff', margin: 0 }}>请使用手机 App</Title>
+        <Title level={3} style={{ color: '#fff', margin: 0 }}>{t('driver.app_title')}</Title>
         <Text style={{ color: 'rgba(255,255,255,0.6)', display: 'block', marginTop: 12, fontSize: 15, lineHeight: 1.8 }}>
-          司机端功能已迁移至手机 App
-          <br />请在手机上打开 <strong style={{ color: '#1677ff' }}>Expo Go</strong> 扫码使用
+          {t('driver.app_moved')}
+          <br />
+          <Trans i18nKey="driver.app_scan" components={{ b: <strong style={{ color: '#1677ff' }} /> }} />
         </Text>
 
         <div style={{
@@ -54,7 +57,7 @@ export default function DriverLayout() {
           marginTop: 24,
           textAlign: 'left',
         }}>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8 }}>当前登录账户</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8 }}>{t('driver.current_account')}</div>
           <div style={{ color: '#fff', fontWeight: 600 }}>{user?.fullName || user?.username}</div>
           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{user?.email}</div>
         </div>
@@ -65,7 +68,7 @@ export default function DriverLayout() {
           borderTop: '1px solid rgba(255,255,255,0.08)',
         }}>
           <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>
-            App 功能：今日任务 · GPS追踪 · 拍照完工 · 工时记录
+            {t('driver.app_features')}
           </Text>
         </div>
 
@@ -82,7 +85,7 @@ export default function DriverLayout() {
             borderRadius: 10,
           }}
         >
-          退出登录
+          {t('driver.logout')}
         </Button>
       </div>
     </div>

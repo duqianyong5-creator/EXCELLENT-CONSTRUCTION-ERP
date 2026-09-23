@@ -1,5 +1,7 @@
 import React, { useEffect, Component } from 'react';
+import i18n from './i18n';
 
+// 类组件用不了 useTranslation，直接用 i18n 实例
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: any }> {
   state = { error: null };
   static getDerivedStateFromError(error: any) { return { error }; }
@@ -7,7 +9,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: an
     if (this.state.error) {
       return (
         <div style={{ padding: 40, textAlign: 'center' }}>
-          <h2 style={{ color: '#ef4444' }}>页面加载出错</h2>
+          <h2 style={{ color: '#ef4444' }}>{i18n.t('layout.error_title')}</h2>
           <pre style={{ color: '#666', fontSize: 12, textAlign: 'left', maxWidth: 600, margin: '0 auto' }}>
             {String(this.state.error)}
           </pre>
@@ -15,7 +17,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: an
               HashRouter 下必须走 hash，而且要 reload 一次让应用重新初始化。 */}
           <button onClick={() => { localStorage.clear(); window.location.hash = '#/login'; window.location.reload(); }}
             style={{ marginTop: 20, padding: '8px 24px', background: '#F59E0B', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>
-            清除缓存并重新登录
+            {i18n.t('layout.error_reset')}
           </button>
         </div>
       );
@@ -25,6 +27,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: an
 }
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import { RootState } from './store';
 import { setUnread } from './store/slices/notifSlice';
 import { useSocket } from './hooks/useSocket';
@@ -62,6 +65,7 @@ function RoleRouter() {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const { token } = useSelector((s: RootState) => s.auth);
   const dispatch = useDispatch();
   useSocket(token);
@@ -113,7 +117,7 @@ export default function App() {
           }
         />
 
-        <Route path="/unauthorized" element={<div style={{ padding: 40, textAlign: 'center', fontSize: 24 }}>无权访问</div>} />
+        <Route path="/unauthorized" element={<div style={{ padding: 40, textAlign: 'center', fontSize: 24 }}>{t('layout.unauthorized')}</div>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

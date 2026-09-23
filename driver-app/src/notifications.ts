@@ -4,6 +4,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { notificationsApi, announcementsApi } from './api';
+import { tr } from './i18n';
 
 const BG_TASK = 'ect-task-notifications';
 const SEEN_KEY = 'notif_seen_ids';
@@ -104,7 +105,7 @@ export async function checkAnnouncementsAndNotify(): Promise<number> {
   for (const a of fresh) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `📢 ${a.title || '系统公告'}`,
+        title: `📢 ${a.title || tr('ann.title')}`,
         body: a.content || '',
         data: { announcement: true },
       },

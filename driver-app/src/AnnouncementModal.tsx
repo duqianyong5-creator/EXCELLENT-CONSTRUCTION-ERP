@@ -12,15 +12,15 @@ import { useLang } from './i18n';
 const AMBER = '#F59E0B';
 const SEEN_KEY = 'seen_announcements';
 
-const TARGET_LABEL: Record<string, { zh: string; en: string; color: string }> = {
-  all: { zh: '全体', en: 'All', color: '#3b82f6' },
-  client: { zh: '客户', en: 'Client', color: '#22c55e' },
-  driver: { zh: '司机', en: 'Driver', color: AMBER },
+const TARGET_LABEL: Record<string, { key: string; color: string }> = {
+  all: { key: 'ann.targetAll', color: '#3b82f6' },
+  client: { key: 'role.client', color: '#22c55e' },
+  driver: { key: 'role.driver', color: AMBER },
 };
 
 export default function AnnouncementModal() {
   const { user } = useSelector((s: RootState) => s.auth);
-  const { lang } = useLang();
+  const { t } = useLang();
   const [items, setItems] = useState<any[]>([]);
   const [visible, setVisible] = useState(false);
   const visibleRef = useRef(false);
@@ -83,7 +83,7 @@ export default function AnnouncementModal() {
             <View style={styles.headerIcon}>
               <Ionicons name="megaphone" size={20} color={AMBER} />
             </View>
-            <Text style={styles.headerTitle}>{lang === 'zh' ? '系统公告' : 'Announcements'}</Text>
+            <Text style={styles.headerTitle}>{t('ann.title')}</Text>
           </View>
 
           <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
@@ -94,7 +94,7 @@ export default function AnnouncementModal() {
                   <View style={styles.itemTop}>
                     <Text style={styles.itemTitle} numberOfLines={2}>{a.title}</Text>
                     <View style={[styles.badge, { backgroundColor: `${tg.color}22`, borderColor: `${tg.color}55` }]}>
-                      <Text style={[styles.badgeText, { color: tg.color }]}>{lang === 'zh' ? tg.zh : tg.en}</Text>
+                      <Text style={[styles.badgeText, { color: tg.color }]}>{t(tg.key)}</Text>
                     </View>
                   </View>
                   <View style={styles.itemContentBox}>
@@ -106,7 +106,7 @@ export default function AnnouncementModal() {
           </ScrollView>
 
           <TouchableOpacity style={styles.button} onPress={dismiss} activeOpacity={0.85}>
-            <Text style={styles.buttonText}>{lang === 'zh' ? '我知道了' : 'Got it'}</Text>
+            <Text style={styles.buttonText}>{t('ann.gotIt')}</Text>
           </TouchableOpacity>
         </View>
       </View>

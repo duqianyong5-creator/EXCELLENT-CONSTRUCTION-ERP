@@ -23,25 +23,25 @@ export default function ClientProfilePage() {
     try {
       await usersApi.updateProfile(values);
       dispatch(updateUser(values));
-      message.success('资料已更新');
+      message.success(t('client.profile_updated'));
     } catch (e: any) {
-      message.error(e.message || '更新失败');
+      message.error(e.message || t('client.profile_update_failed'));
     }
     setLoading(false);
   };
 
   const handlePasswordChange = async (values: any) => {
     if (values.newPassword !== values.confirmPassword) {
-      message.error('两次密码不一致');
+      message.error(t('client.password_mismatch'));
       return;
     }
     setPwdLoading(true);
     try {
       await usersApi.changePassword({ oldPassword: values.oldPassword, newPassword: values.newPassword });
-      message.success('密码已修改');
+      message.success(t('client.password_changed'));
       pwdForm.resetFields();
     } catch (e: any) {
-      message.error(e.message || '密码修改失败');
+      message.error(e.message || t('client.password_change_failed'));
     }
     setPwdLoading(false);
   };
@@ -49,7 +49,7 @@ export default function ClientProfilePage() {
   const handleLangChange = (lang: string) => {
     i18n.changeLanguage(lang);
     localStorage.setItem('language', lang);
-    message.success('语言已切换');
+    message.success(t('client.language_switched'));
   };
 
   return (
@@ -59,7 +59,7 @@ export default function ClientProfilePage() {
           <Avatar size={64} style={{ background: '#1677ff' }} icon={<UserOutlined />} />
           <div>
             <Title level={5} style={{ margin: 0 }}>{user?.fullName || user?.username}</Title>
-            <Tag color="blue">客户</Tag>
+            <Tag color="blue">{t('client.role_tag')}</Tag>
             <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>{user?.email}</Text>
           </div>
         </div>
@@ -76,13 +76,13 @@ export default function ClientProfilePage() {
                   layout="vertical"
                   initialValues={{ fullName: user?.fullName, phone: user?.phone }}
                 >
-                  <Form.Item name="fullName" label="姓名">
+                  <Form.Item name="fullName" label={t('client.full_name')}>
                     <Input />
                   </Form.Item>
-                  <Form.Item name="phone" label="电话">
+                  <Form.Item name="phone" label={t('client.phone')}>
                     <Input />
                   </Form.Item>
-                  <Button type="primary" htmlType="submit" loading={loading}>保存</Button>
+                  <Button type="primary" htmlType="submit" loading={loading}>{t('client.save')}</Button>
                 </Form>
               ),
             },
@@ -97,10 +97,10 @@ export default function ClientProfilePage() {
                   <Form.Item name="newPassword" label={t('new_password')} rules={[{ required: true }, { min: 8 }]}>
                     <Input.Password prefix={<LockOutlined />} />
                   </Form.Item>
-                  <Form.Item name="confirmPassword" label="确认新密码" rules={[{ required: true }]}>
+                  <Form.Item name="confirmPassword" label={t('client.confirm_new_password')} rules={[{ required: true }]}>
                     <Input.Password prefix={<LockOutlined />} />
                   </Form.Item>
-                  <Button type="primary" htmlType="submit" loading={pwdLoading}>修改密码</Button>
+                  <Button type="primary" htmlType="submit" loading={pwdLoading}>{t('client.change_password')}</Button>
                 </Form>
               ),
             },
@@ -109,13 +109,13 @@ export default function ClientProfilePage() {
               label: t('language'),
               children: (
                 <div>
-                  <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>选择界面语言：</Text>
+                  <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>{t('client.choose_language')}</Text>
                   <Space>
                     <Button
                       type={i18n.language === 'zh' ? 'primary' : 'default'}
                       onClick={() => handleLangChange('zh')}
                       icon={<GlobalOutlined />}
-                    >中文</Button>
+                    >{t('client.lang_zh')}</Button>
                     <Button
                       type={i18n.language === 'en' ? 'primary' : 'default'}
                       onClick={() => handleLangChange('en')}

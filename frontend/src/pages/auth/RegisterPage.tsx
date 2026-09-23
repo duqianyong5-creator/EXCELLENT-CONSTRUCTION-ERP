@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Select, message, Result } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { authApi } from '../../api';
 
 const { Option } = Select;
@@ -22,6 +23,7 @@ const bgStyle: React.CSSProperties = {
 };
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -31,7 +33,7 @@ export default function RegisterPage() {
       await authApi.register(values);
       setSuccess(true);
     } catch (err: any) {
-      message.error(err.message || '注册失败');
+      message.error(err.message || t('common.register_failed'));
     } finally {
       setLoading(false);
     }
@@ -43,11 +45,11 @@ export default function RegisterPage() {
         <div className="reg-card" style={{ textAlign: 'center' }}>
           <Result
             status="success"
-            title="注册申请已提交"
-            subTitle="管理员审核通过后，您将可以登录系统。请耐心等待。"
+            title={t('common.register_done_title')}
+            subTitle={t('common.register_done_sub')}
             extra={
               <Link to="/login">
-                <Button className="reg-submit" style={{ width: 160 }}>返回登录</Button>
+                <Button className="reg-submit" style={{ width: 160 }}>{t('common.back_to_login')}</Button>
               </Link>
             }
           />
@@ -68,41 +70,41 @@ export default function RegisterPage() {
               boxShadow: '0 10px 28px rgba(245,158,11,0.4)', marginBottom: 14,
             }}
           />
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>申请注册</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>提交后等待管理员审核</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>{t('common.register_title')}</div>
+          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{t('common.register_sub')}</div>
         </div>
 
         <Form onFinish={onFinish} size="large" layout="vertical" requiredMark={false} className="reg-form">
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }, { min: 3, message: '用户名至少3位' }]}>
-            <Input prefix={<UserOutlined style={{ color: '#9ca3af' }} />} placeholder="用户名（3位以上）" />
+          <Form.Item name="username" rules={[{ required: true, message: t('common.username_required') }, { min: 3, message: t('common.username_min') }]}>
+            <Input prefix={<UserOutlined style={{ color: '#9ca3af' }} />} placeholder={t('common.username_placeholder')} />
           </Form.Item>
-          <Form.Item name="email" rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '请输入有效邮箱' }]}>
-            <Input prefix={<MailOutlined style={{ color: '#9ca3af' }} />} placeholder="邮箱" />
+          <Form.Item name="email" rules={[{ required: true, message: t('common.email_required') }, { type: 'email', message: t('common.email_invalid') }]}>
+            <Input prefix={<MailOutlined style={{ color: '#9ca3af' }} />} placeholder={t('common.email_placeholder')} />
           </Form.Item>
-          <Form.Item name="fullName" rules={[{ required: true, message: '请输入姓名' }]}>
-            <Input prefix={<UserOutlined style={{ color: '#9ca3af' }} />} placeholder="姓名" />
+          <Form.Item name="fullName" rules={[{ required: true, message: t('common.full_name_required') }]}>
+            <Input prefix={<UserOutlined style={{ color: '#9ca3af' }} />} placeholder={t('common.full_name_placeholder')} />
           </Form.Item>
           <Form.Item name="phone">
-            <Input prefix={<PhoneOutlined style={{ color: '#9ca3af' }} />} placeholder="电话（选填）" />
+            <Input prefix={<PhoneOutlined style={{ color: '#9ca3af' }} />} placeholder={t('common.phone_placeholder')} />
           </Form.Item>
-          <Form.Item name="role" rules={[{ required: true, message: '请选择角色' }]}>
-            <Select placeholder="注册身份">
-              <Option value="driver">司机 Driver</Option>
-              <Option value="client">客户 Client</Option>
+          <Form.Item name="role" rules={[{ required: true, message: t('common.role_required') }]}>
+            <Select placeholder={t('common.role_placeholder')}>
+              <Option value="driver">{t('common.role_driver')}</Option>
+              <Option value="client">{t('common.role_client')}</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }, { min: 8, message: '密码至少8位' }]}>
-            <Input.Password prefix={<LockOutlined style={{ color: '#9ca3af' }} />} placeholder="密码（8位以上）" />
+          <Form.Item name="password" rules={[{ required: true, message: t('common.password_required') }, { min: 8, message: t('common.password_min') }]}>
+            <Input.Password prefix={<LockOutlined style={{ color: '#9ca3af' }} />} placeholder={t('common.password_placeholder')} />
           </Form.Item>
 
           <Button type="primary" htmlType="submit" loading={loading} block className="reg-submit">
-            提交申请
+            {t('common.submit_application')}
           </Button>
         </Form>
 
         <div style={{ textAlign: 'center', marginTop: 18, fontSize: 13 }}>
-          <span style={{ color: '#94a3b8' }}>已有账户？</span>
-          <Link to="/login" className="reg-link">返回登录</Link>
+          <span style={{ color: '#94a3b8' }}>{t('common.have_account')}</span>
+          <Link to="/login" className="reg-link">{t('common.back_to_login')}</Link>
         </div>
       </div>
 

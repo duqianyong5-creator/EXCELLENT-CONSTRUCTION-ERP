@@ -32,9 +32,9 @@ export default function TabLayout() {
   const { t } = useLang();
   const role = user?.role || '';
   const showTracking = role === 'client' || role === 'admin' || role === 'dispatcher';
-  const tasksTitle = role === 'driver' ? '任务' : t('tab.tasks');
-  const trackingTitle = role === 'driver' ? '当日任务' : t('tab.location');
-  const profileTitle = role === 'driver' ? '个人中心' : t('tab.profile');
+  const tasksTitle = t('tab.tasks');
+  const trackingTitle = role === 'driver' ? t('tab.todayJobs') : t('tab.location');
+  const profileTitle = t('tab.profile');
 
   return (
     <>

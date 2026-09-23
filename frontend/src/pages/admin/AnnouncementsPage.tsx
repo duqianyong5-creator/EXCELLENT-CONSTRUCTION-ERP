@@ -11,10 +11,10 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const TARGET_LABEL: Record<string, { text: string; color: string }> = {
-  all: { text: '全部', color: 'blue' },
-  client: { text: '客户', color: 'green' },
-  driver: { text: '司机', color: 'orange' },
+const TARGET_LABEL: Record<string, { textKey: string; color: string }> = {
+  all: { textKey: 'announcements.target_all', color: 'blue' },
+  client: { textKey: 'announcements.target_client', color: 'green' },
+  driver: { textKey: 'announcements.target_driver', color: 'orange' },
 };
 
 export default function AnnouncementsPage() {
@@ -42,12 +42,12 @@ export default function AnnouncementsPage() {
     setSubmitting(true);
     try {
       await announcementsApi.create(values);
-      message.success('公告已发布');
+      message.success(t('announcements.published_msg'));
       setOpen(false);
       form.resetFields();
       load();
     } catch {
-      message.error('发布失败');
+      message.error(t('announcements.publish_failed'));
     } finally {
       setSubmitting(false);
     }
@@ -56,46 +56,46 @@ export default function AnnouncementsPage() {
   const toggleActive = async (record: any, active: boolean) => {
     try {
       await announcementsApi.setActive(record.id, active);
-      message.success(active ? '已启用' : '已停用');
+      message.success(active ? t('announcements.enabled_msg') : t('announcements.disabled_msg'));
       load();
     } catch {
-      message.error('操作失败');
+      message.error(t('announcements.action_failed'));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await announcementsApi.delete(id);
-      message.success('已删除');
+      message.success(t('announcements.deleted_msg'));
       load();
     } catch {
-      message.error('删除失败');
+      message.error(t('announcements.delete_failed'));
     }
   };
 
   const columns = [
-    { title: '标题', dataIndex: 'title', key: 'title', render: (v: string) => <Text strong>{v}</Text> },
-    { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true,
+    { title: t('announcements.col_title'), dataIndex: 'title', key: 'title', render: (v: string) => <Text strong>{v}</Text> },
+    { title: t('announcements.col_content'), dataIndex: 'content', key: 'content', ellipsis: true,
       render: (v: string) => <Text type="secondary">{v}</Text> },
     {
-      title: '发送对象', dataIndex: 'targetRole', key: 'targetRole', width: 110,
+      title: t('announcements.col_target'), dataIndex: 'targetRole', key: 'targetRole', width: 110,
       render: (v: string) => {
         const m = TARGET_LABEL[v] || TARGET_LABEL.all;
-        return <Tag color={m.color}>{m.text}</Tag>;
+        return <Tag color={m.color}>{t(m.textKey)}</Tag>;
       },
     },
     {
-      title: '状态', dataIndex: 'active', key: 'active', width: 100,
+      title: t('announcements.col_status'), dataIndex: 'active', key: 'active', width: 100,
       render: (v: boolean, r: any) => (
         <Switch checked={v} size="small" onChange={(checked) => toggleActive(r, checked)} />
       ),
     },
-    { title: '发布时间', dataIndex: 'createdAt', key: 'createdAt', width: 150,
+    { title: t('announcements.col_created'), dataIndex: 'createdAt', key: 'createdAt', width: 150,
       render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm') },
     {
-      title: '操作', key: 'actions', width: 90,
+      title: t('announcements.col_actions'), key: 'actions', width: 90,
       render: (_: any, r: any) => (
-        <Popconfirm title="确定删除此公告？" onConfirm={() => handleDelete(r.id)} okText="删除" okButtonProps={{ danger: true }} cancelText="取消">
+        <Popconfirm title={t('announcements.delete_confirm')} onConfirm={() => handleDelete(r.id)} okText={t('announcements.delete')} okButtonProps={{ danger: true }} cancelText={t('announcements.cancel')}>
           <Button size="small" danger icon={<DeleteOutlined />} />
         </Popconfirm>
       ),
@@ -107,9 +107,9 @@ export default function AnnouncementsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
           <NotificationOutlined style={{ marginRight: 8, color: '#F59E0B' }} />
-          公告管理
+          {t('announcements.title')}
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>发布公告</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>{t('announcements.new')}</Button>
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
@@ -117,30 +117,30 @@ export default function AnnouncementsPage() {
       </Card>
 
       <Modal
-        title="发布公告"
+        title={t('announcements.modal_title')}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={handleCreate}
         confirmLoading={submitting}
-        okText="发布"
-        cancelText="取消"
+        okText={t('announcements.ok')}
+        cancelText={t('announcements.cancel')}
         centered
         width={460}
         destroyOnClose
       >
         <Form form={form} layout="vertical" initialValues={{ targetRole: 'all' }}>
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input placeholder="公告标题" maxLength={100} />
+          <Form.Item name="title" label={t('announcements.form_title')} rules={[{ required: true, message: t('announcements.form_title_required') }]}>
+            <Input placeholder={t('announcements.form_title_placeholder')} maxLength={100} />
           </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
-            <TextArea rows={4} placeholder="公告内容" maxLength={1000} showCount />
+          <Form.Item name="content" label={t('announcements.form_content')} rules={[{ required: true, message: t('announcements.form_content_required') }]}>
+            <TextArea rows={4} placeholder={t('announcements.form_content_placeholder')} maxLength={1000} showCount />
           </Form.Item>
-          <Form.Item name="targetRole" label="发送对象" rules={[{ required: true }]}>
+          <Form.Item name="targetRole" label={t('announcements.form_target')} rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'all', label: '全部（客户 + 司机）' },
-                { value: 'client', label: '客户' },
-                { value: 'driver', label: '司机' },
+                { value: 'all', label: t('announcements.opt_all') },
+                { value: 'client', label: t('announcements.opt_client') },
+                { value: 'driver', label: t('announcements.opt_driver') },
               ]}
             />
           </Form.Item>

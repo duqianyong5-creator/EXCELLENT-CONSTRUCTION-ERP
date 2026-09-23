@@ -8,12 +8,12 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-const anomalyLabels: Record<string, { label: string; color: string }> = {
-  gps_disconnect:      { label: 'GPS断连',    color: 'volcano' },
-  speed_anomaly:       { label: '速度异常',    color: 'red' },
-  teleport:            { label: '瞬移异常',    color: 'magenta' },
-  time_inconsistency:  { label: '时间不一致',  color: 'orange' },
-  stationary:          { label: 'GPS静止',     color: 'red' },
+const anomalyLabels: Record<string, { labelKey: string; color: string }> = {
+  gps_disconnect:      { labelKey: 'anomalies.type_gps_disconnect',      color: 'volcano' },
+  speed_anomaly:       { labelKey: 'anomalies.type_speed_anomaly',       color: 'red' },
+  teleport:            { labelKey: 'anomalies.type_teleport',            color: 'magenta' },
+  time_inconsistency:  { labelKey: 'anomalies.type_time_inconsistency',  color: 'orange' },
+  stationary:          { labelKey: 'anomalies.type_stationary',          color: 'red' },
 };
 
 export default function AnomaliesPage() {
@@ -47,20 +47,20 @@ export default function AnomaliesPage() {
 
   const ignore = async (id: string) => {
     await anomaliesApi.ignore(id);
-    message.success('已忽略');
+    message.success(t('anomalies.ignored_msg'));
     load();
   };
 
   const resolve = async (id: string) => {
     await anomaliesApi.resolve(id);
-    message.success('已标记为已处理');
+    message.success(t('anomalies.resolved_msg'));
     load();
   };
 
   const doSnooze = async () => {
     if (!snoozeFor) return;
     await anomaliesApi.snooze(snoozeFor.id, snoozeMinutes);
-    message.success(`已延时 ${snoozeMinutes} 分钟，若仍未移动将再次报警`);
+    message.success(t('anomalies.snoozed_msg', { minutes: snoozeMinutes }));
     setSnoozeFor(null);
     load();
   };
@@ -69,59 +69,59 @@ export default function AnomaliesPage() {
 
   const columns = [
     {
-      title: '异常类型', dataIndex: 'anomalyType', key: 'anomalyType',
+      title: t('anomalies.col_type'), dataIndex: 'anomalyType', key: 'anomalyType',
       render: (v: string, r: any) => {
-        const info = anomalyLabels[v] || { label: v, color: 'default' };
+        const info = anomalyLabels[v];
         return (
           <Space size={4}>
-            <Tag color={info.color} icon={<WarningOutlined />}>{info.label}</Tag>
-            {v === 'stationary' && r.alarmCount > 1 && <Tag color="red">第{r.alarmCount}次</Tag>}
+            <Tag color={info?.color || 'default'} icon={<WarningOutlined />}>{info ? t(info.labelKey) : v}</Tag>
+            {v === 'stationary' && r.alarmCount > 1 && <Tag color="red">{t('anomalies.alarm_count', { count: r.alarmCount })}</Tag>}
           </Space>
         );
       },
     },
     {
-      title: '司机', key: 'driver',
+      title: t('anomalies.col_driver'), key: 'driver',
       render: (_: any, r: any) => r.driver?.fullName || r.driver?.username || '-',
     },
     {
-      title: '任务', key: 'task',
+      title: t('anomalies.col_task'), key: 'task',
       render: (_: any, r: any) => r.task?.title || '-',
     },
     {
-      title: '说明', dataIndex: 'description', key: 'description', ellipsis: true,
+      title: t('anomalies.col_description'), dataIndex: 'description', key: 'description', ellipsis: true,
       render: (v: string) => v ? <Text type="secondary">{v}</Text> : '-',
     },
     {
-      title: '坐标', key: 'coords',
+      title: t('anomalies.col_coords'), key: 'coords',
       render: (_: any, r: any) => r.latitude
-        ? <Tooltip title="点击查看位置"><span style={{ fontSize: 12, color: '#1677ff', cursor: 'pointer' }} onClick={() => window.open(`https://maps.google.com/?q=${r.latitude},${r.longitude}`, '_blank')}>{Number(r.latitude).toFixed(5)}, {Number(r.longitude).toFixed(5)}</span></Tooltip>
+        ? <Tooltip title={t('anomalies.open_in_maps')}><span style={{ fontSize: 12, color: '#1677ff', cursor: 'pointer' }} onClick={() => window.open(`https://maps.google.com/?q=${r.latitude},${r.longitude}`, '_blank')}>{Number(r.latitude).toFixed(5)}, {Number(r.longitude).toFixed(5)}</span></Tooltip>
         : '-',
     },
     {
-      title: '检测时间', dataIndex: 'detectedAt', key: 'detectedAt',
+      title: t('anomalies.col_detected_at'), dataIndex: 'detectedAt', key: 'detectedAt',
       render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss'),
       sorter: (a: any, b: any) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime(),
     },
     {
-      title: '状态', dataIndex: 'resolved', key: 'resolved',
+      title: t('anomalies.col_status'), dataIndex: 'resolved', key: 'resolved',
       render: (v: boolean, r: any) => {
-        if (v) return <Tag color="green" icon={<CheckCircleOutlined />}>已处理</Tag>;
+        if (v) return <Tag color="green" icon={<CheckCircleOutlined />}>{t('anomalies.resolved')}</Tag>;
         if (r.snoozeUntil && new Date(r.snoozeUntil).getTime() > Date.now()) {
-          return <Tag color="gold" icon={<ClockCircleOutlined />}>延时至 {dayjs(r.snoozeUntil).format('HH:mm')}</Tag>;
+          return <Tag color="gold" icon={<ClockCircleOutlined />}>{t('anomalies.snoozed_until', { time: dayjs(r.snoozeUntil).format('HH:mm') })}</Tag>;
         }
-        return <Badge status="error" text="未处理" />;
+        return <Badge status="error" text={t('anomalies.unresolved')} />;
       },
     },
     {
-      title: '操作', key: 'actions', width: 200,
+      title: t('anomalies.col_actions'), key: 'actions', width: 200,
       render: (_: any, r: any) => r.resolved ? null : (
         <Space size="small">
           {r.anomalyType === 'stationary' && (
-            <Button size="small" icon={<ClockCircleOutlined />} onClick={() => { setSnoozeFor(r); setSnoozeMinutes(10); }}>延时</Button>
+            <Button size="small" icon={<ClockCircleOutlined />} onClick={() => { setSnoozeFor(r); setSnoozeMinutes(10); }}>{t('anomalies.btn_snooze')}</Button>
           )}
-          <Button size="small" icon={<StopOutlined />} onClick={() => ignore(r.id)}>忽略</Button>
-          <Button size="small" type="primary" onClick={() => resolve(r.id)}>已处理</Button>
+          <Button size="small" icon={<StopOutlined />} onClick={() => ignore(r.id)}>{t('anomalies.btn_ignore')}</Button>
+          <Button size="small" type="primary" onClick={() => resolve(r.id)}>{t('anomalies.btn_resolve')}</Button>
         </Space>
       ),
     },
@@ -131,11 +131,11 @@ export default function AnomaliesPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Space>
-          <Title level={4} style={{ margin: 0 }}>异常管理</Title>
+          <Title level={4} style={{ margin: 0 }}>{t('anomalies.title')}</Title>
           {unresolvedCount > 0 && <Badge count={unresolvedCount} style={{ backgroundColor: '#ff4d4f' }} />}
         </Space>
         <Space>
-          <Tooltip title="报警声音提醒">
+          <Tooltip title={t('anomalies.sound_tooltip')}>
             <Space size={4}>
               <SoundOutlined style={{ color: soundOn ? '#F59E0B' : '#bbb' }} />
               <Switch size="small" checked={soundOn} onChange={(v) => { setSoundOn(v); setAnomalySoundOn(v); }} />
@@ -145,9 +145,9 @@ export default function AnomaliesPage() {
             type={showAll ? 'default' : 'primary'}
             onClick={() => setShowAll(!showAll)}
           >
-            {showAll ? '只看未处理' : '查看全部'}
+            {showAll ? t('anomalies.show_unresolved_only') : t('anomalies.show_all')}
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => load()}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => load()}>{t('anomalies.refresh')}</Button>
         </Space>
       </div>
 
@@ -164,19 +164,19 @@ export default function AnomaliesPage() {
       </Card>
 
       <Modal
-        title={<span><ClockCircleOutlined /> 延时报警</span>}
+        title={<span><ClockCircleOutlined /> {t('anomalies.snooze_modal_title')}</span>}
         open={!!snoozeFor}
         onCancel={() => setSnoozeFor(null)}
         onOk={doSnooze}
-        okText="确认延时"
-        cancelText="取消"
+        okText={t('anomalies.snooze_ok')}
+        cancelText={t('anomalies.cancel')}
         centered
         width={420}
         destroyOnClose
       >
-        <Text>延后多久后若司机仍未移动则再次报警：</Text>
+        <Text>{t('anomalies.snooze_hint')}</Text>
         <div style={{ marginTop: 12 }}>
-          <InputNumber min={1} max={120} value={snoozeMinutes} onChange={(v) => setSnoozeMinutes(Number(v) || 10)} addonAfter="分钟" style={{ width: 160 }} />
+          <InputNumber min={1} max={120} value={snoozeMinutes} onChange={(v) => setSnoozeMinutes(Number(v) || 10)} addonAfter={t('anomalies.minutes')} style={{ width: 160 }} />
         </div>
       </Modal>
     </div>

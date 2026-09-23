@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux';
 import LeafletMap from '../../src/LeafletMap';
 import { gpsApi, tasksApi } from '../../src/api';
 import type { RootState } from '../../src/store';
+import { useLang } from '../../src/i18n';
 
 const AMBER = '#F59E0B';
 
@@ -23,6 +24,7 @@ type DriverPos = {
 
 export default function TrackingScreen() {
   const { user } = useSelector((s: RootState) => s.auth);
+  const { t } = useLang();
   const role = user?.role || '';
   const [positions, setPositions] = useState<DriverPos[]>([]);
   const [driverTodayTasks, setDriverTodayTasks] = useState<any[]>([]);
@@ -40,7 +42,7 @@ export default function TrackingScreen() {
         if (Array.isArray(data)) {
           setPositions(data.map((p) => ({
             driverId: p.driver_id ?? p.driverId ?? '',
-            driverName: p.driverName ?? p.driver_name ?? '司机', // 后端已带账户名
+            driverName: p.driverName ?? p.driver_name, // 后端已带账户名
             latitude: parseFloat(p.latitude),
             longitude: parseFloat(p.longitude),
             speed: p.speed,
@@ -63,7 +65,7 @@ export default function TrackingScreen() {
           if (pos && pos.latitude && pos.longitude) {
             valid.push({
               driverId: active[i].driverId ?? active[i].driver_id,
-              driverName: active[i].driverName ?? active[i].driver_name ?? '司机',
+              driverName: active[i].driverName ?? active[i].driver_name,
               taskId: active[i].id,
               latitude: parseFloat(pos.latitude),
               longitude: parseFloat(pos.longitude),
@@ -91,13 +93,13 @@ export default function TrackingScreen() {
     setSelected(pos);
   };
 
-  const title = role === 'client' ? '追踪司机' : '位置追踪';
+  const title = role === 'client' ? t('trk.titleClient') : t('trk.title');
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#1677ff" />
-        <Text style={styles.loadingText}>加载地图中...</Text>
+        <Text style={styles.loadingText}>{t('trk.loadingMap')}</Text>
       </View>
     );
   }
@@ -106,8 +108,8 @@ export default function TrackingScreen() {
     return (
       <View style={styles.driverTodayContainer}>
         <View style={styles.driverTodayHeader}>
-          <Text style={styles.driverTodayTitle}>当日任务</Text>
-          <Text style={styles.driverTodaySub}>今天需要关注的运输任务</Text>
+          <Text style={styles.driverTodayTitle}>{t('trk.todayTitle')}</Text>
+          <Text style={styles.driverTodaySub}>{t('trk.todaySub')}</Text>
         </View>
         <FlatList
           data={driverTodayTasks}
@@ -119,20 +121,20 @@ export default function TrackingScreen() {
           renderItem={({ item, index }) => (
             <View style={styles.driverTodayCard}>
               <Text style={styles.driverTodayNo}>#{String(index + 1).padStart(2, '0')}</Text>
-              <Text style={styles.driverTodayName} numberOfLines={1}>{item.title || '运输任务'}</Text>
+              <Text style={styles.driverTodayName} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
               <Text style={styles.driverTodayMeta} numberOfLines={1}>
-                {(item.cargo || '货物')} · {item.endLocation || '未设置终点'}
+                {(item.cargo || t('d.cargoFallback'))} · {item.endLocation || t('trk.noDest')}
               </Text>
               <Text style={styles.driverTodayStatus}>
-                {item.status === 'in_progress' ? '进行中' : item.status === 'assigned' ? '待接受' : '已完成'}
+                {item.status === 'in_progress' ? t('d.sInProgress') : item.status === 'assigned' ? t('d.sToAccept') : t('d.fCompleted')}
               </Text>
             </View>
           )}
           ListEmptyComponent={
             <View style={styles.driverTodayEmpty}>
               <Ionicons name="clipboard-outline" size={40} color="rgba(245,158,11,0.85)" style={{ marginBottom: 4 }} />
-              <Text style={styles.driverTodayEmptyTitle}>今日暂无任务</Text>
-              <Text style={styles.driverTodayEmptySub}>下拉任务页刷新试试</Text>
+              <Text style={styles.driverTodayEmptyTitle}>{t('tasks.emptyTitle')}</Text>
+              <Text style={styles.driverTodayEmptySub}>{t('trk.todayEmptySub')}</Text>
             </View>
           }
         />
@@ -160,7 +162,7 @@ export default function TrackingScreen() {
           <View>
             <Text style={styles.headerTitle}>{title}</Text>
             <Text style={styles.headerSub}>
-              {positions.length > 0 ? `${positions.length} 名司机在线` : '暂无在线司机'}
+              {positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
             </Text>
           </View>
         </View>
@@ -187,7 +189,7 @@ export default function TrackingScreen() {
                 <Text style={styles.driverCardIcon}>🚛</Text>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.driverCardName} numberOfLines={1}>
-                    {item.driverName || '司机'}
+                    {item.driverName || t('d.driverFallback')}
                   </Text>
                   <Text style={styles.driverCardSpeed}>
                     {item.speed != null ? `${Math.round(item.speed)} km/h` : '—'}
@@ -204,14 +206,14 @@ export default function TrackingScreen() {
           <View style={styles.emptyIconWrap}>
             <Ionicons name="location-outline" size={30} color="rgba(255,255,255,0.85)" />
           </View>
-          <Text style={styles.emptyText}>暂无司机在线</Text>
-          <Text style={styles.emptySub}>任务进行中时司机会上传位置</Text>
+          <Text style={styles.emptyText}>{t('trk.emptyTitle')}</Text>
+          <Text style={styles.emptySub}>{t('trk.emptySub')}</Text>
         </View>
       )}
 
       <TouchableOpacity style={styles.refreshBtn} onPress={fetchPositions} activeOpacity={0.85}>
         <Ionicons name="refresh" size={16} color={AMBER} />
-        <Text style={styles.refreshText}>刷新</Text>
+        <Text style={styles.refreshText}>{t('tasks.refresh')}</Text>
       </TouchableOpacity>
     </View>
   );

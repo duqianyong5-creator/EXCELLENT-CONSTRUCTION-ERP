@@ -1,8 +1,10 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { zhPages, enPages } from './locales';
 
 const zh = {
   translation: {
+    ...zhPages,
     // Login page
     brand_sub: '货车调度管理系统',
     portal_title: '管理后台',
@@ -123,6 +125,7 @@ const zh = {
 
 const en = {
   translation: {
+    ...enPages,
     // Login page
     brand_sub: 'DISPATCH MANAGEMENT SYSTEM',
     portal_title: 'Admin Portal',

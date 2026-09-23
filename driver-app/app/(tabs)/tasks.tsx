@@ -33,7 +33,7 @@ export default function TasksScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
   const { user } = useSelector((s: RootState) => s.auth);
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const role = user?.role || '';
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +129,7 @@ export default function TasksScreen() {
 
   const getToday = () => {
     const now = new Date();
-    return now.toLocaleDateString('zh-CN', {
+    return now.toLocaleDateString(t('common.dateLocale'), {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -281,9 +281,7 @@ export default function TasksScreen() {
       await load();
       showAppAlert(
         t('d.accepted'),
-        lang === 'zh'
-          ? `车牌 ${vehiclePlate.trim()} 已确认，GPS定位已启动`
-          : `Plate ${vehiclePlate.trim()} confirmed, GPS tracking started`,
+        t('d.plateConfirmed', { plate: vehiclePlate.trim() }),
       );
     } catch (e: any) {
       showAppAlert(t('d.acceptFailed'), e?.message || t('d.acceptFailedMsg'));
@@ -419,7 +417,7 @@ export default function TasksScreen() {
   const driverCompletedCount = tasks.filter(t => t.status === 'completed').length;
   const driverOverdueCount = tasks.filter(isDriverTaskOverdue).length;
   const driverSubtitle = driverInProgressCount > 0
-    ? (lang === 'zh' ? `今日有 ${driverInProgressCount} 个进行中任务` : `${driverInProgressCount} task(s) in progress today`)
+    ? t('d.subActive', { count: driverInProgressCount })
     : t('d.subIdle');
   const driverFilterItems = [
     { key: 'all' as const, label: t('d.fAll') },
@@ -483,8 +481,8 @@ export default function TasksScreen() {
     const pad = (n: number) => String(n).padStart(2, '0');
     const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
     const sameDay = tasks.filter((tk: any) => typeof tk?.title === 'string' && tk.title.includes(`-${ymd}-`)).length;
-    const clientName = selectedClient ? (selectedClient.fullName || selectedClient.username) : (lang === 'zh' ? '客户' : 'Client');
-    return `${lang === 'zh' ? '任务名' : 'Task'}: ${clientName}-${ymd}-${String(sameDay + 1).padStart(3, '0')}`;
+    const clientName = selectedClient ? (selectedClient.fullName || selectedClient.username) : t('tasks.clientFallback');
+    return t('tasks.namePreview', { name: `${clientName}-${ymd}-${String(sameDay + 1).padStart(3, '0')}` });
   })();
 
   // 选择器列表:支持按姓名/账号/邮箱搜索
@@ -745,16 +743,14 @@ export default function TasksScreen() {
                   <View style={styles.plateWarnBox}>
                     <Ionicons name="alert-circle-outline" size={15} color="#fbbf24" />
                     <Text style={styles.plateWarnText}>
-                      {lang === 'zh'
-                        ? '这个车牌没有登记车载定位器，轨迹只会来自手机'
-                        : 'No tracker registered for this plate — tracking will come from the phone only'}
+                      {t('d.plateNoTracker')}
                     </Text>
                   </View>
                 )}
                 {knownPlates.length > 0 && (
                   <View style={styles.platePickBox}>
                     <Text style={styles.platePickLabel}>
-                      {lang === 'zh' ? '装了定位器的车（点一下自动填）' : 'Vehicles with a tracker (tap to fill)'}
+                      {t('d.plateTrackerList')}
                     </Text>
                     <View style={styles.platePickRow}>
                       {knownPlates.map((item) => {
@@ -1042,7 +1038,7 @@ export default function TasksScreen() {
                 <View style={[styles.cardMetaItem, { flexBasis: '100%' }]}>
                   <Ionicons name="time-outline" size={13} color="rgba(148,163,184,0.85)" />
                   <Text style={styles.cardMetaText} numberOfLines={1}>
-                    {item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : (lang === 'zh' ? '未排期' : 'Unscheduled')}
+                    {item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : t('tasks.unscheduled')}
                   </Text>
                 </View>
               </View>
@@ -1319,7 +1315,7 @@ export default function TasksScreen() {
               {/* 第 1 步 客户与司机 */}
               <View style={styles.formSectionHead}>
                 <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '客户与司机' : 'Client & Driver'}</Text>
+                <Text style={styles.formSectionTitle}>{t('tasks.secClientDriver')}</Text>
               </View>
               <TouchableOpacity
                 style={[styles.selectRow, selectedClient && styles.selectRowFilled]}
@@ -1361,7 +1357,7 @@ export default function TasksScreen() {
               {/* 第 2 步 运输信息 */}
               <View style={styles.formSectionHead}>
                 <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '运输信息' : 'Shipment'}</Text>
+                <Text style={styles.formSectionTitle}>{t('tasks.secShipment')}</Text>
               </View>
               <Text style={styles.formLabel}>{t('tasks.endAddr')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
@@ -1383,7 +1379,7 @@ export default function TasksScreen() {
               {/* 第 3 步 时间与备注 */}
               <View style={styles.formSectionHead}>
                 <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{lang === 'zh' ? '时间与备注' : 'Schedule & Notes'}</Text>
+                <Text style={styles.formSectionTitle}>{t('tasks.secSchedule')}</Text>
               </View>
               <Text style={styles.formLabel}>{t('tasks.scheduledTime')} <Text style={styles.requiredMark}>*</Text></Text>
               <TouchableOpacity

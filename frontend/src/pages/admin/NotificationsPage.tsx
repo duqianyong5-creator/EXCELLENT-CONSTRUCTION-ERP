@@ -45,12 +45,12 @@ export default function NotificationsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={4} style={{ margin: 0 }}>{t('notifications')}</Title>
-        <Button icon={<CheckOutlined />} onClick={markAll}>全部已读</Button>
+        <Button icon={<CheckOutlined />} onClick={markAll}>{t('layout.notif_mark_all')}</Button>
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         {items.length === 0 ? (
-          <Empty description="暂无通知" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t('layout.notif_empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <List
             loading={loading}

@@ -51,7 +51,7 @@ function SettingCard({
 }
 
 export default function SettingsPage() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   // 操作日志 + 清空数据：仅管理员可见；调度员无此权限
   const isAdmin = useSelector((s: RootState) => s.auth.user?.role) === 'admin';
   const setLang = (lng: 'zh' | 'en') => {
@@ -70,7 +70,9 @@ export default function SettingsPage() {
   const saveAdjustDefault = (v: number) => {
     setAdjustDefault(v);
     localStorage.setItem('wr_adjust_default', String(v));
-    message.success('已保存：默认调整 ' + (v === 60 ? '一小时' : '半小时'));
+    message.success(t('settings.adjust_saved', {
+      value: v === 60 ? t('settings.adjust_hour') : t('settings.adjust_half_hour'),
+    }));
   };
 
   // GPS 报警 + 清空数据（后端 system-settings）
@@ -110,9 +112,9 @@ export default function SettingsPage() {
         gps_alarm_delay_minutes: String(v.gps_alarm_delay_minutes),
         gps_stationary_radius_m: String(v.gps_stationary_radius_m),
       });
-      message.success('GPS 报警设置已保存');
+      message.success(t('settings.gps_saved'));
     } catch (e: any) {
-      message.error(e?.message || '保存失败');
+      message.error(e?.message || t('settings.save_failed'));
     } finally {
       setGpsSaving(false);
     }
@@ -120,17 +122,17 @@ export default function SettingsPage() {
 
   const saveClearPwd = async () => {
     if (!pwdInput || pwdInput.length < 4) {
-      message.error('清空数据密码至少 4 位');
+      message.error(t('settings.clear_pwd_min'));
       return;
     }
     setPwdSaving(true);
     try {
       await systemSettingsApi.update({ clear_data_password: pwdInput });
-      message.success('清空数据密码已设置');
+      message.success(t('settings.clear_pwd_saved'));
       setPwdInput('');
       setPwdSet(true);
     } catch (e: any) {
-      message.error(e?.message || '保存失败');
+      message.error(e?.message || t('settings.save_failed'));
     } finally {
       setPwdSaving(false);
     }
@@ -140,11 +142,11 @@ export default function SettingsPage() {
     setClearLoading(true);
     try {
       await systemSettingsApi.clearData(clearPwd);
-      message.success('数据已清空');
+      message.success(t('settings.clear_done'));
       setClearOpen(false);
       setClearPwd('');
     } catch (e: any) {
-      message.error(e?.message || '清空失败');
+      message.error(e?.message || t('settings.clear_failed'));
     } finally {
       setClearLoading(false);
     }
@@ -156,7 +158,7 @@ export default function SettingsPage() {
       const data: any = await operationLogsApi.list({ limit: 100 });
       setLogs(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      message.error(error?.message || '加载操作日志失败');
+      message.error(error?.message || t('settings.logs_load_failed'));
     } finally {
       setLogsLoading(false);
     }
@@ -168,7 +170,7 @@ export default function SettingsPage() {
 
   const handlePasswordSave = async (values: any) => {
     if (values.newPassword !== values.confirmPassword) {
-      message.error('两次输入的新密码不一致');
+      message.error(t('settings.pwd_mismatch'));
       return;
     }
     setPasswordLoading(true);
@@ -177,11 +179,11 @@ export default function SettingsPage() {
         oldPassword: values.oldPassword,
         newPassword: values.newPassword,
       });
-      message.success('密码已更新');
+      message.success(t('settings.pwd_updated'));
       form.resetFields();
       setPasswordOpen(false);
     } catch (error: any) {
-      message.error(error?.message || '密码更新失败');
+      message.error(error?.message || t('settings.pwd_update_failed'));
     } finally {
       setPasswordLoading(false);
     }
@@ -189,25 +191,25 @@ export default function SettingsPage() {
 
   const columns = [
     {
-      title: '时间',
+      title: t('settings.log_time'),
       dataIndex: 'createdAt',
       width: 170,
       render: (value: string) => dayjs(value).format('YYYY-MM-DD HH:mm'),
     },
     {
-      title: '操作人',
+      title: t('settings.log_actor'),
       dataIndex: 'actorName',
       width: 160,
       render: (value: string, record: any) => value || record.actor?.username || '-',
     },
     {
-      title: '操作',
+      title: t('settings.log_action'),
       dataIndex: 'action',
       width: 180,
       render: (value: string) => <Tag color="blue">{value}</Tag>,
     },
     {
-      title: '对象',
+      title: t('settings.log_target'),
       width: 150,
       render: (_: unknown, record: any) => (
         <Text type="secondary">
@@ -216,7 +218,7 @@ export default function SettingsPage() {
       ),
     },
     {
-      title: '描述',
+      title: t('settings.log_description'),
       dataIndex: 'description',
       render: (value: string) => value || '-',
     },
@@ -225,42 +227,42 @@ export default function SettingsPage() {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <Title level={4} style={{ margin: 0 }}>系统设置</Title>
-        <Text type="secondary">操作日志、密码、语言、工时调整、GPS 报警与数据清理等系统配置。</Text>
+        <Title level={4} style={{ margin: 0 }}>{t('settings.title')}</Title>
+        <Text type="secondary">{t('settings.subtitle')}</Text>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, alignItems: 'stretch' }}>
         {isAdmin && (
           <SettingCard
             icon={<FileTextOutlined />} color={AMBER}
-            title="操作日志" desc="查看登录、任务、用户、工时等操作记录。"
+            title={t('settings.logs_title')} desc={t('settings.logs_desc')}
             onClick={() => setLogsOpen(true)}
           />
         )}
 
         <SettingCard
           icon={<KeyOutlined />} color={AMBER}
-          title="修改密码" desc="修改当前管理员账号的登录密码。"
+          title={t('settings.password_title')} desc={t('settings.password_desc')}
           onClick={() => setPasswordOpen(true)}
         />
 
         <SettingCard
           icon={<GlobalOutlined />} color={AMBER}
-          title="语言 / Language" desc="切换系统显示语言。"
+          title={t('settings.language_title')} desc={t('settings.language_desc')}
         >
           <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button type={i18n.language === 'zh' ? 'primary' : 'default'} size="small" onClick={() => setLang('zh')}>中文</Button>
-            <Button type={i18n.language === 'en' ? 'primary' : 'default'} size="small" onClick={() => setLang('en')}>English</Button>
+            <Button type={i18n.language === 'zh' ? 'primary' : 'default'} size="small" onClick={() => setLang('zh')}>{t('settings.lang_zh')}</Button>
+            <Button type={i18n.language === 'en' ? 'primary' : 'default'} size="small" onClick={() => setLang('en')}>{t('settings.lang_en')}</Button>
           </div>
         </SettingCard>
 
         <SettingCard
           icon={<ClockCircleOutlined />} color={AMBER}
-          title="工时调整默认值" desc="自动给每条工时记录增加的时长（记为系统调整，计入最终工时 = GPS工时 + 此值）。"
+          title={t('settings.adjust_title')} desc={t('settings.adjust_desc')}
         >
           <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button type={adjustDefault === 30 ? 'primary' : 'default'} size="small" onClick={() => saveAdjustDefault(30)}>半小时（30分钟）</Button>
-            <Button type={adjustDefault === 60 ? 'primary' : 'default'} size="small" onClick={() => saveAdjustDefault(60)}>一小时（60分钟）</Button>
+            <Button type={adjustDefault === 30 ? 'primary' : 'default'} size="small" onClick={() => saveAdjustDefault(30)}>{t('settings.adjust_30')}</Button>
+            <Button type={adjustDefault === 60 ? 'primary' : 'default'} size="small" onClick={() => saveAdjustDefault(60)}>{t('settings.adjust_60')}</Button>
           </div>
         </SettingCard>
 
@@ -270,30 +272,30 @@ export default function SettingsPage() {
         <SettingCard
           span
           icon={<AlertOutlined />} color="#ef4444"
-          title="GPS 异常报警"
-          desc="司机停在原地超过设定时长就报警（带声音）。判定不看瞬时速度（GPS 静止会漂移、出现假速度），而是看一段时间内是否始终待在「位移阈值」范围内。"
+          title={t('settings.gps_title')}
+          desc={t('settings.gps_desc')}
         >
           <Form form={gpsForm} layout="vertical" style={{ marginTop: 16 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 20px', alignItems: 'flex-end' }}>
-              <Form.Item name="gps_stationary_minutes" label="多久不动报警" rules={[{ required: true }]} style={{ marginBottom: 12 }}>
-                <InputNumber min={1} max={240} addonAfter="分钟" style={{ width: 130 }} />
+              <Form.Item name="gps_stationary_minutes" label={t('settings.gps_stationary_minutes')} rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+                <InputNumber min={1} max={240} addonAfter={t('settings.unit_minutes')} style={{ width: 130 }} />
               </Form.Item>
-              <Form.Item name="gps_stationary_radius_m" label="位移阈值" rules={[{ required: true }]} style={{ marginBottom: 12 }}>
-                <InputNumber min={20} max={2000} step={10} addonAfter="米" style={{ width: 130 }} />
+              <Form.Item name="gps_stationary_radius_m" label={t('settings.gps_radius')} rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+                <InputNumber min={20} max={2000} step={10} addonAfter={t('settings.unit_meters')} style={{ width: 130 }} />
               </Form.Item>
-              <Form.Item name="gps_alarm_delay_minutes" label="延时报警间隔" rules={[{ required: true }]} style={{ marginBottom: 12 }}>
-                <InputNumber min={1} max={120} addonAfter="分钟" style={{ width: 130 }} />
+              <Form.Item name="gps_alarm_delay_minutes" label={t('settings.gps_delay')} rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+                <InputNumber min={1} max={120} addonAfter={t('settings.unit_minutes')} style={{ width: 130 }} />
               </Form.Item>
-              <Form.Item name="gps_alarm_repeat" label="最多报警次数" rules={[{ required: true }]} style={{ marginBottom: 12 }}>
-                <InputNumber min={1} max={10} addonAfter="次" style={{ width: 110 }} />
+              <Form.Item name="gps_alarm_repeat" label={t('settings.gps_repeat')} rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+                <InputNumber min={1} max={10} addonAfter={t('settings.unit_times')} style={{ width: 110 }} />
               </Form.Item>
               <Form.Item label=" " colon={false} style={{ marginBottom: 12 }}>
-                <Button type="primary" onClick={saveGps} loading={gpsSaving}>保存</Button>
+                <Button type="primary" onClick={saveGps} loading={gpsSaving}>{t('settings.save')}</Button>
               </Form.Item>
             </div>
           </Form>
           <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-            说明：在「多久不动报警」时长内，司机始终没离开「位移阈值」（默认 80 米，可容忍 GPS 漂移）即视为静止并报警。首次报警后等待「延时间隔」，若仍未移动则二次、三次报警，直到「最多报警次数」。可在异常页「忽略」结案或「延时」延后。
+            {t('settings.gps_note')}
           </Text>
         </SettingCard>
         )}
@@ -303,24 +305,24 @@ export default function SettingsPage() {
         <SettingCard
           span
           icon={<DeleteOutlined />} color="#ef4444"
-          title="清空数据" titleColor="#cf1322" borderColor="#ffccc7"
-          desc="清空仪表盘、任务管理、工时管理、异常通知、通知、公告等业务数据（用户账号保留）。需先设置清空数据密码。"
+          title={t('settings.clear_title')} titleColor="#cf1322" borderColor="#ffccc7"
+          desc={t('settings.clear_desc')}
         >
           <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
             <div>
-              <Text style={{ fontSize: 13 }}>清空数据密码 {pwdSet && <Tag color="green" style={{ marginLeft: 6 }}>已设置</Tag>}</Text>
+              <Text style={{ fontSize: 13 }}>{t('settings.clear_pwd_label')} {pwdSet && <Tag color="green" style={{ marginLeft: 6 }}>{t('settings.clear_pwd_set_tag')}</Tag>}</Text>
               <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Input.Password
-                  placeholder={pwdSet ? '输入新密码可修改' : '设置密码（至少4位）'}
+                  placeholder={pwdSet ? t('settings.clear_pwd_ph_change') : t('settings.clear_pwd_ph_new')}
                   value={pwdInput}
                   onChange={(e) => setPwdInput(e.target.value)}
                   style={{ width: 220 }}
                 />
-                <Button onClick={saveClearPwd} loading={pwdSaving}>保存密码</Button>
+                <Button onClick={saveClearPwd} loading={pwdSaving}>{t('settings.clear_pwd_save')}</Button>
               </div>
             </div>
             <Button danger type="primary" icon={<DeleteOutlined />} disabled={!pwdSet} onClick={() => setClearOpen(true)}>
-              清空数据
+              {t('settings.clear_title')}
             </Button>
           </div>
         </SettingCard>
@@ -328,14 +330,14 @@ export default function SettingsPage() {
       </div>
 
       <Modal
-        title="操作日志"
+        title={t('settings.logs_title')}
         open={logsOpen}
         onCancel={() => setLogsOpen(false)}
         footer={[
           <Button key="refresh" icon={<ReloadOutlined />} onClick={loadLogs} loading={logsLoading}>
-            刷新
+            {t('settings.refresh')}
           </Button>,
-          <Button key="close" onClick={() => setLogsOpen(false)}>关闭</Button>,
+          <Button key="close" onClick={() => setLogsOpen(false)}>{t('settings.close')}</Button>,
         ]}
         width={980}
         centered
@@ -346,13 +348,13 @@ export default function SettingsPage() {
           columns={columns}
           dataSource={logs}
           pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty description="暂无操作日志" /> }}
+          locale={{ emptyText: <Empty description={t('settings.logs_empty')} /> }}
           scroll={{ x: 850 }}
         />
       </Modal>
 
       <Modal
-        title="修改密码"
+        title={t('settings.password_title')}
         open={passwordOpen}
         onCancel={() => setPasswordOpen(false)}
         footer={null}
@@ -361,29 +363,29 @@ export default function SettingsPage() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handlePasswordSave}>
-          <Form.Item name="oldPassword" label="原密码" rules={[{ required: true, message: '请输入原密码' }]}>
+          <Form.Item name="oldPassword" label={t('settings.old_password')} rules={[{ required: true, message: t('settings.old_password_required') }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="newPassword" label="新密码" rules={[{ required: true, message: '请输入新密码' }, { min: 8, message: '密码至少 8 位' }]}>
+          <Form.Item name="newPassword" label={t('settings.new_password')} rules={[{ required: true, message: t('settings.new_password_required') }, { min: 8, message: t('settings.password_min8') }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="confirmPassword" label="确认新密码" rules={[{ required: true, message: '请再次输入新密码' }]}>
+          <Form.Item name="confirmPassword" label={t('settings.confirm_password')} rules={[{ required: true, message: t('settings.confirm_password_required') }]}>
             <Input.Password />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={passwordLoading}>
-            更新密码
+            {t('settings.update_password')}
           </Button>
         </Form>
       </Modal>
 
       <Modal
-        title={<span style={{ color: '#cf1322' }}><DeleteOutlined /> 确认清空数据</span>}
+        title={<span style={{ color: '#cf1322' }}><DeleteOutlined /> {t('settings.clear_confirm_title')}</span>}
         open={clearOpen}
         onCancel={() => { setClearOpen(false); setClearPwd(''); }}
         onOk={handleClearData}
         confirmLoading={clearLoading}
-        okText="确认清空"
-        cancelText="取消"
+        okText={t('settings.clear_confirm_ok')}
+        cancelText={t('settings.cancel')}
         okButtonProps={{ danger: true, disabled: !clearPwd }}
         centered
         width={460}
@@ -393,13 +395,13 @@ export default function SettingsPage() {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message="此操作不可恢复"
-          description="将永久删除全部任务、工时、调整记录、GPS 轨迹、异常、通知与公告。用户账号不受影响。"
+          message={t('settings.clear_alert_title')}
+          description={t('settings.clear_alert_desc')}
         />
-        <Text>请输入清空数据密码以确认：</Text>
+        <Text>{t('settings.clear_prompt')}</Text>
         <Input.Password
           style={{ marginTop: 8 }}
-          placeholder="清空数据密码"
+          placeholder={t('settings.clear_pwd_label')}
           value={clearPwd}
           onChange={(e) => setClearPwd(e.target.value)}
           onPressEnter={handleClearData}

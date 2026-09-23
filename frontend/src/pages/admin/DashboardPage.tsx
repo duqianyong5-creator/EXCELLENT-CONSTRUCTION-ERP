@@ -10,7 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import { tasksApi, gpsApi, usersApi, driverPresenceApi, gpsDevicesApi } from '../../api';
 import TrackMap from '../../components/TrackMap';
 import { addBaseLayers } from '../../components/mapLayers';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 
 const { Text } = Typography;
 const AMBER = '#F59E0B';
@@ -77,6 +77,7 @@ function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) 
 }
 
 function DriverMap({ positions }: { positions: any[] }) {
+  const { t } = useTranslation();
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
   // 按司机 id 存 marker：原地更新而不是每次刷新全删重建，
@@ -122,7 +123,7 @@ function DriverMap({ positions }: { positions: any[] }) {
       const lng = Number(pos.longitude ?? pos.g_longitude);
       const speed = Number(pos.speed ?? pos.g_speed ?? 0).toFixed(1);
       // 优先用后端直接带来的司机账号名（监控/客户等拿不到司机列表的角色也能显示）
-      const name = pos.driverName ?? pos.driver?.fullName ?? pos.driver?.username ?? `司机`;
+      const name = pos.driverName ?? pos.driver?.fullName ?? pos.driver?.username ?? t('dashboard.map_driver_fallback');
       const safeName = escapeHtml(name);
       const safeInitial = escapeHtml(name.charAt(0).toUpperCase());
       const key = String(pos.driverId ?? pos.g_driver_id ?? pos.driver_id ?? pos.driver?.id ?? `idx-${i}`);
@@ -131,8 +132,8 @@ function DriverMap({ positions }: { positions: any[] }) {
       const popupHtml = `
           <div style="padding:8px">
             <div style="font-weight:700;font-size:14px;margin-bottom:6px">${safeName}</div>
-            <div style="font-size:12px;color:#666">速度：<b style="color:${AMBER}">${speed} km/h</b></div>
-            <div style="font-size:11px;color:#999;margin-top:4px">坐标：${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+            <div style="font-size:12px;color:#666">${t('dashboard.map_speed_label')}<b style="color:${AMBER}">${speed} km/h</b></div>
+            <div style="font-size:11px;color:#999;margin-top:4px">${t('dashboard.map_coords_label')}${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
           </div>
         `;
 
@@ -179,7 +180,7 @@ function DriverMap({ positions }: { positions: any[] }) {
 }
 
 export default function DashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [stats, setStats] = useState<any>({});
   const [positions, setPositions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -288,9 +289,9 @@ export default function DashboardPage() {
     setRefreshing(true);
     try {
       await loadData();
-      message.success('数据已刷新');
+      message.success(t('dashboard.refreshed_msg'));
     } catch {
-      message.error('刷新失败');
+      message.error(t('dashboard.refresh_failed'));
     } finally {
       setRefreshing(false);
     }
@@ -330,35 +331,35 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      title: '当日任务',
+      title: t('dashboard.stat_today'),
       value: stats.today ?? 0,
       icon: <CalendarOutlined />,
       gradient: 'linear-gradient(135deg, #fef3c7, #fde68a)',
       accentColor: AMBER,
     },
     {
-      title: '运送中',
+      title: t('dashboard.stat_in_progress'),
       value: stats.inProgress || 0,
       icon: <TruckOutlined />,
       gradient: 'linear-gradient(135deg, #ffedd5, #fed7aa)',
       accentColor: '#f97316',
     },
     {
-      title: '已完成',
+      title: t('dashboard.stat_completed'),
       value: stats.completed || 0,
       icon: <CheckCircleOutlined />,
       gradient: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
       accentColor: '#22c55e',
     },
     {
-      title: '总任务',
+      title: t('dashboard.stat_total'),
       value: stats.total || 0,
       icon: <OrderedListOutlined />,
       gradient: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
       accentColor: '#3b82f6',
     },
     {
-      title: '在线司机',
+      title: t('dashboard.stat_online_drivers'),
       value: driverCount,
       icon: <RocketOutlined />,
       gradient: 'linear-gradient(135deg, #f3e8ff, #e9d5ff)',
@@ -366,7 +367,7 @@ export default function DashboardPage() {
     },
     // 只有登记了车载定位器才显示这张卡
     ...(deviceStat.total > 0 ? [{
-      title: deviceStat.offline > 0 ? '运输中设备离线' : 'GPS设备',
+      title: deviceStat.offline > 0 ? t('dashboard.stat_devices_offline') : t('dashboard.stat_devices'),
       value: deviceStat.offline > 0 ? deviceStat.offline : deviceStat.total,
       icon: deviceStat.offline > 0 ? <DisconnectOutlined /> : <EnvironmentOutlined />,
       gradient: deviceStat.offline > 0
@@ -377,7 +378,7 @@ export default function DashboardPage() {
   ];
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  const dateStr = now.toLocaleDateString(i18n.language === 'en' ? 'en-NZ' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 
   return (
     <div>
@@ -393,7 +394,7 @@ export default function DashboardPage() {
       }}>
         <div>
           <div style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 21, lineHeight: 1.2 }}>
-            运营概览
+            {t('dashboard.title')}
           </div>
           <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12.5, marginTop: 2, display: 'block' }}>
             {dateStr}
@@ -415,7 +416,7 @@ export default function DashboardPage() {
             boxShadow: `0 4px 14px ${AMBER}40`,
           }}
         >
-          刷新数据
+          {t('dashboard.refresh')}
         </Button>
       </div>
 
@@ -430,7 +431,7 @@ export default function DashboardPage() {
           }}>
             <ReloadOutlined style={{ fontSize: 28, color: '#fff' }} />
           </div>
-          <Text style={{ color: '#64748b', fontSize: 15 }}>加载运营数据中...</Text>
+          <Text style={{ color: '#64748b', fontSize: 15 }}>{t('dashboard.loading')}</Text>
         </div>
       ) : (
         <>
@@ -462,10 +463,14 @@ export default function DashboardPage() {
               </div>
               <div>
                 <Text style={{ color: '#fff', fontWeight: 700, fontSize: 16, display: 'block' }}>
-                  待分配任务提醒
+                  {t('dashboard.pending_title')}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
-                  有 <strong>{stats.pending}</strong> 个任务待分配司机，请及时处理
+                  <Trans
+                    i18nKey="dashboard.pending_body"
+                    values={{ pending: stats.pending }}
+                    components={{ b: <strong /> }}
+                  />
                 </Text>
               </div>
             </div>
@@ -481,7 +486,7 @@ export default function DashboardPage() {
                   <img src="./log.png" alt="logo" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${AMBER}40` }} />
                 </div>
                 <div>
-                  <span style={{ fontWeight: 700, fontSize: 16, color: '#1a1a1a' }}>实时位置监控</span>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: '#1a1a1a' }}>{t('dashboard.map_title')}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     <div style={{
                       width: 10, height: 10, borderRadius: 5,
@@ -489,7 +494,7 @@ export default function DashboardPage() {
                       boxShadow: positions.length > 0 ? '0 0 8px #22c55e' : 'none',
                     }} />
                     <span style={{ fontSize: 13, color: '#64748b' }}>
-                      {positions.length > 0 ? `${positions.length} 辆运输中` : '暂无运输中车辆'}
+                      {positions.length > 0 ? t('dashboard.trucks_moving', { n: positions.length }) : t('dashboard.no_trucks')}
                     </span>
                   </div>
                 </div>
@@ -497,7 +502,7 @@ export default function DashboardPage() {
             }
             extra={
               <Button icon={<EnvironmentOutlined />} onClick={openTrackReplay}>
-                轨迹回放
+                {t('dashboard.track_replay')}
               </Button>
             }
             bordered={false}
@@ -514,7 +519,7 @@ export default function DashboardPage() {
       )}
 
       <Modal
-        title="轨迹回放"
+        title={t('dashboard.track_replay')}
         open={trackOpen}
         onCancel={() => setTrackOpen(false)}
         footer={null}
@@ -526,17 +531,30 @@ export default function DashboardPage() {
           showSearch
           allowClear
           style={{ width: '100%', marginBottom: 12 }}
-          placeholder="搜索任务名 / 客户 / 司机，选择查看行驶轨迹"
+          placeholder={t('dashboard.track_search_placeholder')}
           optionFilterProp="label"
           filterOption={(input, option) =>
             String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
           }
           value={trackTaskId}
           onChange={selectTrackTask}
-          options={trackTasks.map((t) => ({
-            value: t.id,
-            label: `${t.title}（${t.status === 'in_progress' ? '运送中' : '已完成'}）${t.client ? ' · ' + (t.client.fullName || t.client.username) : ''}${t.driver ? ' · ' + (t.driver.fullName || t.driver.username) : ''}`,
-          }))}
+          options={trackTasks.map((task) => {
+            // 任务名 + 状态是整句翻译，客户/司机是数据，只是拼在后面
+            const base = t('dashboard.track_option', {
+              title: task.title,
+              status: task.status === 'in_progress'
+                ? t('dashboard.track_status_in_progress')
+                : t('dashboard.track_status_completed'),
+            });
+            const people = [
+              task.client ? (task.client.fullName || task.client.username) : null,
+              task.driver ? (task.driver.fullName || task.driver.username) : null,
+            ].filter(Boolean);
+            return {
+              value: task.id,
+              label: people.length ? `${base} · ${people.join(' · ')}` : base,
+            };
+          })}
         />
         {trackLoading ? (
           <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin /></div>
@@ -544,10 +562,10 @@ export default function DashboardPage() {
           trackPath.length > 0 ? (
             <TrackMap track={trackPath} status={trackStatus} height={420} />
           ) : (
-            <Empty description="该任务暂无 GPS 轨迹（可能已超出保留期被清理）" style={{ padding: '60px 0' }} />
+            <Empty description={t('dashboard.track_empty')} style={{ padding: '60px 0' }} />
           )
         ) : (
-          <Empty description="请选择一个任务" style={{ padding: '60px 0' }} />
+          <Empty description={t('dashboard.track_select')} style={{ padding: '60px 0' }} />
         )}
       </Modal>
 

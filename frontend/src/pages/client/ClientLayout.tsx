@@ -33,17 +33,18 @@ export default function ClientLayout() {
 
   const userMenu = {
     items: [
-      { key: 'profile', label: lang === 'zh' ? '个人中心' : 'Profile', icon: <UserOutlined />, onClick: () => navigate('/client/profile') },
-      { key: 'lang', label: lang === 'zh' ? 'English' : '中文', icon: <GlobalOutlined />, onClick: toggleLang },
+      { key: 'profile', label: t('client.nav_profile'), icon: <UserOutlined />, onClick: () => navigate('/client/profile') },
+      // 语言项固定显示「另一种语言」的名字，所以中英两份文案是反过来写的
+      { key: 'lang', label: t('client.lang_toggle'), icon: <GlobalOutlined />, onClick: toggleLang },
       { type: 'divider' as const },
       { key: 'logout', label: t('logout'), icon: <LogoutOutlined />, onClick: handleLogout, danger: true },
     ],
   };
 
   const menuItems = [
-    { key: '/client/tasks', icon: <OrderedListOutlined />, label: lang === 'zh' ? '我的订单' : 'My Orders' },
-    { key: '/client/profile', icon: <UserOutlined />, label: lang === 'zh' ? '个人中心' : 'Profile' },
-    { key: '/client/notifications', icon: <BellOutlined />, label: lang === 'zh' ? '通知' : 'Notifications' },
+    { key: '/client/tasks', icon: <OrderedListOutlined />, label: t('client.nav_orders') },
+    { key: '/client/profile', icon: <UserOutlined />, label: t('client.nav_profile') },
+    { key: '/client/notifications', icon: <BellOutlined />, label: t('client.nav_notifications') },
   ];
 
   return (
@@ -68,7 +69,7 @@ export default function ClientLayout() {
               Excellent Construction
             </div>
             <div style={{ color: AMBER, fontWeight: 600, fontSize: 10, letterSpacing: 1 }}>
-              Ltd — 客户追踪
+              {t('client.brand_sub')}
             </div>
           </div>
         </div>
@@ -124,7 +125,7 @@ export default function ClientLayout() {
               </div>
               <div>
                 <Text strong style={{ fontSize: 13 }}>{user?.fullName || user?.username}</Text>
-                <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>客户</Text>
+                <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>{t('client.role_tag')}</Text>
               </div>
             </Space>
           </Dropdown>

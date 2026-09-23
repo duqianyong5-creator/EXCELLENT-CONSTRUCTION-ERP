@@ -1,6 +1,7 @@
 import BackgroundGeolocation from 'react-native-background-geolocation';
 import * as SecureStore from 'expo-secure-store';
 import { gpsApi } from './api';
+import { tr } from './i18n';
 
 // 用 Transistorsoft 的原生定位引擎:熄屏/切后台/被杀都靠原生层持续追踪,
 // 不依赖 JS 一直醒着(这正是 expo-location 熄屏掉点的原因)。
@@ -71,13 +72,13 @@ async function ensureConfigured(): Promise<void> {
     enableHeadless: true,
     foregroundService: true,
     backgroundPermissionRationale: {
-      title: '允许「始终」后台定位',
-      message: '任务进行中需要持续上报 GPS 位置,请选择「始终允许」',
-      positiveAction: '去设置',
+      title: tr('bg.permTitle'),
+      message: tr('bg.permMsg'),
+      positiveAction: tr('bg.permAction'),
     },
     notification: {
-      title: '运输任务进行中',
-      text: '正在上传 GPS 位置',
+      title: tr('bg.notifTitle'),
+      text: tr('bg.notifText'),
     },
     logLevel: BG.LOG_LEVEL_OFF,
   });

@@ -19,7 +19,7 @@ const MUTED = '#6b7280';
 export default function LoginScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { t, lang, toggle } = useLang();
+  const { t, toggle } = useLang();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export default function LoginScreen() {
       const res: any = await authApi.login({ identifier: identifier.trim(), password });
       // 监控（大屏）账号仅限网页端使用，App 不允许登录
       if (res.user?.role === 'monitor') {
-        showAppAlert(t('login.loginFailed'), '该账号为网页端监控账号，请在电脑网页端登录');
+        showAppAlert(t('login.loginFailed'), t('login.monitorOnly'));
         return;
       }
       await SecureStore.setItemAsync('token', res.access_token);
@@ -152,7 +152,7 @@ export default function LoginScreen() {
             <Text style={styles.registerLink}>{t('login.register')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={toggle} style={styles.langBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.langBtnText}>{lang === 'zh' ? 'EN' : 'CN'}</Text>
+            <Text style={styles.langBtnText}>{t('login.langToggle')}</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.version}>v1.0.0</Text>

@@ -11,7 +11,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   gps_stationary_radius_m: '80',   // 位移阈值（米）：窗口内始终在该范围内即视为静止（容忍漂移）
   gps_alarm_repeat: '3',           // 最多报警次数（含首次）
   gps_alarm_delay_minutes: '10',   // 延时报警间隔（分钟）
-  gps_retention_days: '7',         // GPS 轨迹保留天数（已完成任务超过该天数自动清理）
+  gps_retention_days: '7',         // 原始精度保留天数（10 秒一个点，用于看细节）
+  gps_history_days: '60',          // 轨迹回放总天数：超过上面的天数后降采样保留，到这个天数才真正删除
+  gps_downsample_seconds: '60',    // 降采样粒度：旧轨迹每这么多秒保留一个点
   ruc_warn_km: '500',              // RUC 路税：剩余公里低于此值开始提醒
   ruc_critical_km: '200',          // RUC 路税：剩余公里低于此值紧急提醒
   ruc_warn_days: '3',              // RUC 路税：预计多少天内用完就提醒

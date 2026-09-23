@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { WebView } from 'react-native-webview';
 import type { StyleProp, ViewStyle } from 'react-native';
+import { useLang } from './i18n';
 
 export type MapPos = {
   driverId: string;
@@ -19,7 +20,9 @@ function esc(s: unknown): string {
 
 // 免费 OpenStreetMap（Leaflet）地图,无需任何 API Key / 付费绑定,与网页端一致。
 // topInset/bottomInset 让地图控件（缩放、图层切换）避开手机状态栏/刘海与底部手势条。
-function buildHtml(topInset: number, bottomInset: number): string {
+type MapLabels = { street: string; satellite: string; speed: string; coords: string };
+
+function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -39,6 +42,7 @@ function buildHtml(topInset: number, bottomInset: number): string {
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+  var LBL = ${JSON.stringify(labels)};
   var map = L.map('map', { zoomControl: false }).setView([35.0, 105.0], 4);
   // 缩放放到左下角，远离顶部状态栏；右上角放图层切换
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
@@ -50,7 +54,10 @@ function buildHtml(topInset: number, bottomInset: number): string {
     maxZoom: 19, attribution: 'Tiles © Esri'
   });
   street.addTo(map);
-  L.control.layers({ '街道': street, '卫星': satellite }, null, { position: 'topright' }).addTo(map);
+  var baseLayers = {};
+  baseLayers[LBL.street] = street;
+  baseLayers[LBL.satellite] = satellite;
+  L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
   var markers = {};
   window.rnRender = function (list) {
     for (var k in markers) { map.removeLayer(markers[k]); }
@@ -64,8 +71,8 @@ function buildHtml(topInset: number, bottomInset: number): string {
       var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [130, 48], iconAnchor: [65, 16] }) });
       m.bindPopup(
         '<div style="font-weight:700;font-size:14px;margin-bottom:4px">' + p.name + '</div>'
-        + '<div style="font-size:12px;color:#444">速度: <b style="color:#d97706">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
-        + '<div style="font-size:11px;color:#888;margin-top:2px">坐标: ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</div>'
+        + '<div style="font-size:12px;color:#444">' + LBL.speed + ' <b style="color:#d97706">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
+        + '<div style="font-size:11px;color:#888;margin-top:2px">' + LBL.coords + ' ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</div>'
       );
       m.addTo(map);
       markers[p.id] = m;
@@ -91,8 +98,17 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
   bottomInset?: number;
 }) {
   const ref = useRef<WebView>(null);
+  const { t } = useLang();
   const [ready, setReady] = useState(false);
-  const html = React.useMemo(() => buildHtml(topInset, bottomInset), [topInset, bottomInset]);
+  const html = React.useMemo(
+    () => buildHtml(topInset, bottomInset, {
+      street: t('map.street'),
+      satellite: t('map.satellite'),
+      speed: t('map.speed'),
+      coords: t('map.coords'),
+    }),
+    [topInset, bottomInset, t],
+  );
 
   useEffect(() => {
     if (!ready || !ref.current) return;
@@ -102,11 +118,11 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
         id: p.driverId,
         lat: p.latitude,
         lng: p.longitude,
-        name: esc(p.driverName || '司机'),
+        name: esc(p.driverName || t('d.driverFallback')),
         speed: p.speed != null ? Math.round(p.speed) : null,
       }));
     ref.current.injectJavaScript(`window.rnRender && window.rnRender(${JSON.stringify(data)}); true;`);
-  }, [ready, positions]);
+  }, [ready, positions, t]);
 
   useEffect(() => {
     if (ready && focusId && ref.current) {
@@ -122,6 +138,7 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
       originWhitelist={['*']}
       javaScriptEnabled
       domStorageEnabled
+      onLoadStart={() => setReady(false)}
       onLoadEnd={() => setReady(true)}
     />
   );

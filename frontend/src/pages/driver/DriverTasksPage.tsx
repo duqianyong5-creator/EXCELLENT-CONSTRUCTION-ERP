@@ -23,8 +23,9 @@ const { TextArea } = Input;
 const statusColors: Record<string, string> = {
   pending: 'default', assigned: 'blue', in_progress: 'orange', completed: 'green', cancelled: 'red',
 };
-const statusLabels: Record<string, string> = {
-  pending: '待分配', assigned: '待开始', in_progress: '进行中', completed: '已完成', cancelled: '已取消',
+const statusLabelKeys: Record<string, string> = {
+  pending: 'driver.status_pending', assigned: 'driver.status_assigned', in_progress: 'driver.status_in_progress',
+  completed: 'driver.status_completed', cancelled: 'driver.status_cancelled',
 };
 
 export default function DriverTasksPage() {
@@ -107,7 +108,7 @@ export default function DriverTasksPage() {
     }
     await tasksApi.start(task.id);
     setActiveTask({ ...task, status: 'in_progress' });
-    message.success('任务已开始，GPS追踪已启动');
+    message.success(t('driver.task_started_msg'));
     loadTasks();
   };
 
@@ -118,11 +119,11 @@ export default function DriverTasksPage() {
       if (f.originFileObj) formData.append('images', f.originFileObj);
     });
     if (fileList.length === 0) {
-      message.error('请至少上传一张工作记录照片');
+      message.error(t('driver.photo_required'));
       return;
     }
     await tasksApi.complete(activeTask.id, formData);
-    message.success('任务完成！');
+    message.success(t('driver.task_done_msg'));
     setCompleteOpen(false);
     setActiveTask(null);
     setFileList([]);
@@ -148,7 +149,7 @@ export default function DriverTasksPage() {
   return (
     <div>
       <Title level={4} style={{ marginBottom: 20 }}>
-        {t('today')  || '今日任务'} — {dayjs().format('YYYY年MM月DD日')}
+        {t('driver.today_header', { date: dayjs().format(t('driver.today_date_format')) })}
       </Title>
 
       {/* Active task tracker */}
@@ -159,10 +160,10 @@ export default function DriverTasksPage() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <Text strong style={{ fontSize: 16 }}>进行中：{activeTask.title}</Text>
+              <Text strong style={{ fontSize: 16 }}>{t('driver.in_progress_label', { title: activeTask.title })}</Text>
               <div style={{ display: 'flex', gap: 24, marginTop: 8 }}>
                 <Statistic
-                  title="实时工时"
+                  title={t('driver.live_hours')}
                   value={formatTime(elapsed)}
                   prefix={<ClockCircleOutlined />}
                   valueStyle={{ color: '#fa8c16', fontSize: 28, fontWeight: 700 }}
@@ -173,11 +174,11 @@ export default function DriverTasksPage() {
               <div style={{ marginBottom: 8 }}>
                 <Space>
                   {gpsStatus === 'on' ? (
-                    <Tag color="green" icon={<WifiOutlined />}>GPS 正常</Tag>
+                    <Tag color="green" icon={<WifiOutlined />}>{t('driver.gps_ok')}</Tag>
                   ) : gpsStatus === 'error' ? (
-                    <Tag color="red" icon={<DisconnectOutlined />}>GPS 异常</Tag>
+                    <Tag color="red" icon={<DisconnectOutlined />}>{t('driver.gps_error')}</Tag>
                   ) : (
-                    <Tag color="default">GPS 初始化</Tag>
+                    <Tag color="default">{t('driver.gps_init')}</Tag>
                   )}
                   {gpsCoords && <Text type="secondary" style={{ fontSize: 12 }}>{gpsCoords.lat.toFixed(5)}, {gpsCoords.lng.toFixed(5)}</Text>}
                 </Space>
@@ -190,7 +191,7 @@ export default function DriverTasksPage() {
                 onClick={() => setCompleteOpen(true)}
                 style={{ borderRadius: 8 }}
               >
-                完成任务
+                {t('driver.complete_task')}
               </Button>
             </div>
           </div>
@@ -202,7 +203,7 @@ export default function DriverTasksPage() {
         <List
           loading={loading}
           dataSource={tasks}
-          locale={{ emptyText: '今日暂无任务' }}
+          locale={{ emptyText: t('driver.no_tasks') }}
           renderItem={(task: any) => (
             <List.Item
               style={{ padding: '16px 0', borderBottom: '1px solid #f0f0f0' }}
@@ -218,7 +219,7 @@ export default function DriverTasksPage() {
                 title={
                   <Space>
                     <Text strong>{task.title}</Text>
-                    <Tag color={statusColors[task.status]}>{statusLabels[task.status]}</Tag>
+                    <Tag color={statusColors[task.status]}>{t(statusLabelKeys[task.status] || task.status)}</Tag>
                   </Space>
                 }
                 description={
@@ -232,8 +233,8 @@ export default function DriverTasksPage() {
                     </Space>
                     {task.cargo && (
                       <Space>
-                        <Text type="secondary">货物：{task.cargo}</Text>
-                        {task.cargoWeight && <Text type="secondary">({task.cargoWeight}吨)</Text>}
+                        <Text type="secondary">{t('driver.cargo', { cargo: task.cargo })}</Text>
+                        {task.cargoWeight && <Text type="secondary">{t('driver.cargo_weight', { weight: task.cargoWeight })}</Text>}
                       </Space>
                     )}
                     {task.scheduledAt && (
@@ -244,7 +245,7 @@ export default function DriverTasksPage() {
                     )}
                     {task.client && (
                       <Space>
-                        <Text type="secondary">客户：{task.client.fullName || task.client.username}</Text>
+                        <Text type="secondary">{t('driver.client', { name: task.client.fullName || task.client.username })}</Text>
                       </Space>
                     )}
                   </Space>
@@ -257,15 +258,15 @@ export default function DriverTasksPage() {
 
       {/* Complete Task Modal */}
       <Modal
-        title="完成任务确认"
+        title={t('driver.complete_modal_title')}
         open={completeOpen}
         onCancel={() => setCompleteOpen(false)}
         footer={null}
         destroyOnClose
       >
-        <Alert message="请上传工作完成记录照片（必填）" type="info" showIcon style={{ marginBottom: 16 }} />
+        <Alert message={t('driver.complete_alert')} type="info" showIcon style={{ marginBottom: 16 }} />
         <Form form={form} onFinish={handleComplete} layout="vertical">
-          <Form.Item label="工作记录照片（必填）">
+          <Form.Item label={t('driver.photos_label')}>
             <Upload
               listType="picture-card"
               fileList={fileList}
@@ -276,21 +277,21 @@ export default function DriverTasksPage() {
               {fileList.length < 5 && (
                 <div>
                   <CameraOutlined style={{ fontSize: 20 }} />
-                  <div style={{ marginTop: 8 }}>上传照片</div>
+                  <div style={{ marginTop: 8 }}>{t('driver.upload_photo')}</div>
                 </div>
               )}
             </Upload>
           </Form.Item>
-          <Form.Item name="notes" label="备注">
-            <TextArea rows={3} placeholder="任务完成备注（可选）" />
+          <Form.Item name="notes" label={t('driver.notes')}>
+            <TextArea rows={3} placeholder={t('driver.notes_placeholder')} />
           </Form.Item>
           <div style={{ background: '#f5f5f5', padding: '12px 16px', borderRadius: 8, marginBottom: 16 }}>
-            <Text type="secondary">本次工时：{formatTime(elapsed)}</Text>
+            <Text type="secondary">{t('driver.elapsed', { time: formatTime(elapsed) })}</Text>
           </div>
           <div style={{ textAlign: 'right' }}>
             <Space>
-              <Button onClick={() => setCompleteOpen(false)}>取消</Button>
-              <Button type="primary" htmlType="submit" icon={<CheckCircleOutlined />}>提交完成</Button>
+              <Button onClick={() => setCompleteOpen(false)}>{t('driver.cancel')}</Button>
+              <Button type="primary" htmlType="submit" icon={<CheckCircleOutlined />}>{t('driver.submit')}</Button>
             </Space>
           </div>
         </Form>

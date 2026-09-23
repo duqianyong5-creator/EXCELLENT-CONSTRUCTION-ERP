@@ -353,7 +353,7 @@ export default function TaskDetailScreen() {
       <Modal visible={!!viewerUrl} transparent animationType="fade" onRequestClose={() => setViewerUrl(null)}>
         <TouchableOpacity style={styles.viewerBackdrop} activeOpacity={1} onPress={() => setViewerUrl(null)}>
           {viewerUrl ? <Image source={{ uri: viewerUrl }} style={styles.viewerImage} resizeMode="contain" /> : null}
-          <Text style={styles.viewerHint}>点击任意处关闭</Text>
+          <Text style={styles.viewerHint}>{t('td.tapClose')}</Text>
         </TouchableOpacity>
       </Modal>
     </ScrollView>
