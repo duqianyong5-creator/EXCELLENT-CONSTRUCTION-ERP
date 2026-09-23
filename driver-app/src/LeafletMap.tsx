@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { WebView } from 'react-native-webview';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useLang } from './i18n';
+import { colors, space, font, weight, radius, hit, shadow } from './theme';
 
 export type MapPos = {
   driverId: string;
@@ -23,19 +24,84 @@ function esc(s: unknown): string {
 type MapLabels = { street: string; satellite: string; speed: string; coords: string };
 
 function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): string {
+  // WebView 里的样式写在 CSS 字符串里，拿不到 theme 对象，只能把色板插值进来。
+  // 地图上的东西是真的"浮"在瓦片之上，所以这里是少数该用阴影的地方，参数取自 shadow.raised。
+  const overlayShadow = `0 ${shadow.raised.shadowOffset.height}px ${shadow.raised.shadowRadius}px rgba(0,0,0,${shadow.raised.shadowOpacity})`;
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-  html,body,#map{height:100%;width:100%;margin:0;padding:0;background:#e8eef5;}
+  html,body,#map{height:100%;width:100%;margin:0;padding:0;background:${colors.bg};}
   /* 把控件从屏幕最顶/最底挪开，避免被状态栏/刘海/手势条挡住、点不到 */
   .leaflet-top{top:${topInset}px;}
   .leaflet-bottom{bottom:${bottomInset}px;}
-  .leaflet-control-layers,.leaflet-bar{box-shadow:0 2px 10px rgba(0,0,0,.25);border-radius:10px;overflow:hidden;}
-  .leaflet-bar a{width:38px;height:38px;line-height:38px;font-size:20px;}
-  .leaflet-control-layers-toggle{width:40px;height:40px;}
+  /* 控件同时压在卫星影像和街道瓦片上，两种底都得读得清，所以一律给实心底色 + 描边，不用半透明 */
+  .leaflet-control-layers,.leaflet-bar,
+  .leaflet-touch .leaflet-control-layers,.leaflet-touch .leaflet-bar{
+    background:${colors.surface};
+    color:${colors.text};
+    border:1px solid ${colors.borderStrong};
+    border-radius:${radius.md}px;
+    box-shadow:${overlayShadow};
+    /* leaflet 在触屏上把背景裁到 padding box，半透明描边下面会漏出瓦片 */
+    background-clip:border-box;
+  }
+  /* leaflet 自带的 .leaflet-touch 规则优先级更高，不带这个前缀写的宽高在手机上根本不生效 */
+  .leaflet-bar a,.leaflet-touch .leaflet-bar a{
+    width:${hit.min}px;
+    height:${hit.min}px;
+    line-height:${hit.min}px;
+    font-size:${font.xl}px;
+    background:${colors.surface};
+    color:${colors.text};
+    border-bottom:1px solid ${colors.border};
+  }
+  .leaflet-bar a:hover,.leaflet-bar a:focus{background:${colors.surfaceAlt};color:${colors.text};}
+  .leaflet-bar a.leaflet-disabled{background:${colors.surfaceAlt};color:${colors.textFaint};}
+  .leaflet-control-layers-toggle,.leaflet-touch .leaflet-control-layers-toggle{
+    width:${hit.min}px;
+    height:${hit.min}px;
+    background-color:transparent;
+    /* 图层按钮是一张深色贴图，落在深色面板上会糊掉，反色后才看得见 */
+    filter:invert(1);
+  }
+  .leaflet-control-layers-expanded{padding:${space.sm}px ${space.md}px;background:${colors.surface};color:${colors.text};}
+  .leaflet-control-layers label{
+    margin:0;
+    min-height:${hit.min}px;
+    line-height:${hit.min}px;
+    font-size:${font.sm}px;
+  }
+  .leaflet-control-layers-separator{border-top:1px solid ${colors.border};}
+  /* 版权行也是压在瓦片上的文字，给实底才读得出来 */
+  .leaflet-control-attribution{
+    background:${colors.surface};
+    color:${colors.textFaint};
+    padding:${space.xs}px ${space.sm}px;
+    font-size:${font.xs}px;
+    border-radius:${radius.sm}px;
+  }
+  .leaflet-control-attribution a{color:${colors.textMuted};}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{
+    background:${colors.surface};
+    color:${colors.text};
+    box-shadow:${overlayShadow};
+  }
+  .leaflet-popup-content-wrapper{border:1px solid ${colors.borderStrong};border-radius:${radius.md}px;}
+  .leaflet-popup-content{
+    margin:${space.md}px ${space.xxl}px ${space.md}px ${space.lg}px;
+    font-size:${font.sm}px;
+  }
+  .leaflet-container a.leaflet-popup-close-button{
+    width:${hit.compact}px;
+    height:${hit.compact}px;
+    line-height:${hit.compact}px;
+    padding:0;
+    font-size:${font.lg}px;
+    color:${colors.textMuted};
+  }
 </style>
 </head>
 <body>
@@ -64,15 +130,16 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
     markers = {};
     var pts = [];
     list.forEach(function (p) {
+      // 卡车图标原来只靠 drop-shadow 撑在瓦片上，亮底影像里几乎糊掉，改成实心圆底盘
       var label = '<div style="display:flex;flex-direction:column;align-items:center">'
-        + '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">🚛</div>'
-        + '<div style="margin-top:2px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(17,24,39,0.88);color:#fff;border-radius:7px;padding:2px 8px;font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">' + p.name + '</div>'
+        + '<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:${font.xl}px;line-height:1;border-radius:${radius.pill}px;background:${colors.surface};border:1px solid ${colors.borderStrong};box-shadow:${overlayShadow}">🚛</div>'
+        + '<div style="margin-top:${space.xs}px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${colors.surface};color:${colors.text};border:1px solid ${colors.borderStrong};border-radius:${radius.sm}px;padding:${space.xs}px ${space.sm}px;font-size:${font.xs}px;font-weight:${weight.bold};box-shadow:${overlayShadow}">' + p.name + '</div>'
         + '</div>';
       var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [130, 48], iconAnchor: [65, 16] }) });
       m.bindPopup(
-        '<div style="font-weight:700;font-size:14px;margin-bottom:4px">' + p.name + '</div>'
-        + '<div style="font-size:12px;color:#444">' + LBL.speed + ' <b style="color:#d97706">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
-        + '<div style="font-size:11px;color:#888;margin-top:2px">' + LBL.coords + ' ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</div>'
+        '<div style="font-weight:${weight.bold};font-size:${font.sm}px;margin-bottom:${space.xs}px;color:${colors.text}">' + p.name + '</div>'
+        + '<div style="font-size:${font.xs}px;color:${colors.textMuted}">' + LBL.speed + ' <b style="color:${colors.accent}">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
+        + '<div style="font-size:${font.xs}px;color:${colors.textFaint};margin-top:${space.xs}px">' + LBL.coords + ' ' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</div>'
       );
       m.addTo(map);
       markers[p.id] = m;

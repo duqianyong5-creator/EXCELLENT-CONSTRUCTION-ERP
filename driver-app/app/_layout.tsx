@@ -14,6 +14,7 @@ import AppDialog from '../src/AppDialog';
 import '../src/backgroundLocation'; // 注册后台定位任务
 import { registerTaskNotifications, checkAndNotify, checkAnnouncementsAndNotify } from '../src/notifications';
 import { connectSocket, disconnectSocket } from '../src/socket';
+import { colors } from '../src/theme';
 
 function AuthGuard() {
   const router = useRouter();
@@ -73,8 +74,9 @@ function AuthGuard() {
 
   if (checking) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#1677ff" />
+      // 容器要给底色：不给的话深色 App 启动时会先白闪一下
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }

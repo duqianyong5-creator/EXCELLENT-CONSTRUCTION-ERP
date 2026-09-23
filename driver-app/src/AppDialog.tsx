@@ -51,7 +51,7 @@ export default function AppDialog() {
                   <Text
                     style={[
                       styles.btnText,
-                      cancel ? styles.btnTextCancel : { color: danger ? '#fff' : '#1a1206' },
+                      cancel ? styles.btnTextCancel : { color: danger ? colors.text : colors.onAccent },
                     ]}
                   >
                     {b.text}

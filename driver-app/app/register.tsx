@@ -8,18 +8,15 @@ import { useRouter } from 'expo-router';
 import { authApi } from '../src/api';
 import { useLang } from '../src/i18n';
 import { showAppAlert } from '../src/AppDialog';
-
-const AMBER = '#F59E0B';
-const AMBER_DARK = '#D97706';
-const MUTED = '#9ca3af';
+import { colors, space, font, weight, radius, hit } from '../src/theme';
 
 function Field({ icon, name, focused, setFocused, ...props }: any) {
   return (
     <View style={[styles.inputWrap, focused === name && styles.inputWrapFocused]}>
-      <Ionicons name={icon} size={20} color={MUTED} />
+      <Ionicons name={icon} size={20} color={focused === name ? colors.accent : colors.textFaint} />
       <TextInput
         style={styles.input}
-        placeholderTextColor={MUTED}
+        placeholderTextColor={colors.textFaint}
         onFocus={() => setFocused(name)}
         onBlur={() => setFocused(null)}
         {...props}
@@ -67,10 +64,10 @@ export default function RegisterScreen() {
 
   if (success) {
     return (
-      <View style={[styles.bg, { justifyContent: 'center', padding: 20 }]}>
+      <View style={[styles.bg, { justifyContent: 'center', padding: space.xxl }]}>
         <View style={styles.card}>
           <View style={styles.successIcon}>
-            <Ionicons name="checkmark" size={44} color="#fff" />
+            <Ionicons name="checkmark" size={44} color={colors.text} />
           </View>
           <Text style={styles.title}>{t('reg.successTitle')}</Text>
           <Text style={styles.subtitle}>{t('reg.successDesc')}</Text>
@@ -111,23 +108,23 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.inputWrap, focused === 'password' && styles.inputWrapFocused, { marginTop: 14 }]}>
-            <Ionicons name="lock-closed-outline" size={20} color={MUTED} />
-            <TextInput style={styles.input} placeholder={t('reg.passwordPh')} placeholderTextColor={MUTED}
+          <View style={[styles.inputWrap, focused === 'password' && styles.inputWrapFocused, { marginTop: space.lg }]}>
+            <Ionicons name="lock-closed-outline" size={20} color={focused === 'password' ? colors.accent : colors.textFaint} />
+            <TextInput style={styles.input} placeholder={t('reg.passwordPh')} placeholderTextColor={colors.textFaint}
               value={form.password} onChangeText={(v) => set('password', v)} secureTextEntry={!showPassword}
               onFocus={() => setFocused('password')} onBlur={() => setFocused(null)} />
-            <TouchableOpacity onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={MUTED} />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={[styles.submitBtn, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading} activeOpacity={0.85}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{t('reg.submit')}</Text>}
+          <TouchableOpacity style={[styles.submitBtn, loading && styles.submitBtnDisabled]} onPress={handleSubmit} disabled={loading} activeOpacity={0.85}>
+            {loading ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.submitText}>{t('reg.submit')}</Text>}
           </TouchableOpacity>
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>{t('reg.haveAccount')}</Text>
-            <TouchableOpacity onPress={() => router.replace('/login')}>
+            <TouchableOpacity style={styles.footerBtn} onPress={() => router.replace('/login')}>
               <Text style={styles.footerLink}>{t('reg.backLogin')}</Text>
             </TouchableOpacity>
           </View>
@@ -140,57 +137,66 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
-    backgroundColor: '#0b1220',
+    backgroundColor: colors.bg,
   },
   scroll: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: space.xxl,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 28,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: space.xl,
     width: '100%',
     maxWidth: 440,
     alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.4,
-    shadowRadius: 40,
-    elevation: 12,
+    // 深色底上阴影看不见，卡片靠底色差 + 一根发丝描边抬起来（和登录页同一处理）
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  header: { alignItems: 'center', marginBottom: 22 },
-  logo: { width: 84, height: 84, borderRadius: 42, marginBottom: 12 },
-  title: { fontSize: 22, fontWeight: '800', color: '#0f172a', textAlign: 'center' },
-  subtitle: { fontSize: 13, color: '#64748b', marginTop: 4, textAlign: 'center' },
+  header: { alignItems: 'center', marginBottom: space.xxl },
+  logo: { width: 84, height: 84, borderRadius: radius.pill, marginBottom: space.md },
+  title: { fontSize: font.xl, fontWeight: weight.heavy, color: colors.text, textAlign: 'center' },
+  subtitle: { fontSize: font.sm, color: colors.textMuted, marginTop: space.xs, textAlign: 'center' },
   inputWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 10,
-    paddingHorizontal: 14, marginBottom: 14, backgroundColor: '#fff',
+    flexDirection: 'row', alignItems: 'center', gap: space.md,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingHorizontal: space.lg, marginBottom: space.lg, backgroundColor: colors.surfaceAlt,
+    minHeight: hit.min,
   },
-  inputWrapFocused: { borderColor: AMBER },
-  input: { flex: 1, paddingVertical: 12, fontSize: 15, color: '#0f172a' },
-  roleLabel: { fontSize: 13, color: '#475569', fontWeight: '600', marginBottom: 8 },
-  roleRow: { flexDirection: 'row', gap: 12 },
+  inputWrapFocused: { borderColor: colors.accent, backgroundColor: colors.bg },
+  input: { flex: 1, minWidth: 0, paddingVertical: space.md, fontSize: font.base, color: colors.text },
+  eyeBtn: {
+    width: hit.min,
+    height: hit.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 触区撑到 48，但视觉上仍贴着右边距
+    marginRight: -space.md,
+  },
+  roleLabel: { fontSize: font.sm, color: colors.textMuted, fontWeight: weight.semibold, marginBottom: space.sm },
+  roleRow: { flexDirection: 'row', gap: space.md },
   roleBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1.5, borderColor: '#e2e8f0', backgroundColor: '#fff',
+    flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
+    minHeight: hit.min,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceAlt,
   },
-  roleBtnActive: { borderColor: AMBER, backgroundColor: '#FEF6E7' },
-  roleText: { fontSize: 14, color: '#64748b', fontWeight: '600' },
-  roleTextActive: { color: AMBER_DARK },
+  roleBtnActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  roleText: { fontSize: font.sm, color: colors.textMuted, fontWeight: weight.semibold },
+  roleTextActive: { color: colors.accent },
   submitBtn: {
-    height: 50, borderRadius: 12, backgroundColor: AMBER,
-    alignItems: 'center', justifyContent: 'center', marginTop: 22,
-    shadowColor: AMBER, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+    minHeight: hit.min, paddingVertical: space.lg, borderRadius: radius.md, backgroundColor: colors.accent,
+    alignItems: 'center', justifyContent: 'center', marginTop: space.xl,
   },
-  submitText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 18 },
-  footerText: { color: '#94a3b8', fontSize: 13 },
-  footerLink: { color: AMBER, fontSize: 13, fontWeight: '700' },
+  submitBtnDisabled: { opacity: 0.6 },
+  submitText: { color: colors.onAccent, fontSize: font.lg, fontWeight: weight.heavy, letterSpacing: 0.3 },
+  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: space.sm, marginTop: space.lg },
+  footerText: { color: colors.textFaint, fontSize: font.sm },
+  footerBtn: { minHeight: hit.min, justifyContent: 'center', paddingHorizontal: space.sm },
+  footerLink: { color: colors.accent, fontSize: font.sm, fontWeight: weight.bold },
   successIcon: {
-    width: 72, height: 72, borderRadius: 36, backgroundColor: '#22c55e',
-    alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 18,
+    width: 72, height: 72, borderRadius: radius.pill, backgroundColor: colors.success,
+    alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: space.lg,
   },
 });
