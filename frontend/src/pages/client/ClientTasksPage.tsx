@@ -5,7 +5,7 @@ import {
 import { EnvironmentOutlined, ClockCircleOutlined, CarOutlined, EyeOutlined, TruckOutlined } from '@ant-design/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { addBaseLayers } from '../../components/mapLayers';
+import { addBaseLayers, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../components/mapLayers';
 import { useTranslation } from 'react-i18next';
 import { tasksApi, gpsApi, workRecordsApi } from '../../api';
 import dayjs from 'dayjs';
@@ -31,7 +31,7 @@ function TrackMap({ track, driverPos, status, driverName }: {
 
   useEffect(() => {
     if (!divRef.current) return;
-    const map = L.map(divRef.current, { center: [22.3193, 114.1694], zoom: 10 });
+    const map = L.map(divRef.current, { center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM });
     mapRef.current = map;
     addBaseLayers(map);
 

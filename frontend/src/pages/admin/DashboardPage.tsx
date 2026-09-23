@@ -9,7 +9,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { tasksApi, gpsApi, usersApi, driverPresenceApi, gpsDevicesApi } from '../../api';
 import TrackMap from '../../components/TrackMap';
-import { addBaseLayers } from '../../components/mapLayers';
+import { addBaseLayers, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../components/mapLayers';
 import { useTranslation, Trans } from 'react-i18next';
 
 const { Text } = Typography;
@@ -89,8 +89,8 @@ function DriverMap({ positions }: { positions: any[] }) {
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
     leafletMap.current = L.map(mapRef.current, {
-      center: [22.3193, 114.1694],
-      zoom: 10,
+      center: DEFAULT_MAP_CENTER,
+      zoom: DEFAULT_MAP_ZOOM,
       zoomControl: true,
     });
     addBaseLayers(leafletMap.current);

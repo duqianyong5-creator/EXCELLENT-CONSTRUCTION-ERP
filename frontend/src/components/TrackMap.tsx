@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTranslation } from 'react-i18next';
-import { addBaseLayers } from './mapLayers';
+import { addBaseLayers, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from './mapLayers';
 
 // 历史轨迹回放：画出任务的行驶路线（蓝线）+ 起点/终点/当前位置。
 // 标记内容是固定文案，无用户数据，无注入风险。
@@ -17,7 +17,7 @@ export default function TrackMap({ track, driverPos, status, height = 360 }: {
 
   useEffect(() => {
     if (!divRef.current) return;
-    const map = L.map(divRef.current, { center: [22.3193, 114.1694], zoom: 10 });
+    const map = L.map(divRef.current, { center: DEFAULT_MAP_CENTER, zoom: DEFAULT_MAP_ZOOM });
     addBaseLayers(map);
 
     if (track.length > 1) {

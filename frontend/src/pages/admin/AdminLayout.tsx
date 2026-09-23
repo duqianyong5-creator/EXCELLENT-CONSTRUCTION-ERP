@@ -87,6 +87,10 @@ export default function AdminLayout() {
         }}
         trigger={null}
       >
+        {/* 侧栏三段式：logo 固定、菜单可滚、退出固定在底部。
+            以前退出用的是 position:absolute bottom:0，浮在菜单之上，
+            菜单一排到底最后一项（系统设置）就被盖住、点不到 */}
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Logo */}
         <div style={{
           height: 72,
@@ -121,7 +125,7 @@ export default function AdminLayout() {
         </div>
 
         {/* Menu */}
-        <div style={{ padding: '16px 10px' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 10px' }}>
           {menuItems.filter((item) => user?.role !== 'monitor' || item.monitor).map((item) => {
             const isActive = location.pathname === item.key;
             const label = lang === 'zh' ? item.label : item.labelEn;
@@ -132,9 +136,9 @@ export default function AdminLayout() {
                 onClick={() => navigate(item.key)}
                 style={{
                   display: 'flex', alignItems: 'center',
-                  gap: 12, padding: '13px 16px',
-                  borderRadius: 12, cursor: 'pointer',
-                  marginBottom: 4,
+                  gap: 12, padding: '10px 14px',
+                  borderRadius: 10, cursor: 'pointer',
+                  marginBottom: 2,
                   background: isActive
                     ? `linear-gradient(135deg, ${AMBER}25, ${AMBER}10)`
                     : 'transparent',
@@ -170,8 +174,8 @@ export default function AdminLayout() {
         <div
           onClick={handleLogout}
           style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            padding: '14px 16px',
+            flexShrink: 0,
+            padding: '12px 16px',
             borderTop: '1px solid rgba(255,255,255,0.06)',
             background: 'rgba(0,0,0,0.2)',
             display: 'flex', alignItems: 'center',
@@ -182,18 +186,15 @@ export default function AdminLayout() {
           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.2)'; }}
         >
-          <div style={{
-            width: 40, height: 40, borderRadius: '50%',
-            background: 'rgba(239,68,68,0.15)',
-            border: '1px solid rgba(239,68,68,0.4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18, color: '#ef4444', flexShrink: 0,
-          }}>
+          {/* 退出是低频操作，图标和字重都对齐普通菜单项。
+              原来是 40px 红色大圆圈 + 加粗红字，比任何一个菜单项都抢眼 */}
+          <span style={{ fontSize: 18, color: '#ef4444', flexShrink: 0, display: 'flex' }}>
             <LogoutOutlined />
-          </div>
+          </span>
           {!collapsed && (
-            <span style={{ color: '#fca5a5', fontSize: 14, fontWeight: 600 }}>{t('layout.logout')}</span>
+            <span style={{ color: 'rgba(252,165,165,0.9)', fontSize: 14, fontWeight: 400 }}>{t('layout.logout')}</span>
           )}
+        </div>
         </div>
       </Sider>
 
