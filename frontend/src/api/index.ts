@@ -105,6 +105,21 @@ export const gpsDevicesApi = {
     api.post(`/gps-devices/${id}/command`, data),
 };
 
+// 圆形电子围栏。判定在服务端做，所以这里只是普通 CRUD，没有「下发到设备」这一步。
+export const geofencesApi = {
+  list: () => api.get('/geofences'),
+  get: (id: string) => api.get(`/geofences/${id}`),
+  create: (data: {
+    name: string; centerLat: number; centerLng: number; radiusM: number;
+    vehiclePlate?: string | null; enabled?: boolean; alertOnEnter?: boolean; alertOnLeave?: boolean;
+  }) => api.post('/geofences', data),
+  update: (id: string, data: {
+    name?: string; centerLat?: number; centerLng?: number; radiusM?: number;
+    vehiclePlate?: string | null; enabled?: boolean; alertOnEnter?: boolean; alertOnLeave?: boolean;
+  }) => api.patch(`/geofences/${id}`, data),
+  delete: (id: string) => api.delete(`/geofences/${id}`),
+};
+
 export const driverPresenceApi = {
   online: () => api.get('/driver-presence/online'),
 };

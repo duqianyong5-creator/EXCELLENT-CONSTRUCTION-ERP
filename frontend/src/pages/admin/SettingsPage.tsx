@@ -41,8 +41,10 @@ function SettingCard({
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Title level={5} style={{ margin: 0, color: titleColor }}>{title}</Title>
-          <Text type="secondary" style={{ fontSize: 13 }}>{desc}</Text>
+          <Title level={5} style={{ margin: 0, color: titleColor, lineHeight: 1.35 }}>{title}</Title>
+          <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.6, display: 'block', marginTop: 6 }}>
+            {desc}
+          </Text>
           {children}
         </div>
       </div>
@@ -231,7 +233,7 @@ export default function SettingsPage() {
         <Text type="secondary">{t('settings.subtitle')}</Text>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16, alignItems: 'stretch' }}>
         {isAdmin && (
           <SettingCard
             icon={<FileTextOutlined />} color={AMBER}

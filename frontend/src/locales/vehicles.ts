@@ -44,6 +44,8 @@ export const vehicles: LocaleBundle = {
     // 行内操作
     'vehicles.btnRecordLicence': '登记许可',
     'vehicles.btnCalibrate': '校准里程',
+    'vehicles.btnRecordLicenceShort': '许可',
+    'vehicles.btnCalibrateShort': '校准',
     'vehicles.deleteConfirm': '确定删除这辆车？',
     'vehicles.delete': '删除',
     'vehicles.cancel': '取消',
@@ -118,6 +120,8 @@ export const vehicles: LocaleBundle = {
 
     'vehicles.btnRecordLicence': 'Record licence',
     'vehicles.btnCalibrate': 'Calibrate odometer',
+    'vehicles.btnRecordLicenceShort': 'Licence',
+    'vehicles.btnCalibrateShort': 'Calibrate',
     'vehicles.deleteConfirm': 'Delete this vehicle?',
     'vehicles.delete': 'Delete',
     'vehicles.cancel': 'Cancel',

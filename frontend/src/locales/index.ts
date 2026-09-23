@@ -18,6 +18,7 @@ import { common } from './common';
 import { dashboard } from './dashboard';
 import { devices } from './devices';
 import { driver } from './driver';
+import { geofences } from './geofences';
 import { layout } from './layout';
 import { settings } from './settings';
 import { tasks } from './tasks';
@@ -33,6 +34,7 @@ const BUNDLES: LocaleBundle[] = [
   dashboard,
   devices,
   driver,
+  geofences,
   layout,
   settings,
   tasks,

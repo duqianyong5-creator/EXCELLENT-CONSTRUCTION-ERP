@@ -5,7 +5,7 @@ import {
   DashboardOutlined, TeamOutlined, OrderedListOutlined, ClockCircleOutlined,
   WarningOutlined, BellOutlined, LogoutOutlined, TruckOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, UserOutlined,
-  NotificationOutlined, ApiOutlined, CarOutlined,
+  NotificationOutlined, ApiOutlined, CarOutlined, BorderOuterOutlined,
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,7 @@ import AnnouncementsPage from './AnnouncementsPage';
 import SettingsPage from './SettingsPage';
 import DevicesPage from './DevicesPage';
 import VehiclesPage from './VehiclesPage';
+import GeofencesPage from './GeofencesPage';
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -37,6 +38,7 @@ const menuItems = [
   { key: '/admin/work-records', icon: <ClockCircleOutlined />, label: '工时管理', labelEn: 'Work Records' },
   { key: '/admin/devices', icon: <ApiOutlined />, label: 'GPS设备', labelEn: 'GPS Devices' },
   { key: '/admin/vehicles', icon: <CarOutlined />, label: '车辆/路税', labelEn: 'Vehicles & RUC' },
+  { key: '/admin/geofences', icon: <BorderOuterOutlined />, label: '电子围栏', labelEn: 'Geofences' },
   { key: '/admin/anomalies', icon: <WarningOutlined />, label: '异常管理', labelEn: 'Anomalies', monitor: true },
   { key: '/admin/notifications', icon: <BellOutlined />, label: '通知', labelEn: 'Notifications', monitor: true },
   { key: '/admin/announcements', icon: <NotificationOutlined />, label: '公告管理', labelEn: 'Announcements' },
@@ -308,6 +310,7 @@ export default function AdminLayout() {
                 <Route path="work-records" element={<WorkRecordsPage />} />
                 <Route path="devices" element={<DevicesPage />} />
                 <Route path="vehicles" element={<VehiclesPage />} />
+                <Route path="geofences" element={<GeofencesPage />} />
                 <Route path="announcements" element={<AnnouncementsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </>

@@ -192,15 +192,22 @@ export default function VehiclesPage() {
       ),
     },
     {
-      title: t('vehicles.colActions'), key: 'actions', width: 210,
+      // 表格里的按钮用短标签，完整说法放 tooltip：
+      // 英文的 "Record licence" / "Calibrate odometer" 比中文长得多，
+      // 挤在一列里会折成两行，整张表的行高跟着乱掉
+      title: t('vehicles.colActions'), key: 'actions', width: 190,
       render: (_: any, r: Vehicle) => (
-        <Space size={4} wrap>
-          <Button size="small" type="primary" ghost icon={<FileProtectOutlined />} onClick={() => openRuc(r)}>
-            {t('vehicles.btnRecordLicence')}
-          </Button>
-          <Button size="small" icon={<DashboardOutlined />} onClick={() => openOdo(r)}>
-            {t('vehicles.btnCalibrate')}
-          </Button>
+        <Space size={4} wrap={false}>
+          <Tooltip title={t('vehicles.btnRecordLicence')}>
+            <Button size="small" type="primary" ghost icon={<FileProtectOutlined />} onClick={() => openRuc(r)}>
+              {t('vehicles.btnRecordLicenceShort')}
+            </Button>
+          </Tooltip>
+          <Tooltip title={t('vehicles.btnCalibrate')}>
+            <Button size="small" icon={<DashboardOutlined />} onClick={() => openOdo(r)}>
+              {t('vehicles.btnCalibrateShort')}
+            </Button>
+          </Tooltip>
           {isAdmin && (
             <Popconfirm
               title={t('vehicles.deleteConfirm')}

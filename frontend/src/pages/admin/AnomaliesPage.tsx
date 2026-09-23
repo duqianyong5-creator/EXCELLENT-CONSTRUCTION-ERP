@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Card, Tag, Button, Space, Badge, Typography, Tooltip, Modal, InputNumber, Switch, message } from 'antd';
-import { WarningOutlined, CheckCircleOutlined, ReloadOutlined, SoundOutlined, ClockCircleOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  WarningOutlined, CheckCircleOutlined, ReloadOutlined, SoundOutlined, ClockCircleOutlined,
+  StopOutlined, AlertOutlined, PoweroffOutlined, LoginOutlined, LogoutOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import api, { anomaliesApi } from '../../api';
 import { isAnomalySoundOn, setAnomalySoundOn } from '../../hooks/useAnomalyAlarm';
@@ -8,12 +11,18 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-const anomalyLabels: Record<string, { labelKey: string; color: string }> = {
-  gps_disconnect:      { labelKey: 'anomalies.type_gps_disconnect',      color: 'volcano' },
-  speed_anomaly:       { labelKey: 'anomalies.type_speed_anomaly',       color: 'red' },
-  teleport:            { labelKey: 'anomalies.type_teleport',            color: 'magenta' },
-  time_inconsistency:  { labelKey: 'anomalies.type_time_inconsistency',  color: 'orange' },
-  stationary:          { labelKey: 'anomalies.type_stationary',          color: 'red' },
+// 震动/断电用实心深红：它们是安全事件（半夜停在场里被撬），必须比超速那种浅色标签更扎眼。
+// 围栏进出是行程信息、不是故障，用蓝/紫，免得和真正的报警混在一起。
+const anomalyLabels: Record<string, { labelKey: string; color: string; icon: React.ReactNode }> = {
+  gps_disconnect:      { labelKey: 'anomalies.type_gps_disconnect',      color: 'volcano',  icon: <WarningOutlined /> },
+  speed_anomaly:       { labelKey: 'anomalies.type_speed_anomaly',       color: 'red',      icon: <WarningOutlined /> },
+  teleport:            { labelKey: 'anomalies.type_teleport',            color: 'magenta',  icon: <WarningOutlined /> },
+  time_inconsistency:  { labelKey: 'anomalies.type_time_inconsistency',  color: 'orange',   icon: <WarningOutlined /> },
+  stationary:          { labelKey: 'anomalies.type_stationary',          color: 'red',      icon: <WarningOutlined /> },
+  shock:               { labelKey: 'anomalies.type_shock',               color: '#d4380d',  icon: <AlertOutlined /> },
+  power_cut:           { labelKey: 'anomalies.type_power_cut',           color: '#a8071a',  icon: <PoweroffOutlined /> },
+  geofence_enter:      { labelKey: 'anomalies.type_geofence_enter',      color: 'blue',     icon: <LoginOutlined /> },
+  geofence_leave:      { labelKey: 'anomalies.type_geofence_leave',      color: 'purple',   icon: <LogoutOutlined /> },
 };
 
 export default function AnomaliesPage() {
@@ -74,7 +83,7 @@ export default function AnomaliesPage() {
         const info = anomalyLabels[v];
         return (
           <Space size={4}>
-            <Tag color={info?.color || 'default'} icon={<WarningOutlined />}>{info ? t(info.labelKey) : v}</Tag>
+            <Tag color={info?.color || 'default'} icon={info?.icon || <WarningOutlined />}>{info ? t(info.labelKey) : v}</Tag>
             {v === 'stationary' && r.alarmCount > 1 && <Tag color="red">{t('anomalies.alarm_count', { count: r.alarmCount })}</Tag>}
           </Space>
         );
@@ -82,7 +91,28 @@ export default function AnomaliesPage() {
     },
     {
       title: t('anomalies.col_driver'), key: 'driver',
-      render: (_: any, r: any) => r.driver?.fullName || r.driver?.username || '-',
+      // 定位器报警在车辆空闲时也会来（撬车就是这种），这种记录没有司机也没有任务；
+      // 只显示一个「-」等于没说，调度员得知道是哪台车 —— 退而求其次显示车牌，再不行显示设备号。
+      render: (_: any, r: any) => {
+        const driverName = r.driver?.fullName || r.driver?.username;
+        if (driverName) return driverName;
+        if (r.vehiclePlate) {
+          return (
+            <Space direction="vertical" size={0}>
+              <Tag color="gold" style={{ fontWeight: 700, letterSpacing: 1, marginInlineEnd: 0 }}>{r.vehiclePlate}</Tag>
+              <Text type="secondary" style={{ fontSize: 12 }}>{t('anomalies.no_driver')}</Text>
+            </Space>
+          );
+        }
+        if (r.deviceNo) {
+          return (
+            <Tooltip title={t('anomalies.device_tooltip')}>
+              <Text type="secondary" style={{ fontFamily: 'monospace' }}>{r.deviceNo}</Text>
+            </Tooltip>
+          );
+        }
+        return '-';
+      },
     },
     {
       title: t('anomalies.col_task'), key: 'task',
