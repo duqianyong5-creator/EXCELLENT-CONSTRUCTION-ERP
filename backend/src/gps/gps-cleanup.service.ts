@@ -6,6 +6,15 @@ import { GpsLog } from './gps-log.entity';
 import { Task, TaskStatus } from '../tasks/task.entity';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 
+/**
+ * 进行中任务的排除条件两边都按文本比较，而不是 ::uuid[]。
+ *
+ * database.sql 里 gps_logs.task_id 定义成 UUID，但生产库是 synchronize 按实体建的，
+ * 实体没写类型、按 string 推断成了 varchar。照着 database.sql 写 ::uuid[]，
+ * 生产上就报 "operator does not exist: character varying = uuid"——
+ * 2026-09-24 凌晨 3 点第一次真跑就是这么失败的（整条语句被拒，一行没删，但每晚都会失败）。
+ * 按文本比较两种库结构都成立。
+ */
 /** 一次 DELETE 最多删多少行，分批跑完。整表一把删会长时间持锁，把上报和地图一起卡住 */
 const BATCH_SIZE = 20_000;
 /** 一次任务最多跑多少批，避免异常数据让定时任务无限循环 */
@@ -72,7 +81,7 @@ export class GpsCleanupService {
       let keepClause = '';
       if (keepTaskIds.length > 0) {
         params.push(keepTaskIds);
-        keepClause = `AND (task_id IS NULL OR NOT (task_id = ANY($${params.length}::uuid[])))`;
+        keepClause = `AND (task_id IS NULL OR NOT (task_id::text = ANY($${params.length}::text[])))`;
       }
       const result = await this.gpsRepo.query(
         `DELETE FROM gps_logs WHERE id IN (
@@ -105,7 +114,7 @@ export class GpsCleanupService {
       let keepClause = '';
       if (keepTaskIds.length > 0) {
         params.push(keepTaskIds);
-        keepClause = `AND (task_id IS NULL OR NOT (task_id = ANY($${params.length}::uuid[])))`;
+        keepClause = `AND (task_id IS NULL OR NOT (task_id::text = ANY($${params.length}::text[])))`;
       }
       const result = await this.gpsRepo.query(
         `DELETE FROM gps_logs WHERE id IN (

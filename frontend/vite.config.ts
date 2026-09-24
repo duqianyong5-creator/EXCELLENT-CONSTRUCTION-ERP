@@ -19,6 +19,12 @@ export default defineConfig({
         target: proxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        // changeOrigin 只改 Host，不改 Origin。浏览器会带上 Origin: http://localhost:5173，
+        // 连线上后端时被生产 CORS 拒掉（生产只放行桌面端的 null 和手机端的无 Origin）。
+        // 代理是服务端转发，本来就不需要 CORS，把这个头去掉即可。
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'));
+        },
       },
       '/uploads': {
         target: proxyTarget,
@@ -28,6 +34,11 @@ export default defineConfig({
         target: proxyTarget,
         ws: true,
         changeOrigin: true,
+        // 同上。websocket 升级请求走的是 proxyReqWs，不是 proxyReq
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'));
+          proxy.on('proxyReqWs', (proxyReq) => proxyReq.removeHeader('origin'));
+        },
       },
     },
   },

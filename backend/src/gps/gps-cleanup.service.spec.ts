@@ -88,7 +88,7 @@ describe('GpsCleanupService', () => {
       // 断言子句的「形状」而不是「包含 task_id」——
       // 后者对正确写法和它的反面同时成立：PARTITION BY 里本来就有 task_id，
       // 把排除改成「只删进行中任务」照样能通过。
-      expect(q.sql).toMatch(/NOT \(task_id = ANY\(/);
+      expect(q.sql).toMatch(/NOT \(task_id::text = ANY\(/);
       // 少了 IS NULL 这一支，NOT (NULL = ANY(...)) 求值为 NULL，
       // 于是所有没有任务的设备点永远删不掉，清理静默失效
       expect(q.sql).toContain('task_id IS NULL OR');

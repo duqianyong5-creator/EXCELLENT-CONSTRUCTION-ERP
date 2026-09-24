@@ -39,6 +39,9 @@ interface Session {
   trusted: boolean;
   /** 迟迟没有成为 trusted 的连接会被回收（占着槽位的陌生连接） */
   trustTimer: ReturnType<typeof setTimeout> | null;
+  /** 收到的原始字节数和开头一小段：排查「设备连上了但不是 JT808」时唯一的线索 */
+  bytesIn: number;
+  firstBytes: Buffer | null;
   /** 分包消息的暂存区：key = 消息ID:总包数 */
   partials: Map<string, { parts: Map<number, Buffer>; at: number; bytes: number }>;
   /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
@@ -270,6 +273,8 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       protocolErrors: 0,
       trusted: false,
       trustTimer: null,
+      bytesIn: 0,
+      firstBytes: null,
       partials: new Map(),
       handshakeTimer: null,
     };
@@ -292,7 +297,16 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
     });
     session.handshakeTimer = setTimeout(() => {
       if (session.frames === 0) {
-        this.logger.debug(`no valid frame from ${session.addr} within handshake window, closing`);
+        // 以前是 debug，生产环境不输出——设备连上了却说的不是 JT808（协议版本、帧格式不对）
+        // 这种最难查的情况完全看不见。收到的字节数和开头几个字节就是能区分它的线索：
+        // 0 字节 = TCP 通了但设备一句没说；有字节但不以 7e 开头 = 不是 JT808 帧。
+        this.logger.log(
+          `no valid JT808 frame from ${session.addr} within ${HANDSHAKE_TIMEOUT_MS / 1000}s — `
+            + (session.bytesIn === 0
+              ? 'connected but sent nothing'
+              : `received ${session.bytesIn} bytes that did not parse, starting ${session.firstBytes?.toString('hex')}`)
+            + ', closing',
+        );
         socket.destroy();
       }
     }, HANDSHAKE_TIMEOUT_MS);
@@ -300,7 +314,10 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
     // 发了帧但始终没对应上任何已登记设备的连接同样是在占槽位，到点回收
     session.trustTimer = setTimeout(() => {
       if (session.trusted) return;
-      this.logger.debug(`${session.addr} never matched a registered device, closing`);
+      this.logger.log(
+        `${session.addr} sent ${session.frames} frame(s) as device ${session.deviceNo ?? '(none)'} `
+          + 'but never matched a registered device, closing',
+      );
       socket.destroy();
     }, TRUST_TIMEOUT_MS);
     session.trustTimer.unref?.();
@@ -345,6 +362,8 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
 
   private onData(session: Session, chunk: Buffer): void {
     if (session.socket.destroyed) return;
+    session.bytesIn += chunk.length;
+    if (!session.firstBytes) session.firstBytes = Buffer.from(chunk.subarray(0, 32));
     // 先判上限再拼接：拼完再判的话，攻击者一次一个字节地喂到 64KB，
     // 光 Buffer.concat 的拷贝量就是 n²/2 ≈ 2GB，够把事件循环卡死（API 和网关同进程）。
     if (session.buffer.length + chunk.length > MAX_BUFFER) {
