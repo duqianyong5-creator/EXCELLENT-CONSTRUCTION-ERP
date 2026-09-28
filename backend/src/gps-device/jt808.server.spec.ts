@@ -208,6 +208,27 @@ describe('Jt808Server (TCP gateway)', () => {
     c.socket.destroy();
   });
 
+  it('logs a connection the peer closes before sending any valid frame', async () => {
+    // 握手超时那条日志只在连接撑满 10 秒时才会记；对端两秒就断的连接以前什么都不留。
+    // 用本用例独有的字节（"hello"）来认日志：上一个用例收尾时销毁的连接也会触发同类日志
+    const logSpy = jest.spyOn((server as any).logger, 'log');
+    try {
+      const c = client(port);
+      await c.ready;
+      c.socket.write(Buffer.from('hello'));
+      await flush();
+      c.socket.end();
+      const mine = () => logSpy.mock.calls
+        .map(([m]) => String(m))
+        .filter((m) => /closed by peer after \d+ms without a valid JT808 frame — sent 5 bytes starting 68656c6c6f$/.test(m));
+      await until(() => mine().length > 0, 3000, 'early-close log');
+      await flush();
+      expect(mine()).toHaveLength(1); // end 之后紧跟的 close 不能再补一条
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('acks a position report and hands the parsed point to the device service', async () => {
     const c = client(port);
     await c.ready;

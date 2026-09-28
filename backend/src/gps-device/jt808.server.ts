@@ -46,6 +46,8 @@ interface Session {
   partials: Map<string, { parts: Map<number, Buffer>; at: number; bytes: number }>;
   /** 连上后迟迟不发有效帧的连接会被清掉（防止占用连接数） */
   handshakeTimer: ReturnType<typeof setTimeout> | null;
+  /** 「一帧合法报文都没发就断了」只记一次：end 和 error 可能先后都触发 */
+  earlyCloseLogged: boolean;
 }
 
 export interface OnlineDevice {
@@ -277,6 +279,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       firstBytes: null,
       partials: new Map(),
       handshakeTimer: null,
+      earlyCloseLogged: false,
     };
     // 连接数到上限时按「可信度」淘汰，而不是只看有没有发过帧。
     // 只看 frames===0 的话，攻击者每条连接发一帧合法心跳就永远不算空闲，
@@ -322,8 +325,31 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
     }, TRUST_TIMEOUT_MS);
     session.trustTimer.unref?.();
     socket.on('data', (chunk) => this.onData(session, chunk));
-    socket.on('error', (err) => this.logger.debug(`socket ${session.deviceNo ?? session.addr}: ${err.message}`));
+    socket.on('error', (err) => {
+      if (session.frames === 0) this.noteEarlyClose(session, `dropped (${err.message})`);
+      else this.logger.debug(`socket ${session.deviceNo ?? session.addr}: ${err.message}`);
+    });
+    // 对端主动断开（FIN）才会触发 end；服务端自己 destroy 的连接不会，所以不会和上面那些「…, closing」重复
+    socket.on('end', () => this.noteEarlyClose(session, 'closed by peer'));
     socket.on('close', () => this.dropSession(session));
+  }
+
+  /**
+   * 连上后一帧合法报文都没发就被对端断开。以前这种连接完全不留痕迹：握手超时那条日志
+   * 只在连接撑满 10 秒时才会记，对端 2 秒就断的连接什么都不剩——2026-09-28 排查设备不在线时，
+   * 几十个探测点打来的空连接在日志里一条都找不到，没法向厂家证明「连上来的我们都看得见」。
+   * 设备连上又立刻断、或被中间代理掐断，正是查「为什么不在线」时最需要看见的情况。
+   */
+  private noteEarlyClose(session: Session, how: string): void {
+    if (session.frames > 0 || session.earlyCloseLogged) return;
+    session.earlyCloseLogged = true;
+    const ms = Date.now() - session.connectedAt.getTime();
+    this.logger.log(
+      `${session.addr} ${how} after ${ms}ms without a valid JT808 frame — `
+        + (session.bytesIn === 0
+          ? 'sent nothing'
+          : `sent ${session.bytesIn} bytes starting ${session.firstBytes?.toString('hex')}`),
+    );
   }
 
   /**
