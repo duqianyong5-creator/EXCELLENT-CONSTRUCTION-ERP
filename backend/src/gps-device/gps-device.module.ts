@@ -8,6 +8,7 @@ import { GeofenceService } from './geofence.service';
 import { GeofenceController } from './geofence.controller';
 import { DeviceAlarmService } from './device-alarm.service';
 import { Jt808Server } from './jt808.server';
+import { DeviceOfflineWatcher } from './device-offline.watcher';
 import { GpsDeviceSchemaGuard } from './gps-device.schema';
 import { GpsModule } from '../gps/gps.module';
 import { RucModule } from '../ruc/ruc.module';
@@ -23,7 +24,7 @@ import { Task } from '../tasks/task.entity';
     NotificationsModule,
   ],
   controllers: [GpsDeviceController, GeofenceController],
-  providers: [GpsDeviceSchemaGuard, GpsDeviceService, GeofenceService, DeviceAlarmService, Jt808Server],
+  providers: [GpsDeviceSchemaGuard, GpsDeviceService, GeofenceService, DeviceAlarmService, Jt808Server, DeviceOfflineWatcher],
   exports: [GpsDeviceService, GeofenceService, Jt808Server],
 })
 export class GpsDeviceModule {}

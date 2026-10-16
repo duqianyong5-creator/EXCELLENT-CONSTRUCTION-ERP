@@ -35,7 +35,7 @@ function build(opts: { device?: any; tasks?: any[] } = {}) {
   };
   const gpsService = { upload: jest.fn(async () => ({ log: {}, anomalies: [] })) };
   const ruc = { addDistance: jest.fn(async () => undefined) };
-  const alarms = { handle: jest.fn(async () => undefined), forget: jest.fn() };
+  const alarms = { handle: jest.fn(async () => undefined), forget: jest.fn(), deviceBackOnline: jest.fn(async () => undefined) };
   const service = new GpsDeviceService(repo as any, taskRepo as any, gpsService as any, ruc as any, alarms as any);
   return { service, repo, taskRepo, gpsService, ruc, alarms, device };
 }
@@ -322,5 +322,84 @@ describe('GpsDeviceService.ingest -> 报警判定', () => {
     // handle() 自己吞异常；即便它没吞住，定位入库也不该被带走
     await expect(service.ingest('51160004464', pos())).rejects.toThrow();
     expect(gpsService.upload).toHaveBeenCalled();
+  });
+});
+
+describe('GpsDeviceService: 设备连上后补传的存货', () => {
+  // 2026-09-28：那台设备连上后先用普通 0x0200 倒出了 80 个 2~4 天前的点，每个都被改成了「现在」
+  const TWO_DAYS_AGO = () => new Date(Date.now() - 2 * 24 * 3600 * 1000);
+
+  it('keeps a days-old point with its own time when the device clock is trusted', async () => {
+    const { service, gpsService } = build();
+    const old = TWO_DAYS_AGO();
+    expect(await service.ingest('51160004464', pos({ time: old }), { clockTrusted: true })).toBe('stored');
+    const call: any = gpsService.upload.mock.calls[0];
+    expect(call[2].timestamp).toEqual(old);
+    expect(call[2].silent).toBe(true); // 一次倒几十上百个点，不实时广播
+  });
+
+  it('does not let a stored point move the live position, power state, mileage or alarms', async () => {
+    const { service, repo, ruc, alarms } = build();
+    await service.ingest('51160004464', pos({
+      time: TWO_DAYS_AGO(), alarms: ['power_cut'],
+      extras: { raw: new Map(), batteryPercent: 20, externalPower: false, signalPercent: 5, mileageKm: 500 },
+    }), { clockTrusted: true });
+    const patch: any = (repo.update.mock.calls[0] as any)[1];
+    expect(patch.lastSeenAt).toBeInstanceOf(Date); // 设备确实在线
+    expect(patch).not.toHaveProperty('lastLatitude');
+    expect(patch).not.toHaveProperty('lastFixAt');
+    expect(patch).not.toHaveProperty('externalPower');
+    expect(patch).not.toHaveProperty('batteryPercent');
+    expect(patch).not.toHaveProperty('lastTaskId');
+    expect(ruc.addDistance).not.toHaveBeenCalled(); // 旧里程读数会让下一次实时读数把同一段路再算一遍
+    expect(alarms.handle).not.toHaveBeenCalled(); // 两天前的断电不是现在的断电
+  });
+
+  it('does not attach a stored point to a task created after it', async () => {
+    const { service, gpsService } = build({
+      tasks: [{ id: 't1', driverId: 'd1', vehiclePlate: 'abc-123', updatedAt: new Date(), createdAt: new Date(Date.now() - 3600 * 1000) }],
+    });
+    expect(await service.ingest('51160004464', pos({ time: TWO_DAYS_AGO() }), { clockTrusted: true })).toBe('no_task');
+    expect(gpsService.upload).not.toHaveBeenCalled();
+  });
+
+  it('attaches it when the task already existed at that time', async () => {
+    const { service, gpsService } = build({
+      tasks: [{ id: 't1', driverId: 'd1', vehiclePlate: 'abc-123', updatedAt: new Date(), createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000) }],
+    });
+    expect(await service.ingest('51160004464', pos({ time: TWO_DAYS_AGO() }), { clockTrusted: true })).toBe('stored');
+    expect(gpsService.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('still repairs the time when the clock is NOT trusted (timezone misconfigured)', async () => {
+    const { service, gpsService, alarms } = build();
+    const before = Date.now();
+    await service.ingest('51160004464', pos({ time: TWO_DAYS_AGO() }));
+    expect((gpsService.upload.mock.calls[0] as any)[2].timestamp.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(alarms.handle).toHaveBeenCalled(); // 按实时点对待
+  });
+
+  it('logs one line per replay burst, not one per point', async () => {
+    const { service } = build();
+    const log = jest.spyOn((service as any).logger, 'log');
+    const warn = jest.spyOn((service as any).logger, 'warn');
+    for (let i = 0; i < 20; i++) {
+      await service.ingest('51160004464', pos({ time: new Date(Date.now() - (3 - i * 0.1) * 24 * 3600 * 1000) }), { clockTrusted: true });
+    }
+    expect(log.mock.calls.filter(([m]) => String(m).includes('is uploading stored points'))).toHaveLength(1);
+    expect(warn.mock.calls.filter(([m]) => String(m).includes('clock off'))).toHaveLength(0);
+  });
+
+  it('does not stretch the trust beyond a week', async () => {
+    const { service, gpsService } = build();
+    const ancient = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    await service.ingest('51160004464', pos({ time: ancient }), { clockTrusted: true });
+    expect((gpsService.upload.mock.calls[0] as any)[2].timestamp).not.toEqual(ancient);
+  });
+
+  it('deviceOnline() clears the offline alarm for the normalized device number', async () => {
+    const { service, alarms } = build();
+    await service.deviceOnline('051160004464');
+    expect(alarms.deviceBackOnline).toHaveBeenCalledWith('51160004464');
   });
 });

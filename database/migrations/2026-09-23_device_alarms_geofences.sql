@@ -6,7 +6,7 @@
 -- 整份脚本可以重复执行。
 -- ============================================================
 
--- 报警类型：补充 4 个新值。
+-- 报警类型：补充新值（2026-09-28 追加 device_offline：接车电的定位器突然消失）。
 -- ALTER TYPE ... ADD VALUE 在 PG 12 之前不能出现在事务块里，PG 12 起可以，
 -- 但新值不能在同一个事务里被使用 —— 所以这里一个值一条语句、且不在本脚本里 INSERT 这些值。
 -- 枚举类型名不写死：老库/新库建出来的名字不一定相同，从列定义反查。
@@ -17,7 +17,7 @@ BEGIN
   FROM information_schema.columns
   WHERE table_name = 'gps_anomalies' AND column_name = 'anomaly_type';
   IF enum_type IS NOT NULL AND EXISTS (SELECT 1 FROM pg_type WHERE typname = enum_type AND typtype = 'e') THEN
-    FOREACH v IN ARRAY ARRAY['shock', 'power_cut', 'geofence_enter', 'geofence_leave'] LOOP
+    FOREACH v IN ARRAY ARRAY['shock', 'power_cut', 'geofence_enter', 'geofence_leave', 'device_offline'] LOOP
       EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, v);
     END LOOP;
   END IF;

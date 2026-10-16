@@ -208,6 +208,15 @@ describe('parsePosition on the vendor 0x0200 example', () => {
     expect(parsePosition(Buffer.alloc(10), 8)).toBeNull();
   });
 
+  it('reads 0xE4 state 1 as "on battery" and an undocumented state as unknown, never as a power cut', () => {
+    // 断电报警按这个字段判断：以前是 `=== 0`，任何没见过的状态码都会被读成「外电断开」
+    const withE4 = (hex: string) => parsePosition(Buffer.concat([body.subarray(0, 28), H(hex)]), 8)!.extras;
+    expect(withE4('e4020050')).toMatchObject({ externalPower: true, batteryPercent: 80 });
+    expect(withE4('e4020150')).toMatchObject({ externalPower: false, batteryPercent: 80 });
+    expect(withE4('e4020250').externalPower).toBeUndefined();
+    expect(withE4('e4020250').batteryPercent).toBe(80);
+  });
+
   it('ignores a truncated trailing extra item', () => {
     const b = Buffer.concat([body.subarray(0, 28), H('e402')]);
     expect(parsePosition(b, 8)!.extras.batteryPercent).toBeUndefined();

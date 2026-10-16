@@ -257,7 +257,7 @@ BEGIN
   END IF;
 END $$;
 
--- 给 GPS 异常类型补充「静止报警」与车载定位器报警（震动/断电/进出围栏）的值。
+-- 给 GPS 异常类型补充「静止报警」与车载定位器报警（震动/断电/进出围栏/掉线）的值。
 -- 自动适配该列实际使用的枚举类型名；一个值一条 ALTER，且本文件不 INSERT 这些值
 -- （ALTER TYPE ... ADD VALUE 加进去的值不能在同一个事务里被使用）。
 DO $$
@@ -267,7 +267,7 @@ BEGIN
   FROM information_schema.columns
   WHERE table_name = 'gps_anomalies' AND column_name = 'anomaly_type';
   IF enum_type IS NOT NULL THEN
-    FOREACH v IN ARRAY ARRAY['stationary', 'shock', 'power_cut', 'geofence_enter', 'geofence_leave'] LOOP
+    FOREACH v IN ARRAY ARRAY['stationary', 'shock', 'power_cut', 'geofence_enter', 'geofence_leave', 'device_offline'] LOOP
       EXECUTE format('ALTER TYPE %I ADD VALUE IF NOT EXISTS %L', enum_type, v);
     END LOOP;
   END IF;

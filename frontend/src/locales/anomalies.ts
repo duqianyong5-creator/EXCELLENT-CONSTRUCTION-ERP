@@ -12,6 +12,7 @@ export const anomalies: LocaleBundle = {
     // 车载定位器上报的报警：震动/断电是安全事件（半夜停车场撬车就是这两条），围栏是平台侧判定的进出
     'anomalies.type_shock': '震动报警',
     'anomalies.type_power_cut': '断电报警',
+    'anomalies.type_device_offline': '定位器掉线',
     'anomalies.type_geofence_enter': '驶入围栏',
     'anomalies.type_geofence_leave': '驶离围栏',
     'anomalies.alarm_count': '第{{count}}次',
@@ -59,6 +60,7 @@ export const anomalies: LocaleBundle = {
     'anomalies.type_stationary': 'Stationary alert',
     'anomalies.type_shock': 'Shock',
     'anomalies.type_power_cut': 'Power cut',
+    'anomalies.type_device_offline': 'Tracker offline',
     'anomalies.type_geofence_enter': 'Entered zone',
     'anomalies.type_geofence_leave': 'Left zone',
     'anomalies.alarm_count': 'Alert #{{count}}',

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Card, Tag, Button, Space, Badge, Typography, Tooltip, Modal, InputNumber, Switch, message } from 'antd';
 import {
   WarningOutlined, CheckCircleOutlined, ReloadOutlined, SoundOutlined, ClockCircleOutlined,
-  StopOutlined, AlertOutlined, PoweroffOutlined, LoginOutlined, LogoutOutlined,
+  StopOutlined, AlertOutlined, PoweroffOutlined, LoginOutlined, LogoutOutlined, DisconnectOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import api, { anomaliesApi } from '../../api';
@@ -21,6 +21,8 @@ const anomalyLabels: Record<string, { labelKey: string; color: string; icon: Rea
   stationary:          { labelKey: 'anomalies.type_stationary',          color: 'red',      icon: <WarningOutlined /> },
   shock:               { labelKey: 'anomalies.type_shock',               color: '#d4380d',  icon: <AlertOutlined /> },
   power_cut:           { labelKey: 'anomalies.type_power_cut',           color: '#a8071a',  icon: <PoweroffOutlined /> },
+  // 接着车电的定位器突然没了：没有备用电池的设备被拔线时，这是唯一能报出来的一条
+  device_offline:      { labelKey: 'anomalies.type_device_offline',      color: '#a8071a',  icon: <DisconnectOutlined /> },
   geofence_enter:      { labelKey: 'anomalies.type_geofence_enter',      color: 'blue',     icon: <LoginOutlined /> },
   geofence_leave:      { labelKey: 'anomalies.type_geofence_leave',      color: 'purple',   icon: <LogoutOutlined /> },
 };

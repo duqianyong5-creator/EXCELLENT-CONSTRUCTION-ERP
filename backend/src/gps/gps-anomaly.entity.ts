@@ -14,9 +14,12 @@ export enum AnomalyType {
   // 车载 JT808 定位器上报的报警。设备在没有进行中任务时也会报（半夜撬车就是这种），
   // 所以这几类记录的 driver_id / task_id 允许为空，靠 device_no + vehicle_plate 定位到车。
   SHOCK = 'shock', // 震动（0xE7 报警状态 bit0）
-  POWER_CUT = 'power_cut', // 主电源掉电 / 防拆（报警标志 bit8）
+  POWER_CUT = 'power_cut', // 主电源掉电 / 防拆（报警标志 bit8，或 0xE4 报外电断开）
   GEOFENCE_ENTER = 'geofence_enter', // 驶入围栏（平台侧判定）
   GEOFENCE_LEAVE = 'geofence_leave', // 驶离围栏（平台侧判定）
+  // 接着车电的定位器突然消失（平台侧判定）。没有备用电池的设备一拔线就整机断电，
+  // 断电报警根本来不及发——平台只能从「它不见了」这件事上发现。
+  DEVICE_OFFLINE = 'device_offline',
 }
 
 /** 由定位器/围栏产生、可能没有司机的报警类型 */
@@ -25,6 +28,7 @@ export const DEVICE_ANOMALY_TYPES: AnomalyType[] = [
   AnomalyType.POWER_CUT,
   AnomalyType.GEOFENCE_ENTER,
   AnomalyType.GEOFENCE_LEAVE,
+  AnomalyType.DEVICE_OFFLINE,
 ];
 
 @Entity('gps_anomalies')

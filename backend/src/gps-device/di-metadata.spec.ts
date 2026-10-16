@@ -6,6 +6,8 @@ import { DeviceAlarmService } from './device-alarm.service';
 import { GpsDeviceService } from './gps-device.service';
 import { GpsDeviceController } from './gps-device.controller';
 import { GeofenceController } from './geofence.controller';
+import { DeviceOfflineWatcher } from './device-offline.watcher';
+import { Jt808Server } from './jt808.server';
 
 /**
  * 构造函数注入靠的是 TypeScript 发出的 design:paramtypes 元数据。
@@ -20,6 +22,7 @@ describe('依赖注入元数据不受 import 顺序影响', () => {
     ['GeofenceService', GeofenceService, 1],
     ['GpsDeviceController', GpsDeviceController, 2],
     ['GeofenceController', GeofenceController, 1],
+    ['DeviceOfflineWatcher', DeviceOfflineWatcher, 4],
   ];
 
   it.each(targets)('%s has no undefined constructor dependency', (_name, target, count) => {
@@ -33,6 +36,11 @@ describe('依赖注入元数据不受 import 顺序影响', () => {
   it('GpsDeviceService really receives DeviceAlarmService, not a stale partial module export', () => {
     const params = Reflect.getMetadata('design:paramtypes', GpsDeviceService) as any[];
     expect(params).toContain(DeviceAlarmService);
+  });
+
+  it('DeviceOfflineWatcher receives the gateway and the alarm service', () => {
+    const params = Reflect.getMetadata('design:paramtypes', DeviceOfflineWatcher) as any[];
+    expect(params).toEqual(expect.arrayContaining([Jt808Server, GpsDeviceService, DeviceAlarmService]));
   });
 
   it('DeviceAlarmService really receives GeofenceService', () => {

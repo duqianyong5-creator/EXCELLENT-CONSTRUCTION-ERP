@@ -16,7 +16,16 @@ export { normalizePlate };
 
 export type IngestResult = 'unknown' | 'disabled' | 'no_fix' | 'no_task' | 'stored';
 
-interface TaskTarget { taskId: string; driverId: string }
+export interface IngestOpts {
+  /** 0x0704 批量上传里的点 */
+  batch?: boolean;
+  /** 批量包自己标了「盲区补报」 */
+  blindZone?: boolean;
+  /** 设备报过自己的时区（0x1007），或者我们给它下发过时区：这台设备报的时间可信 */
+  clockTrusted?: boolean;
+}
+
+interface TaskTarget { taskId: string; driverId: string; createdAt: Date | null }
 
 const DEVICE_CACHE_MS = 30_000;
 const TASK_CACHE_MS = 15_000;
@@ -27,6 +36,14 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
  *  否则设备时钟/时区配错时点会落在在线窗口之外，车在跑却永远不出现在地图上。 */
 const MAX_PAST_SKEW_BATCH_MS = 7 * 24 * 3600 * 1000;
 const MAX_PAST_SKEW_LIVE_MS = 5 * 60 * 1000;
+/**
+ * 时钟可信的设备发来一个几分钟到几天前的普通 0x0200：那是它连不上平台时攒下的存货，
+ * 连上后用普通定位一条条补传（每秒一条）。2026-09-28 那台设备连上后先倒出了 80 个 2~4 天前的点，
+ * 当时的逻辑把每个都改成「现在」：地图上的当前位置在几天前的地方来回跳，几天前的报警位被重新判了一遍，
+ * 里程计的旧读数还会让下一次实时读数把同一段路再算一遍。
+ * 只有时钟可信时才这样认：时钟/时区没配对的设备报「几小时前」是配置错，仍按老办法用服务器时间兜底。
+ */
+const REPLAY_LOG_GAP_MS = 5 * 60 * 1000;
 
 
 function numberOrNull(v: unknown): number | null {
@@ -39,6 +56,8 @@ export class GpsDeviceService {
   private readonly logger = new Logger('GpsDevice');
   private deviceCache = new Map<string, { device: GpsDevice | null; at: number }>();
   private taskCache = new Map<string, { target: TaskTarget | null; at: number }>();
+  /** deviceNo -> 上一次收到补传点的时间：一段补传只记一行日志 */
+  private replays = new Map<string, number>();
 
   constructor(
     @InjectRepository(GpsDevice) private repo: Repository<GpsDevice>,
@@ -181,7 +200,7 @@ export class GpsDeviceService {
     if (hit && Date.now() - hit.at < TASK_CACHE_MS) return hit.target;
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.IN_PROGRESS },
-      select: ['id', 'driverId', 'vehiclePlate', 'updatedAt'],
+      select: ['id', 'driverId', 'vehiclePlate', 'updatedAt', 'createdAt'],
       order: { updatedAt: 'DESC' },
     });
     const matches = tasks.filter((t) => t.driverId && normalizePlate(t.vehiclePlate) === key);
@@ -191,7 +210,7 @@ export class GpsDeviceService {
       this.logger.warn(`plate ${key} is claimed by ${matches.length} in-progress tasks — not attaching device points`);
     }
     const match = matches.length === 1 ? matches[0] : null;
-    const target = match ? { taskId: match.id, driverId: match.driverId } : null;
+    const target = match ? { taskId: match.id, driverId: match.driverId, createdAt: match.createdAt ?? null } : null;
     this.taskCache.set(key, { target, at: Date.now() });
     return target;
   }
@@ -207,8 +226,26 @@ export class GpsDeviceService {
     }
   }
 
+  /** 网关确认一条连接属于这台已登记设备时调用：它回来了，把还开着的掉线报警结掉 */
+  async deviceOnline(rawNo: string): Promise<void> {
+    await this.alarms.deviceBackOnline(normalizeDeviceNo(rawNo));
+  }
+
+  /** 一段补传只记一行，不然 80 个点就是 80 行 */
+  private noteReplay(deviceNo: string, pointTime: Date): void {
+    const now = Date.now();
+    const last = this.replays.get(deviceNo);
+    this.replays.set(deviceNo, now);
+    if (last !== undefined && now - last < REPLAY_LOG_GAP_MS) return;
+    if (this.replays.size > MAX_DEVICE_CACHE_ENTRIES) this.replays.clear();
+    this.logger.log(
+      `${deviceNo} is uploading stored points (first from ${pointTime.toISOString()}) — `
+        + 'kept with the device time; not used as its live position or for alarms',
+    );
+  }
+
   /** 一条定位：更新设备最后状态；有定位且能匹配到进行中任务时写入 gps_logs（归属该司机/任务） */
-  async ingest(rawNo: string, pos: Position, opts: { batch?: boolean; blindZone?: boolean } = {}): Promise<IngestResult> {
+  async ingest(rawNo: string, pos: Position, opts: IngestOpts = {}): Promise<IngestResult> {
     const device = await this.findByDeviceNo(rawNo);
     if (!device) return 'unknown';
     if (!device.enabled) return 'disabled';
@@ -218,9 +255,14 @@ export class GpsDeviceService {
     // 普通上报一律按实时对待，避免用批量消息绕开时间校验、把点写到过去（会绕过静止报警、把地图钉死）
     const maxPast = opts.batch && opts.blindZone ? MAX_PAST_SKEW_BATCH_MS : MAX_PAST_SKEW_LIVE_MS;
     let pointTime = pos.time;
-    if (!(pointTime instanceof Date) || Number.isNaN(pointTime.getTime())
-      || pointTime.getTime() - now > MAX_FUTURE_SKEW_MS
-      || now - pointTime.getTime() > maxPast) {
+    const validTime = pointTime instanceof Date && !Number.isNaN(pointTime.getTime());
+    const age = validTime ? now - pointTime.getTime() : NaN;
+    // 例外：时钟可信的设备补传存货（见 REPLAY_LOG_GAP_MS 上方的说明）
+    const replay = validTime && !opts.batch && !!opts.clockTrusted
+      && age > MAX_PAST_SKEW_LIVE_MS && age <= MAX_PAST_SKEW_BATCH_MS;
+    if (replay) {
+      this.noteReplay(device.deviceNo, pointTime);
+    } else if (!validTime || -age > MAX_FUTURE_SKEW_MS || age > maxPast) {
       const offBy = pointTime instanceof Date && !Number.isNaN(pointTime.getTime())
         ? Math.round((now - pointTime.getTime()) / 60000)
         : null;
@@ -230,14 +272,20 @@ export class GpsDeviceService {
       );
       pointTime = new Date(now);
     }
+    // 几分钟以前的点（补传 / 盲区补报）只进轨迹：它说的是那时候的位置、电量、报警，不是现在的。
+    // 拿它去改「当前」状态，地图上的车会跳回几天前的位置，报警会把早就过去的事重新报一遍。
+    const historical = now - pointTime.getTime() > MAX_PAST_SKEW_LIVE_MS;
     const hasFix = pos.fixed && !(pos.latitude === 0 && pos.longitude === 0)
       && Math.abs(pos.latitude) <= 90 && Math.abs(pos.longitude) <= 180;
 
     const patch: Partial<GpsDevice> = { lastSeenAt: new Date(now) };
-    if (pos.extras.batteryPercent !== undefined) patch.batteryPercent = pos.extras.batteryPercent;
-    if (pos.extras.externalPower !== undefined) patch.externalPower = pos.extras.externalPower;
-    if (pos.extras.signalPercent !== undefined) patch.signalPercent = pos.extras.signalPercent;
-    if (hasFix) {
+    if (!historical) {
+      if (pos.extras.batteryPercent !== undefined) patch.batteryPercent = pos.extras.batteryPercent;
+      if (pos.extras.externalPower !== undefined) patch.externalPower = pos.extras.externalPower;
+      if (pos.extras.signalPercent !== undefined) patch.signalPercent = pos.extras.signalPercent;
+    }
+    // 里程也只看实时点：设备里程计的旧读数一旦写成基准，下一次实时读数会把中间那段路再加一遍
+    if (hasFix && !historical) {
       // 累计车辆里程（RUC 路税按里程买，提醒全靠这条数据）。
       // 优先用定位器自己的里程计，没有就用与上一个点的直线距离兜底。
       if (device.vehiclePlate) {
@@ -267,7 +315,10 @@ export class GpsDeviceService {
       target = await this.resolveTarget(device.vehiclePlate);
       if (!target) {
         result = 'no_task';
-        patch.lastTaskId = null; // 任务结束后别一直指着旧任务
+        if (!historical) patch.lastTaskId = null; // 任务结束后别一直指着旧任务
+      } else if (historical && target.createdAt && pointTime.getTime() < new Date(target.createdAt).getTime()) {
+        // 比这趟任务还早的点不可能属于它（那时候车可能是别人在开）
+        result = 'no_task';
       } else {
         // 这是 ingest 里唯一没有自己兜底的 await。它一旦抛错，下面的设备状态更新
         // 和报警判定都不会执行——车会显示离线，防盗报警也会被吞掉。
@@ -280,9 +331,9 @@ export class GpsDeviceService {
             heading: pos.heading,
             timestamp: pointTime,
             source: 'device',
-            silent: !!opts.batch, // 盲区补报不实时广播
+            silent: !!opts.batch || historical, // 补传的旧点不实时广播
           });
-          patch.lastTaskId = target.taskId;
+          if (!historical) patch.lastTaskId = target.taskId;
           result = 'stored';
         } catch (e: any) {
           this.logger.warn(`storing a point for ${device.deviceNo} failed: ${e?.message || e}`);
@@ -295,8 +346,9 @@ export class GpsDeviceService {
     // 早就过去的报警重放一遍，还会让围栏进出在同一毫秒里反复触发。设备若仍在报警，
     // 紧随其后的实时 0x0200 会把标志再带上来，不会漏。
     // handle() 自己吞掉所有异常：这条路径跑在 TCP 网关上，抛出去会连 HTTP API 一起带走。
-    if (!opts.batch) {
-      await this.alarms.handle(device, pos, { hasFix, target, pointTime });
+    if (!opts.batch && !historical) {
+      const alarmTarget = target ? { taskId: target.taskId, driverId: target.driverId } : null;
+      await this.alarms.handle(device, pos, { hasFix, target: alarmTarget, pointTime });
     }
 
     try {

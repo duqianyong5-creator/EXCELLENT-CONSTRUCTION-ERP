@@ -77,6 +77,7 @@ describe('Jt808Server (TCP gateway)', () => {
         return null;
       }),
       touch: jest.fn(async () => undefined),
+      deviceOnline: jest.fn(async () => undefined),
       ingest: jest.fn(async () => 'stored'),
     };
     const config = { get: jest.fn(() => undefined) };
@@ -245,6 +246,65 @@ describe('Jt808Server (TCP gateway)', () => {
     expect(pos.time.toISOString()).toBe('2020-08-07T10:07:22.000Z'); // 默认 UTC+8
     expect(pos.extras.batteryPercent).toBe(99);
     c.socket.destroy();
+  });
+
+  it('tells ingest the clock is trusted only after the device announced its timezone', async () => {
+    // 时钟可信时，几天前的点是补传的存货；不可信时它是时钟/时区配错，要用服务器时间兜底
+    const c = client(port);
+    await c.ready;
+    c.socket.write(POSITION_KNOWN);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    c.socket.write(encodeFrame(MsgId.TIMEZONE_SYNC, KNOWN, 3, Buffer.from([96, 0, 0, 0])));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    c.socket.write(POSITION_KNOWN);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await until(() => devices.ingest.mock.calls.length === 2, 3000, 'ingest x2');
+    expect(devices.ingest.mock.calls[0][2]).toEqual({ clockTrusted: false });
+    expect(devices.ingest.mock.calls[1][2]).toEqual({ clockTrusted: true });
+    c.socket.destroy();
+  });
+
+  it('reports the device back online once per connection (clears its offline alarm)', async () => {
+    devices.deviceOnline.mockClear();
+    const c = client(port);
+    await c.ready;
+    c.socket.write(AUTH_KNOWN);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    c.socket.write(HEARTBEAT);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    c.socket.write(POSITION_KNOWN);
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(devices.deviceOnline).toHaveBeenCalledTimes(1);
+    expect(devices.deviceOnline).toHaveBeenCalledWith(KNOWN_NO);
+    c.socket.destroy();
+  });
+
+  it('does not report an unregistered device as back online', async () => {
+    devices.deviceOnline.mockClear();
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeFrame(MsgId.HEARTBEAT, '000087654321', 1));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(devices.deviceOnline).not.toHaveBeenCalled();
+    server.clearUnregistered('87654321');
+    c.socket.destroy();
+  });
+
+  it('logs each unhandled message type once per connection', async () => {
+    const logSpy = jest.spyOn((server as any).logger, 'log');
+    try {
+      const c = client(port);
+      await c.ready;
+      for (let i = 0; i < 3; i++) {
+        c.socket.write(encodeFrame(0x0107, KNOWN, 20 + i, Buffer.from([1, 2, 3])));
+        await c.waitFor(MsgId.PLATFORM_ACK);
+      }
+      const lines = logSpy.mock.calls.map(([m]) => String(m)).filter((m) => m.includes('sent 0x0107'));
+      expect(lines).toEqual([`device ${KNOWN_NO} sent 0x0107 (3 bytes, acked, not processed)`]);
+      c.socket.destroy();
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('applies the timezone announced by 0x1007 to later positions', async () => {
@@ -474,6 +534,7 @@ describe('Jt808Server abuse resistance on the public TCP port', () => {
         no === KNOWN_NO ? { id: 'dev1', deviceNo: KNOWN_NO, enabled: true, vehiclePlate: 'ABC123' } : null,
       ),
       touch: jest.fn(async () => undefined),
+      deviceOnline: jest.fn(async () => undefined),
       ingest: jest.fn(async () => 'stored'),
     };
     server = new Jt808Server({ get: () => undefined } as any, devices as any);

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Repository } from 'typeorm';
 import { GpsAnomaly, AnomalyType } from '../gps/gps-anomaly.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GeofenceService, isInsideGeofence } from './geofence.service';
@@ -20,6 +20,7 @@ const ALARM_LABEL: Record<string, string> = {
   [AnomalyType.POWER_CUT]: '断电报警（主电源掉电 / 防拆）',
   [AnomalyType.GEOFENCE_ENTER]: '驶入电子围栏',
   [AnomalyType.GEOFENCE_LEAVE]: '驶离电子围栏',
+  [AnomalyType.DEVICE_OFFLINE]: '定位器掉线（接车电时突然断开）',
 };
 
 /** 设备侧持续型报警：置位后一直保持，撤销时自动结案 */
@@ -37,6 +38,30 @@ const MAX_TRACKED_DEVICES = 1000;
 export interface AlarmTarget {
   taskId: string;
   driverId: string;
+}
+
+/** 报警记录上的位置。没有可信位置时整个传 null，不要拼一个 0,0 */
+interface AlarmPoint {
+  latitude: number;
+  longitude: number;
+  speed: number | null;
+}
+
+function fixPoint(pos: Position, hasFix: boolean): AlarmPoint | null {
+  return hasFix ? { latitude: pos.latitude, longitude: pos.longitude, speed: pos.speedKmh } : null;
+}
+
+function numberOrNull(v: unknown): number | null {
+  const n = Number(v);
+  return v == null || v === '' || !Number.isFinite(n) ? null : n;
+}
+
+/** 报警文字里的时间按新西兰本地时间写：看报警的是这边的调度 */
+function nzTime(d: Date): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Pacific/Auckland', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(d);
 }
 
 /**
@@ -66,6 +91,8 @@ export class DeviceAlarmService {
   private lastFenceEventAt = new Map<string, number>();
   /** 每台设备上次记录过的「未处理报警位」集合，用来只在变化时记日志 */
   private lastUnhandled = new Map<string, string>();
+  /** 每台设备上次记录过的电源 / 报警字 / 0xE7 状态，只在变化时记日志 */
+  private lastStatus = new Map<string, string>();
 
   constructor(
     @InjectRepository(GpsAnomaly) private anomalyRepo: Repository<GpsAnomaly>,
@@ -77,6 +104,7 @@ export class DeviceAlarmService {
   forget(deviceNo: string): void {
     this.active.delete(deviceNo);
     this.inside.delete(deviceNo);
+    this.lastStatus.delete(deviceNo);
     for (const key of [...this.lastFenceEventAt.keys()]) {
       if (key.startsWith(`${deviceNo}|`)) this.lastFenceEventAt.delete(key);
     }
@@ -106,9 +134,32 @@ export class DeviceAlarmService {
     opts: { hasFix: boolean; target: AlarmTarget | null; pointTime: Date },
   ): Promise<void> {
     const kinds: AlarmKind[] = Array.isArray(pos.alarms) ? pos.alarms : [];
+    this.logStatusChange(device, pos);
     this.logUnhandled(device, kinds);
     await this.syncLevelAlarms(device, kinds, pos, opts);
     if (opts.hasFix) await this.checkGeofences(device, pos, opts);
+  }
+
+  /**
+   * 设备的电源、报警字、0xE7 状态一变就记一行。
+   * 2026-09-28 拔电测试没有报警时，日志里只有「连上 / 断开」，设备在断开前到底报没报断电、
+   * 外电状态有没有变，一概看不出来——只能猜。这几个值只在状态变化时才变，不会刷屏。
+   */
+  private logStatusChange(device: GpsDevice, pos: Position): void {
+    const ex = pos.extras ?? ({} as Position['extras']);
+    const power = ex.externalPower === true ? 'on' : ex.externalPower === false ? 'OFF (on battery)' : 'unknown';
+    const alarmWord = `0x${((pos.alarm ?? 0) >>> 0).toString(16).padStart(8, '0')}`;
+    const e7 = ex.alarmExt ? ex.alarmExt.toString('hex') : '-';
+    const signature = `${power}|${alarmWord}|${e7}`;
+    const previous = this.lastStatus.get(device.deviceNo);
+    if (previous === signature) return;
+    if (this.lastStatus.size >= MAX_TRACKED_DEVICES && previous === undefined) this.lastStatus.clear();
+    this.lastStatus.set(device.deviceNo, signature);
+    const state = ex.alarmExtState ? ` (armed=${ex.alarmExtState.armed}, sleeping=${ex.alarmExtState.sleeping})` : '';
+    this.logger.log(
+      `device ${device.deviceNo} ${previous === undefined ? 'status' : 'status changed'}: external power ${power}, `
+        + `battery ${ex.batteryPercent ?? '?'}%, alarm word ${alarmWord}, E7 ${e7}${state}`,
+    );
   }
 
   /**
@@ -144,13 +195,19 @@ export class DeviceAlarmService {
       const type = ALARM_TO_ANOMALY[kind];
       if (type) now.add(type);
     }
+    // 0xE4 明说「断开外接电源，备用电源供电」也算断电。报警位 bit8 是「防拆报警」，
+    // 受防拆开关 0xF100 控制，关掉了就不置位；而 0xE4 每一条定位都带，是更直接的证据。
+    if (pos.extras?.externalPower === false) now.add(AnomalyType.POWER_CUT);
 
     const before = this.active.get(device.deviceNo);
     for (const type of LEVEL_ALARMS) {
       const isActive = now.has(type);
       const wasActive = !!before?.has(type);
       if (isActive && !wasActive) {
-        await this.raise(device, type, pos, opts, { dedupe: true, description: this.describe(device, type, pos) });
+        await this.raise(device, type, fixPoint(pos, opts.hasFix), opts.target, {
+          dedupe: true,
+          description: this.describe(device, type, pos),
+        });
       } else if (!isActive && wasActive) {
         await this.resolveOpen(device, type);
       }
@@ -207,7 +264,7 @@ export class DeviceAlarmService {
 
       // 进出是「事件」不是「状态」：不做未结案去重，否则进了 A 围栏就再也报不出 B 围栏。
       // 防重复靠的是边沿触发 + 迟滞 + 上面的最小间隔。
-      await this.raise(device, type, pos, opts, {
+      await this.raise(device, type, fixPoint(pos, opts.hasFix), opts.target, {
         dedupe: false,
         description: this.describeFence(device, type, fence),
         geofenceId: fence.id,
@@ -218,8 +275,8 @@ export class DeviceAlarmService {
   private async raise(
     device: GpsDevice,
     type: AnomalyType,
-    pos: Position,
-    opts: { hasFix: boolean; target: AlarmTarget | null; pointTime: Date },
+    point: AlarmPoint | null,
+    target: AlarmTarget | null,
     extra: { dedupe: boolean; description: string; geofenceId?: string },
   ): Promise<void> {
     if (extra.dedupe) {
@@ -233,16 +290,16 @@ export class DeviceAlarmService {
     }
 
     const row = this.anomalyRepo.create({
-      driverId: opts.target?.driverId ?? null,
-      taskId: opts.target?.taskId ?? null,
+      driverId: target?.driverId ?? null,
+      taskId: target?.taskId ?? null,
       anomalyType: type,
       description: extra.description,
       // 没有定位时绝不能写坐标。断电/防拆恰恰最常发生在没定位的时候（刚断电、在室内、被屏蔽），
       // 而 Number.isFinite(0) 为真——以前会记成 0,0，最该有位置的那条防盗记录被钉在几内亚湾。
       // 另外原始值最大到 4294.97，直接写 numeric(10,7) 会溢出，整条记录丢掉。
-      latitude: opts.hasFix ? inRange(pos.latitude, 90) : null,
-      longitude: opts.hasFix ? inRange(pos.longitude, 180) : null,
-      speed: opts.hasFix ? inRange(pos.speedKmh, 9999) : null,
+      latitude: point ? inRange(point.latitude, 90) : null,
+      longitude: point ? inRange(point.longitude, 180) : null,
+      speed: point && point.speed != null ? inRange(point.speed, 9999) : null,
       deviceNo: device.deviceNo,
       vehiclePlate: device.vehiclePlate ?? null,
       geofenceId: extra.geofenceId ?? null,
@@ -269,14 +326,67 @@ export class DeviceAlarmService {
         deviceNo: device.deviceNo,
         vehiclePlate: device.vehiclePlate ?? null,
         geofenceId: extra.geofenceId ?? null,
-        driverId: opts.target?.driverId ?? null,
-        taskId: opts.target?.taskId ?? null,
-        latitude: pos.latitude,
-        longitude: pos.longitude,
+        driverId: target?.driverId ?? null,
+        taskId: target?.taskId ?? null,
+        // 没定位时给 null：以前直接给 pos.latitude，无定位的断电报警通知里带的是 0,0
+        latitude: point ? inRange(point.latitude, 90) : null,
+        longitude: point ? inRange(point.longitude, 180) : null,
       },
       notifyAdmins: true,
     });
     this.logger.warn(`${type} raised for ${who} (device ${device.deviceNo})`);
+  }
+
+  /**
+   * 接着车电的定位器消失了（由 DeviceOfflineWatcher 判定后调用）。
+   *
+   * 这是给「没有备用电池」的设备兜底的：2026-09-28 拔电测试里设备一拔线就整机断电，
+   * 断电报警一个字节都没发出来，平台只能从「它不见了」这件事上发现。
+   * 每次消失只报一次：已经有一条在它最后一次上报之后产生的掉线记录（哪怕管理员已经结案），就不再报。
+   * 绝不抛错：跑在定时器里，和 API 同进程。
+   */
+  async raiseOffline(
+    device: GpsDevice,
+    info: { lastSeenAt: Date; moving: boolean; target: AlarmTarget | null },
+  ): Promise<void> {
+    try {
+      const already = await this.anomalyRepo.findOne({
+        where: {
+          deviceNo: device.deviceNo,
+          anomalyType: AnomalyType.DEVICE_OFFLINE,
+          detectedAt: MoreThanOrEqual(info.lastSeenAt),
+        },
+      });
+      if (already) return;
+
+      const lat = numberOrNull(device.lastLatitude);
+      const lng = numberOrNull(device.lastLongitude);
+      // 位置是它消失前最后一次定位——防盗时最要紧的就是这个
+      const point = lat != null && lng != null
+        ? { latitude: lat, longitude: lng, speed: numberOrNull(device.lastSpeed) }
+        : null;
+      const who = device.vehiclePlate || device.name || device.deviceNo;
+      const minutes = Math.max(1, Math.round((Date.now() - info.lastSeenAt.getTime()) / 60000));
+      const how = info.moving ? `当时在行驶（${numberOrNull(device.lastSpeed) ?? '?'} km/h）` : '当时停着';
+      const description = `${who} 定位器接着车电时突然断开，已 ${minutes} 分钟没有任何数据`
+        + `（最后数据 ${nzTime(info.lastSeenAt)}，${how}）。可能被拔掉、剪线或拆除；设备重新连上后自动结案`;
+      await this.raise(device, AnomalyType.DEVICE_OFFLINE, point, info.target, { dedupe: true, description });
+    } catch (e: any) {
+      this.logger.warn(`offline alarm for ${device.deviceNo} failed: ${e?.message || e}`);
+    }
+  }
+
+  /** 设备重新连上：把还开着的掉线记录结掉。绝不抛错（跑在 TCP 网关上） */
+  async deviceBackOnline(deviceNo: string): Promise<void> {
+    try {
+      const res = await this.anomalyRepo.update(
+        { deviceNo, anomalyType: AnomalyType.DEVICE_OFFLINE, resolved: false },
+        { resolved: true, resolvedAt: new Date() },
+      );
+      if (res?.affected) this.logger.log(`${AnomalyType.DEVICE_OFFLINE} cleared for device ${deviceNo} (reconnected)`);
+    } catch (e: any) {
+      this.logger.warn(`clearing the offline alarm for ${deviceNo} failed: ${e?.message || e}`);
+    }
   }
 
   /** 报警条件解除：把未结案的那条自动结掉，下次再触发才算新报警 */
@@ -294,7 +404,10 @@ export class DeviceAlarmService {
     const who = device.vehiclePlate || device.name || device.deviceNo;
     if (type === AnomalyType.POWER_CUT) {
       const volt = pos.extras.voltage != null ? `，外电 ${pos.extras.voltage.toFixed(2)}V` : '';
-      return `${who} 定位器主电源被切断（防拆报警）${volt}`;
+      const battery = pos.extras.externalPower === false && pos.extras.batteryPercent != null
+        ? `，现由备用电池供电（剩余 ${pos.extras.batteryPercent}%）`
+        : '';
+      return `${who} 定位器主电源被切断（防拆报警）${volt}${battery}`;
     }
     if (type === AnomalyType.SHOCK) {
       const armed = pos.extras.alarmExtState?.armed ? '设防状态下' : '';

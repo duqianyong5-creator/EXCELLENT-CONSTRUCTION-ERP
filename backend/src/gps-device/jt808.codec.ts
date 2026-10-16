@@ -390,7 +390,8 @@ export interface PositionExtras {
   signalPercent?: number; // 0x30
   satellites?: number; // 0x31
   batteryPercent?: number; // 0xE4
-  externalPower?: boolean; // 0xE4 状态 0=接通外电
+  /** 0xE4 状态：0 = 接通外电（true），1 = 断开外电、电池供电（false）；其他值不认（undefined） */
+  externalPower?: boolean;
   moving?: boolean; // 0xE5
   alarmExt?: Buffer; // 0xE7 8 字节（原始）
   alarmExtState?: AlarmExtState; // 0xE7 解析后的报警/开关状态
@@ -454,7 +455,12 @@ export function parseExtras(buf: Buffer): PositionExtras {
       case 0x30: if (len >= 1) ex.signalPercent = val[0]; break;
       case 0x31: if (len >= 1) ex.satellites = val[0]; break;
       case 0xe4:
-        if (len >= 2) { ex.externalPower = val[0] === 0; ex.batteryPercent = val[1]; }
+        if (len >= 2) {
+          // 断电报警要按这个字段判断，所以只认文档写明的 0 和 1。
+          // 以前是 `=== 0`，任何别的值都会被读成「外电断开」—— 一个没见过的状态码就是一条假的防盗报警。
+          ex.externalPower = val[0] === 0 ? true : val[0] === 1 ? false : undefined;
+          ex.batteryPercent = val[1];
+        }
         break;
       case 0xe5: if (len >= 1) ex.moving = val[0] === 1; break;
       case 0xe7: {

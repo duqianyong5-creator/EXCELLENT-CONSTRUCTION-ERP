@@ -21,6 +21,8 @@ interface Session {
   deviceNo: string | null;
   authed: boolean;
   tzOffset: number;
+  /** 设备报过时区（0x1007）或我们下发过时区：它报的时间可信，几分钟前的点就是补传而不是时钟错 */
+  clockTrusted: boolean;
   serial: number;
   connectedAt: Date;
   lastSeenAt: Date;
@@ -48,6 +50,8 @@ interface Session {
   handshakeTimer: ReturnType<typeof setTimeout> | null;
   /** 「一帧合法报文都没发就断了」只记一次：end 和 error 可能先后都触发 */
   earlyCloseLogged: boolean;
+  /** 本连接上出现过、但没有专门处理的消息 ID：每种只记一次日志 */
+  unhandledMsgIds: Set<number>;
 }
 
 export interface OnlineDevice {
@@ -236,6 +240,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       byteParam(ParamId.DEVICE_TIMEZONE, encodeTimezone(tz)),
     ]));
     s.tzOffset = tz;
+    s.clockTrusted = true;
   }
 
   /** 修改设备的主服务器地址（迁移服务器用） */
@@ -264,6 +269,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       deviceNo: null,
       authed: false,
       tzOffset: this.defaultTz,
+      clockTrusted: false,
       serial: 0,
       connectedAt: new Date(),
       lastSeenAt: new Date(),
@@ -280,6 +286,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       partials: new Map(),
       handshakeTimer: null,
       earlyCloseLogged: false,
+      unhandledMsgIds: new Set(),
     };
     // 连接数到上限时按「可信度」淘汰，而不是只看有没有发过帧。
     // 只看 frames===0 的话，攻击者每条连接发一帧合法心跳就永远不算空闲，
@@ -595,6 +602,8 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
       // 从这一刻起这条连接对应到一台真实在册的车：连接准入时不再把它当陌生连接淘汰
       session.trusted = true;
       if (session.trustTimer) { clearTimeout(session.trustTimer); session.trustTimer = null; }
+      // 它回来了：掉线报警（如果有）自动结案。每条连接只做一次
+      await this.devices.deviceOnline(deviceNo);
     }
 
     switch (frame.msgId) {
@@ -621,7 +630,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         ack(); // 先应答，避免终端重发
         const pos = parsePosition(frame.body, session.tzOffset);
         if (!pos) { this.logger.warn(`short position body from ${deviceNo}`); return; }
-        await this.devices.ingest(deviceNo, pos);
+        await this.devices.ingest(deviceNo, pos, { clockTrusted: session.clockTrusted });
         return;
       }
       case MsgId.POSITION_QUERY_ACK: {
@@ -629,7 +638,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         ack();
         if (frame.body.length > 2) {
           const pos = parsePosition(frame.body.subarray(2), session.tzOffset);
-          if (pos) await this.devices.ingest(deviceNo, pos);
+          if (pos) await this.devices.ingest(deviceNo, pos, { clockTrusted: session.clockTrusted });
         }
         return;
       }
@@ -661,6 +670,7 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         const tz = frame.body.length ? decodeTimezone(frame.body[0]) : null;
         if (tz !== null) {
           session.tzOffset = tz;
+          session.clockTrusted = true;
           this.logger.log(`device ${deviceNo} reports timezone UTC${tz >= 0 ? '+' : ''}${tz}`);
         }
         ack();
@@ -686,7 +696,14 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         return;
       }
       default: {
-        // 0x0107 属性、0x1107 ICCID、0x0112/0x0114 等：统一通用应答，保持终端在线
+        // 0x0107 属性、0x1107 ICCID、0x0112/0x0114 等：统一通用应答，保持终端在线。
+        // 每种记一次：设备在断电、休眠这些关头发了什么我们没处理的消息，是排查时唯一的线索
+        if (!session.unhandledMsgIds.has(frame.msgId) && session.unhandledMsgIds.size < 32) {
+          session.unhandledMsgIds.add(frame.msgId);
+          this.logger.log(
+            `device ${deviceNo} sent 0x${frame.msgId.toString(16).padStart(4, '0')} (${frame.body.length} bytes, acked, not processed)`,
+          );
+        }
         ack();
         return;
       }

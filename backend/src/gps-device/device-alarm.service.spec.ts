@@ -39,13 +39,20 @@ function build(opts: { fences?: any[]; anomalies?: any[] } = {}) {
     rows,
     findOne: jest.fn(async ({ where }: any) =>
       rows.find(
-        (r) => r.deviceNo === where.deviceNo && r.anomalyType === where.anomalyType && r.resolved === where.resolved,
+        (r) => r.deviceNo === where.deviceNo && r.anomalyType === where.anomalyType
+          && (where.resolved === undefined || r.resolved === where.resolved)
+          // MoreThanOrEqual(date)：FindOperator 的值在 .value 上
+          && (where.detectedAt === undefined || (r.detectedAt && r.detectedAt >= where.detectedAt.value)),
       ) ?? null),
     create: jest.fn((v: any) => ({ ...v, resolved: false })),
-    save: jest.fn(async (v: any) => { const row = { id: `a${++seq}`, ...v }; rows.push(row); return row; }),
-    update: jest.fn(async (id: string, patch: any) => {
-      const row = rows.find((r) => r.id === id);
-      if (row) Object.assign(row, patch);
+    // detected_at 是 CreateDateColumn，由数据库在插入时填
+    save: jest.fn(async (v: any) => { const row = { id: `a${++seq}`, detectedAt: new Date(), ...v }; rows.push(row); return row; }),
+    update: jest.fn(async (idOrWhere: any, patch: any) => {
+      const hit = typeof idOrWhere === 'string'
+        ? rows.filter((r) => r.id === idOrWhere)
+        : rows.filter((r) => Object.entries(idOrWhere).every(([k, v]) => r[k] === v));
+      hit.forEach((row) => Object.assign(row, patch));
+      return { affected: hit.length };
     }),
   };
   const geofences = { fencesFor: jest.fn(async () => opts.fences ?? []) };
@@ -382,5 +389,133 @@ describe('DeviceAlarmService: 电子围栏', () => {
     await service.handle(DEVICE, pos(), live);
     await service.handle(DEVICE, away(), live);
     expect(anomalyRepo.rows).toHaveLength(0);
+  });
+});
+
+describe('DeviceAlarmService: 断电也认 0xE4 的外电状态', () => {
+  // 报警位 bit8 是「防拆报警」，受防拆开关控制；0xE4 每条定位都带「外电断开、电池供电」这一状态
+  const onBattery = (battery = 96) => pos({ extras: { raw: new Map(), externalPower: false, batteryPercent: battery } });
+  const onMains = () => pos({ extras: { raw: new Map(), externalPower: true, batteryPercent: 100 } });
+
+  it('raises a power cut when 0xE4 says external power is off, even with no alarm bit', async () => {
+    const { service, anomalyRepo, notifService } = build();
+    await service.handle(DEVICE, onBattery(), live);
+    expect(anomalyRepo.rows).toHaveLength(1);
+    expect(anomalyRepo.rows[0].anomalyType).toBe(AnomalyType.POWER_CUT);
+    expect(anomalyRepo.rows[0].description).toContain('备用电池供电（剩余 96%）');
+    expect(notifService.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts bit8 and 0xE4 as ONE power cut, not two', async () => {
+    const { service, anomalyRepo, notifService } = build();
+    await service.handle(DEVICE, pos({ alarms: ['power_cut'], extras: { raw: new Map(), externalPower: false } }), live);
+    await service.handle(DEVICE, onBattery(90), live);
+    expect(anomalyRepo.rows).toHaveLength(1);
+    expect(notifService.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears when mains power comes back', async () => {
+    const { service, anomalyRepo } = build();
+    await service.handle(DEVICE, onBattery(), live);
+    await service.handle(DEVICE, onMains(), live);
+    expect(anomalyRepo.rows[0].resolved).toBe(true);
+  });
+
+  it('does not treat an unknown power state as a power cut', async () => {
+    const { service, anomalyRepo } = build();
+    await service.handle(DEVICE, pos({ extras: { raw: new Map() } }), live);
+    expect(anomalyRepo.rows).toHaveLength(0);
+  });
+
+  it('sends null coordinates in the notification when there is no fix (not 0,0)', async () => {
+    const { service, notifService } = build();
+    await service.handle(DEVICE, pos({ latitude: 0, longitude: 0, fixed: false, extras: { raw: new Map(), externalPower: false } }),
+      { hasFix: false, target: null, pointTime: new Date() });
+    const meta = notifService.create.mock.calls[0][1].meta;
+    expect(meta.latitude).toBeNull();
+    expect(meta.longitude).toBeNull();
+  });
+});
+
+describe('DeviceAlarmService: 状态变化日志', () => {
+  it('logs power / alarm-word / E7 once per change, not per position', async () => {
+    const { service } = build();
+    const log = jest.spyOn((service as any).logger, 'log');
+    const mains = pos({ extras: { raw: new Map(), externalPower: true, batteryPercent: 100 } });
+    for (let i = 0; i < 5; i++) await service.handle(DEVICE, mains, live);
+    await service.handle(DEVICE, pos({ extras: { raw: new Map(), externalPower: false, batteryPercent: 99 } }), live);
+    const lines = log.mock.calls.map(([m]) => String(m)).filter((m) => m.includes('external power'));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/device 51160004464 status: external power on, battery 100%, alarm word 0x00000000/);
+    expect(lines[1]).toMatch(/status changed: external power OFF \(on battery\), battery 99%/);
+  });
+});
+
+describe('DeviceAlarmService: 掉线报警', () => {
+  const LAST_SEEN = new Date(Date.now() - 3 * 60 * 1000);
+  const parked = { lastSeenAt: LAST_SEEN, moving: false, target: null };
+  const withFix = { ...DEVICE, lastLatitude: '-36.8028800', lastLongitude: '174.5936320', lastSpeed: '0.00' };
+
+  it('raises one alarm with the last known position and a sound notification', async () => {
+    const { service, anomalyRepo, notifService } = build();
+    await service.raiseOffline(withFix, parked);
+    expect(anomalyRepo.rows).toHaveLength(1);
+    const row = anomalyRepo.rows[0];
+    expect(row).toMatchObject({ anomalyType: AnomalyType.DEVICE_OFFLINE, deviceNo: '51160004464', vehiclePlate: 'ABC123' });
+    // 数据库里的 numeric 是字符串，要转成数再存
+    expect(row.latitude).toBeCloseTo(-36.80288, 5);
+    expect(row.longitude).toBeCloseTo(174.593632, 5);
+    expect(row.description).toContain('已 3 分钟没有任何数据');
+    expect(row.description).toContain('当时停着');
+    expect(notifService.create.mock.calls[0][1]).toMatchObject({ type: 'gps_device_offline', meta: { sound: true } });
+  });
+
+  it('reports each disappearance once, even after an admin closed it while the tracker is still gone', async () => {
+    const { service, anomalyRepo, notifService } = build();
+    await service.raiseOffline(withFix, parked);
+    anomalyRepo.rows[0].resolved = true; // 管理员手动结案
+    await service.raiseOffline(withFix, parked);
+    await service.raiseOffline(withFix, parked);
+    expect(anomalyRepo.rows).toHaveLength(1);
+    expect(notifService.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports again for a NEW disappearance (tracker came back, then vanished again)', async () => {
+    const { service, anomalyRepo } = build();
+    await service.raiseOffline(withFix, parked);
+    anomalyRepo.rows[0].detectedAt = new Date(Date.now() - 60 * 60 * 1000); // 上一次是一小时前报的
+    await service.raiseOffline(withFix, { ...parked, lastSeenAt: new Date(Date.now() - 2 * 60 * 1000) });
+    // 旧的那条还开着 → 靠未结案去重，不重复；结掉以后再消失才是新的一次
+    expect(anomalyRepo.rows).toHaveLength(1);
+    anomalyRepo.rows[0].resolved = true;
+    await service.raiseOffline(withFix, { ...parked, lastSeenAt: new Date(Date.now() - 2 * 60 * 1000) });
+    expect(anomalyRepo.rows).toHaveLength(2);
+  });
+
+  it('records no coordinates when the tracker never had a fix', async () => {
+    const { service, anomalyRepo } = build();
+    await service.raiseOffline({ ...DEVICE, lastLatitude: null, lastLongitude: null }, parked);
+    expect(anomalyRepo.rows[0].latitude).toBeNull();
+  });
+
+  it('deviceBackOnline closes only this device\'s open offline alarm', async () => {
+    const { service, anomalyRepo } = build({
+      anomalies: [
+        { id: 'x1', deviceNo: '51160004464', anomalyType: AnomalyType.DEVICE_OFFLINE, resolved: false },
+        { id: 'x2', deviceNo: '51160004464', anomalyType: AnomalyType.POWER_CUT, resolved: false },
+        { id: 'x3', deviceNo: '99999999999', anomalyType: AnomalyType.DEVICE_OFFLINE, resolved: false },
+      ],
+    });
+    await service.deviceBackOnline('51160004464');
+    expect(anomalyRepo.rows.map((r: any) => [r.id, r.resolved])).toEqual([['x1', true], ['x2', false], ['x3', false]]);
+    expect(anomalyRepo.rows[0].resolvedAt).toBeInstanceOf(Date);
+  });
+
+  it('never throws (runs on the timer and on the TCP gateway)', async () => {
+    const { service, anomalyRepo } = build();
+    anomalyRepo.findOne.mockRejectedValue(new Error('db down'));
+    anomalyRepo.update.mockRejectedValue(new Error('db down'));
+    await expect(service.raiseOffline(withFix, parked)).resolves.toBeUndefined();
+    await expect(service.deviceBackOnline('51160004464')).resolves.toBeUndefined();
   });
 });
