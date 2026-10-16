@@ -1,3 +1,5 @@
+// 必须最先执行：在任何数据库连接建立之前把「不带时区」的时间列固定成 UTC（原因见文件内说明）
+import './config/pg-utc';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
