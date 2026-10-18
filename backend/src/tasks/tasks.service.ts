@@ -9,6 +9,9 @@ import { OperationLogsService } from '../operation-logs/operation-logs.service';
 import { UserRole } from '../users/user.entity';
 import { ErrorCode } from '../common/i18n/messages';
 
+/** 完工备注上限：司机手打的几句话，不是文档 */
+const MAX_NOTES_LEN = 2000;
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -193,6 +196,9 @@ export class TasksService {
     const task = await this.findById(taskId);
     if (task.driverId !== driverId) throw new ForbiddenException('无权操作此任务');
     if (task.status !== TaskStatus.IN_PROGRESS) throw new ForbiddenException('任务未在进行中');
+    // 先验备注再改状态：验不过时任务不能已经被标成完成
+    const notes = String(data.notes ?? '').trim();
+    if (notes.length > MAX_NOTES_LEN) throw new BadRequestException(ErrorCode.NOTES_TOO_LONG);
 
     const endTime = new Date();
     task.status = TaskStatus.COMPLETED;
@@ -205,7 +211,7 @@ export class TasksService {
     const diffMs = endTime.getTime() - record.startTime.getTime();
     record.systemDuration = Math.round(diffMs / 60000);
     record.finalDuration = record.systemDuration;
-    record.completionNotes = data.notes;
+    record.completionNotes = notes || null;
     record.imageUrls = data.imageUrls;
     const saved = await this.workRepo.save(record);
 

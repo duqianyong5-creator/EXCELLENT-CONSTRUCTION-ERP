@@ -1,22 +1,20 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Image, Platform, Modal,
+  ActivityIndicator, Image, Platform, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
-import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { tasksApi, gpsApi, workRecordsApi } from '../../src/api';
+import { tasksApi, workRecordsApi } from '../../src/api';
+import { stopBackgroundGps } from '../../src/backgroundLocation';
 import { setActiveTask, setGpsRunning } from '../../src/store/taskSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
 import { colors, space, font, weight, radius, hit } from '../../src/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const GPS_UPLOAD_INTERVAL_MS = 10000;
 
 export default function TaskDetailScreen() {
   // 顶部安全区按机型取：原来写死 56，iPhone Pro 的灵动岛是 59~62，标题会被压住
@@ -32,13 +30,11 @@ export default function TaskDetailScreen() {
 
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [starting, setStarting] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [workRecord, setWorkRecord] = useState<any>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const gpsInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadTask = useCallback(async () => {
     try {
@@ -63,65 +59,17 @@ export default function TaskDetailScreen() {
 
   useEffect(() => { loadTask(); }, [loadTask]);
 
-  // 清理 GPS 定时器
-  useEffect(() => {
-    return () => {
-      if (gpsInterval.current) clearInterval(gpsInterval.current);
-    };
-  }, []);
-
-  const startGpsUpload = useCallback(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      showAppAlert(t('td.permTitle'), t('td.permMsg'));
-      return;
-    }
-    dispatch(setGpsRunning(true));
-    gpsInterval.current = setInterval(async () => {
-      try {
-        let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-        if (!loc) loc = await Location.getLastKnownPositionAsync();
-        if (!loc) return;
-        await gpsApi.upload({
-          taskId: id,
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          speed: Math.max(0, (loc.coords.speed ?? 0) * 3.6),
-          heading: loc.coords.heading ?? undefined,
-          accuracy: loc.coords.accuracy ?? undefined,
-        });
-      } catch (e: any) { if (__DEV__) console.log('[gps] upload failed:', e?.message || e); }
-    }, GPS_UPLOAD_INTERVAL_MS);
-  }, [id, dispatch]);
-
+  // 完工后把后台定位停掉。以前这里只清自己的定时器，而上报其实是列表页起的后台服务——
+  // 从详情页完工的话它会一直跑到下次回到列表
   const stopGpsUpload = useCallback(() => {
-    if (gpsInterval.current) {
-      clearInterval(gpsInterval.current);
-      gpsInterval.current = null;
-    }
+    stopBackgroundGps();
     dispatch(setGpsRunning(false));
   }, [dispatch]);
 
-  const handleStart = async () => {
-    showAppAlert(t('td.startTitle'), t('td.startConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('td.startOk'), onPress: async () => {
-          try {
-            setStarting(true);
-            await tasksApi.start(id);
-            dispatch(setActiveTask({ id, title: task.title, startLocation: task.startLocation, endLocation: task.endLocation, status: 'in_progress' }));
-            await startGpsUpload();
-            await loadTask();
-            showAppAlert(t('td.started'), t('td.startedMsg'));
-          } catch (err: any) {
-            showAppAlert(t('common.fail'), err.message || t('td.startFailed'));
-          } finally {
-            setStarting(false);
-          }
-        },
-      },
-    ]);
+  // 接单必须填车牌（车上的定位器靠车牌对到任务），这个流程在任务列表页：带着 accept 参数跳过去。
+  // 以前这里直接 start，车牌是空的——那趟活的轨迹永远对不上定位器
+  const handleStart = () => {
+    router.navigate({ pathname: '/(tabs)/tasks', params: { accept: id } });
   };
 
   const handlePickPhoto = async () => {
@@ -179,7 +127,8 @@ export default function TaskDetailScreen() {
                 type: 'image/jpeg',
               } as any);
             });
-            if (notes) formData.append('completionNotes', notes);
+            // 后端读的字段叫 notes（以前发的是 completionNotes，备注从来没存进去过）
+            if (notes.trim()) formData.append('notes', notes.trim());
             await tasksApi.complete(id, formData);
             dispatch(setActiveTask(null));
             showAppAlert(t('td.completed'), t('td.completedMsg'), [
@@ -247,21 +196,11 @@ export default function TaskDetailScreen() {
 
       {/* 操作按钮 */}
       {canOperate && task.status === 'assigned' && (
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.startBtn, starting && styles.btnDisabled]}
-          onPress={handleStart}
-          disabled={starting}
-          activeOpacity={0.85}
-        >
-          {starting
-            ? <ActivityIndicator color={colors.onAccent} />
-            : (
-              <View style={styles.actionBtnRow}>
-                <Ionicons name="play-circle" size={20} color={colors.onAccent} />
-                <Text style={styles.actionBtnText}>{t('td.startBtn')}</Text>
-              </View>
-            )
-          }
+        <TouchableOpacity style={[styles.actionBtn, styles.startBtn]} onPress={handleStart} activeOpacity={0.85}>
+          <View style={styles.actionBtnRow}>
+            <Ionicons name="play-circle" size={20} color={colors.onAccent} />
+            <Text style={styles.actionBtnText}>{t('td.startBtn')}</Text>
+          </View>
         </TouchableOpacity>
       )}
 
@@ -290,6 +229,16 @@ export default function TaskDetailScreen() {
                 </TouchableOpacity>
               )}
             </View>
+            {/* 备注原来有状态没有输入框，提交的永远是空的 */}
+            <Text style={styles.notesLabel}>{t('td.notes')}</Text>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              style={styles.notesInput}
+              placeholder={t('td.notesPh')}
+              placeholderTextColor={colors.textFaint}
+            />
           </View>
 
           <TouchableOpacity
@@ -478,6 +427,19 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt,
   },
   photoAddText: { fontSize: font.xs, color: colors.textFaint, marginTop: space.xs },
+  notesLabel: { color: colors.textMuted, fontSize: font.sm, fontWeight: weight.semibold, marginTop: space.lg, marginBottom: space.sm },
+  notesInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: colors.text,
+    fontSize: font.base,
+  },
   doneBox: {
     alignItems: 'center', paddingVertical: space.xxl, paddingHorizontal: space.lg,
     marginHorizontal: space.lg, marginTop: space.lg,

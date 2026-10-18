@@ -10,7 +10,16 @@ import LeafletMap from '../../src/LeafletMap';
 import { gpsApi, tasksApi } from '../../src/api';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
-import { colors, space, font, weight, radius, hit, shadow } from '../../src/theme';
+import { colors, space, font, weight, radius, hit, shadow, statusColors } from '../../src/theme';
+
+// 今天的任务，司机扫一眼要的是几点：只显示时分
+function fmtTime(value?: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 type DriverPos = {
   driverId: string;
@@ -119,18 +128,32 @@ export default function TrackingScreen() {
             styles.driverTodayList,
             driverTodayTasks.length === 0 && { flex: 1, justifyContent: 'center' },
           ]}
-          renderItem={({ item, index }) => (
-            <View style={styles.driverTodayCard}>
-              <Text style={styles.driverTodayNo}>#{String(index + 1).padStart(2, '0')}</Text>
-              <Text style={styles.driverTodayName} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
-              <Text style={styles.driverTodayMeta} numberOfLines={1}>
-                {(item.cargo || t('d.cargoFallback'))} · {item.endLocation || t('trk.noDest')}
-              </Text>
-              <Text style={styles.driverTodayStatus}>
-                {item.status === 'in_progress' ? t('d.sInProgress') : item.status === 'assigned' ? t('d.sToAccept') : t('d.fCompleted')}
-              </Text>
-            </View>
-          )}
+          renderItem={({ item, index }) => {
+            const st = statusColors[item.status as keyof typeof statusColors] || statusColors.assigned;
+            const time = fmtTime(item.scheduledAt);
+            return (
+              <View style={styles.driverTodayCard}>
+                <View style={styles.driverTodayTop}>
+                  <Text style={styles.driverTodayNo}>#{String(index + 1).padStart(2, '0')}</Text>
+                  {!!time && (
+                    <View style={styles.driverTodayTimeRow}>
+                      <Ionicons name="time-outline" size={16} color={colors.text} />
+                      <Text style={styles.driverTodayTime}>{time}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.driverTodayName} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
+                <Text style={styles.driverTodayMeta} numberOfLines={1}>
+                  {(item.cargo || t('d.cargoFallback'))} · {item.endLocation || t('trk.noDest')}
+                </Text>
+                <View style={[styles.driverTodayStatus, { backgroundColor: st.bg, borderColor: st.border }]}>
+                  <Text style={[styles.driverTodayStatusText, { color: st.text }]}>
+                    {item.status === 'in_progress' ? t('d.sInProgress') : item.status === 'assigned' ? t('d.sToAccept') : t('d.fCompleted')}
+                  </Text>
+                </View>
+              </View>
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.driverTodayEmpty}>
               <Ionicons name="clipboard-outline" size={40} color={colors.accent} style={{ marginBottom: space.md }} />
@@ -251,11 +274,26 @@ const styles = StyleSheet.create({
     padding: space.lg,
     marginBottom: space.md,
   },
+  driverTodayTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.sm,
+  },
   driverTodayNo: {
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: weight.heavy,
-    marginBottom: space.sm,
+  },
+  driverTodayTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
+  driverTodayTime: {
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: weight.heavy,
   },
   driverTodayName: {
     color: colors.text,
@@ -269,10 +307,16 @@ const styles = StyleSheet.create({
     fontWeight: weight.medium,
   },
   driverTodayStatus: {
-    color: colors.info,
+    alignSelf: 'flex-start',
+    marginTop: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+  },
+  driverTodayStatusText: {
     fontSize: font.sm,
     fontWeight: weight.bold,
-    marginTop: space.md,
   },
   driverTodayEmpty: {
     alignItems: 'center',

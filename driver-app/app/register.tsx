@@ -84,7 +84,9 @@ export default function RegisterScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <Image source={require('../assets/log.png')} style={styles.logo} resizeMode="cover" />
+            <View style={styles.logoPlate}>
+              <Image source={require('../assets/log.png')} style={styles.logo} resizeMode="contain" />
+            </View>
             <Text style={styles.title}>{t('reg.title')}</Text>
             <Text style={styles.subtitle}>{t('reg.subtitle')}</Text>
           </View>
@@ -156,7 +158,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   header: { alignItems: 'center', marginBottom: space.xxl },
-  logo: { width: 84, height: 84, borderRadius: radius.pill, marginBottom: space.md },
+  // logo 本身是深色图：和登录页一样垫一块浅色底板，否则在深色卡片上几乎看不见
+  logoPlate: {
+    width: 88, height: 88, borderRadius: radius.xl, backgroundColor: colors.text,
+    alignItems: 'center', justifyContent: 'center', marginBottom: space.md,
+  },
+  logo: { width: 80, height: 80, borderRadius: radius.lg },
   title: { fontSize: font.xl, fontWeight: weight.heavy, color: colors.text, textAlign: 'center' },
   subtitle: { fontSize: font.sm, color: colors.textMuted, marginTop: space.xs, textAlign: 'center' },
   inputWrap: {

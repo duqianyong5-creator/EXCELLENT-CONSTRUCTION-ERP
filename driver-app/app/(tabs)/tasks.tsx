@@ -5,7 +5,7 @@ import {
   DeviceEventEmitter, AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,19 +16,13 @@ import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
 import { startBackgroundGps, stopBackgroundGps } from '../../src/backgroundLocation';
-import { colors, space, font, weight, radius, hit } from '../../src/theme';
+import { colors, space, font, weight, radius, hit, statusColors } from '../../src/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GPS_UPLOAD_INTERVAL_MS = 10000;
 
-// 状态配色只按语义取:待派=品牌琥珀,已派=信息蓝,进行中=绿,已完成=中性灰,已取消=红
-const STATUS_COLOR: Record<string, { bg: string; text: string; border: string }> = {
-  pending: { bg: colors.accentSoft, text: colors.accent, border: colors.accent },
-  assigned: { bg: colors.infoSoft, text: colors.info, border: colors.info },
-  in_progress: { bg: colors.successSoft, text: colors.success, border: colors.success },
-  completed: { bg: colors.border, text: colors.textMuted, border: colors.borderStrong },
-  cancelled: { bg: colors.dangerSoft, text: colors.danger, border: colors.danger },
-};
+// 状态配色全 App 一套，定义在 theme.ts
+const STATUS_COLOR: Record<string, { bg: string; text: string; border: string }> = statusColors;
 
 export default function TasksScreen() {
   // 顶部安全区按机型取：原来写死 56，iPhone Pro 的灵动岛是 59~62，标题会被压住
@@ -71,6 +65,7 @@ export default function TasksScreen() {
   const [todayOnly, setTodayOnly] = useState(false);
   const [completeTask, setCompleteTask] = useState<any>(null);
   const [completePhotos, setCompletePhotos] = useState<string[]>([]);
+  const [completeNotes, setCompleteNotes] = useState('');
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const gpsInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const gpsResumedFor = useRef<string | null>(null);
@@ -107,6 +102,17 @@ export default function TasksScreen() {
     const sub = DeviceEventEmitter.addListener('tasks:refresh', () => { load(); });
     return () => sub.remove();
   }, [load]);
+
+  // 任务详情页的「开始」带着 ?accept=<id> 跳回来：接单必须填车牌，车上的定位器靠它对到任务。
+  // 用路由参数而不是事件：从通知冷启动时列表可能还没加载完，参数会等到任务到了再生效
+  const { accept: acceptParam } = useLocalSearchParams<{ accept?: string }>();
+  useEffect(() => {
+    if (!acceptParam) return;
+    const target = tasks.find((tk: any) => tk.id === acceptParam);
+    if (!target) return; // 列表还在加载，等下一次
+    router.setParams({ accept: '' });
+    if (target.status === 'assigned') openAcceptTask(target);
+  }, [tasks, acceptParam]);
 
   useEffect(() => {
     return () => {
@@ -314,6 +320,7 @@ export default function TasksScreen() {
   const openCompleteTask = (task: any) => {
     setCompleteTask(task);
     setCompletePhotos([]);
+    setCompleteNotes('');
   };
 
   const handleTakeCompletePhoto = async () => {
@@ -348,11 +355,14 @@ export default function TasksScreen() {
           type: 'image/jpeg',
         } as any);
       });
+      // 后端读的字段叫 notes（以前这里发 completionNotes，备注从来没存进去过）
+      if (completeNotes.trim()) formData.append('notes', completeNotes.trim());
       await tasksApi.complete(completeTask.id, formData);
       stopGpsUpload();
       dispatch(setActiveTask(null));
       setCompleteTask(null);
       setCompletePhotos([]);
+      setCompleteNotes('');
       await load();
       showAppAlert(t('d.finishDone'), t('d.finishDoneMsg'));
     } catch (e: any) {
@@ -401,12 +411,11 @@ export default function TasksScreen() {
     return t('d.sToAccept');
   };
 
-  const getDriverAccent = (task: any) => {
-    if (isDriverTaskOverdue(task)) return colors.danger;
-    if (task.status === 'assigned') return colors.accent;
-    if (task.status === 'in_progress') return colors.info;
-    if (task.status === 'completed') return colors.success;
-    return colors.textFaint;
+  // 司机端和管理端用同一套状态色（见 STATUS_COLOR）。以前司机端把进行中画成蓝、已完成画成绿，
+  // 同一个状态在两个角色眼里是两种颜色。逾期借用红色：它和取消一样是要跳出来的
+  const getDriverStatusStyle = (task: any) => {
+    if (isDriverTaskOverdue(task)) return STATUS_COLOR.cancelled;
+    return STATUS_COLOR[task.status] || STATUS_COLOR.assigned;
   };
 
   // 车牌归一化规则与后端 normalizePlate 保持一致（大小写、空格、连字符、中点都忽略）
@@ -495,6 +504,18 @@ export default function TasksScreen() {
     return [it.fullName, it.username, it.email].some((v) => String(v || '').toLowerCase().includes(q));
   });
 
+  // 通知弹窗一直在，但没有任何按钮能打开它；未读数也算了却没显示
+  const bell = (
+    <TouchableOpacity style={styles.headerIconBtn} onPress={() => setNotificationsOpen(true)} activeOpacity={0.8}>
+      <Ionicons name="notifications-outline" size={22} color={colors.accent} />
+      {unreadCount > 0 && (
+        <View style={styles.unreadBadge}>
+          <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -509,9 +530,21 @@ export default function TasksScreen() {
   if (role === 'driver') {
     return (
       <View style={styles.driverPage}>
+        <FlatList
+          data={filteredDriverTasks}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          // 问候、统计、筛选、搜索跟着列表一起滚：原来固定在顶上占掉半屏，小屏手机只剩两张卡的位置
+          ListHeaderComponent={(
         <View style={[styles.driverHeader, { paddingTop: insets.top + space.lg }]}>
-              <Text style={styles.driverGreeting}>{t('d.greetingPrefix')}{driverName}</Text>
-              <Text style={styles.driverSubTitle}>{driverSubtitle}</Text>
+              <View style={styles.headerTopRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.driverGreeting} numberOfLines={1}>{t('d.greetingPrefix')}{driverName}</Text>
+                  <Text style={styles.driverSubTitle}>{driverSubtitle}</Text>
+                </View>
+                {bell}
+              </View>
 
               <View style={styles.driverStatsGrid}>
                 <TouchableOpacity
@@ -522,8 +555,8 @@ export default function TasksScreen() {
                   <Text style={[styles.driverStatValue, { color: todayOnly ? colors.accent : colors.info }]}>{todayOnly ? todayCount : tasks.length}</Text>
                   <Text style={styles.driverStatLabel}>{todayOnly ? t('d.statToday') : t('d.statTotal')}</Text>
                 </TouchableOpacity>
-                <View style={[styles.driverStatCard, styles.driverStatAmber]}>
-                  <Text style={[styles.driverStatValue, { color: colors.accent }]}>{driverInProgressCount}</Text>
+                <View style={[styles.driverStatCard, styles.driverStatGreen]}>
+                  <Text style={[styles.driverStatValue, { color: colors.success }]}>{driverInProgressCount}</Text>
                   <Text style={styles.driverStatLabel}>{t('d.statActive')}</Text>
                 </View>
                 <View style={[styles.driverStatCard, styles.driverStatRed]}>
@@ -565,10 +598,7 @@ export default function TasksScreen() {
                 />
               </View>
             </View>
-        <FlatList
-          data={filteredDriverTasks}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
+          )}
           contentContainerStyle={[
             styles.driverListContentScroll,
             filteredDriverTasks.length === 0 && { flexGrow: 1 },
@@ -591,19 +621,22 @@ export default function TasksScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const accent = getDriverAccent(item);
+            const st = getDriverStatusStyle(item);
             const statusText = getDriverStatusText(item);
             const clientName = getPersonName(item.client);
             return (
               <TouchableOpacity
-                style={[styles.driverTaskCard, { borderLeftColor: accent }]}
-                activeOpacity={1}
+                style={[styles.driverTaskCard, { borderLeftColor: st.text }]}
+                // 整张卡可点：待接受的进接单流程，其余看详情（照片、工时、备注都在那里）
+                onPress={() => (item.status === 'assigned' ? openAcceptTask(item) : router.push(`/task/${item.id}`))}
+                activeOpacity={0.85}
               >
-                <View style={[styles.driverStatusBadge, styles.driverStatusBadgeAbs, { backgroundColor: `${accent}22` }]}>
-                  <Text style={[styles.driverStatusText, { color: accent }]}>{statusText}</Text>
+                <View style={styles.driverTaskHead}>
+                  <Text style={styles.driverTaskTitle} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
+                  <View style={[styles.driverStatusBadge, { backgroundColor: st.bg, borderColor: st.border }]}>
+                    <Text style={[styles.driverStatusText, { color: st.text }]}>{statusText}</Text>
+                  </View>
                 </View>
-
-                <Text style={[styles.driverTaskTitle, styles.driverTaskTitlePad]} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
                 <Text style={styles.driverTaskMeta} numberOfLines={1}>
                   {(item.cargo || t('d.cargoFallback'))}{clientName !== '-' ? ` · ${clientName}` : ''}
                 </Text>
@@ -799,6 +832,7 @@ export default function TasksScreen() {
                   onPress={() => {
                     setCompleteTask(null);
                     setCompletePhotos([]);
+                    setCompleteNotes('');
                   }}
                   style={styles.modalClose}
                   activeOpacity={0.8}
@@ -831,6 +865,14 @@ export default function TasksScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
+                <TextInput
+                  value={completeNotes}
+                  onChangeText={setCompleteNotes}
+                  multiline
+                  style={styles.completeNotesInput}
+                  placeholder={t('td.notesPh')}
+                  placeholderTextColor={colors.textFaint}
+                />
 
                 <TouchableOpacity
                   style={[styles.completeSubmitBtn, completingTaskId && styles.btnDisabled]}
@@ -887,13 +929,19 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      <FlatList
+        data={filteredAdminTasks}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        // 标题、统计、筛选、搜索跟着列表一起滚（同司机端）
+        ListHeaderComponent={(
       <View style={[styles.header, { paddingTop: insets.top + space.lg }]}>
         <View style={styles.headerTopRow}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.headerTitle}>{title}</Text>
             <Text style={styles.headerSub}>{getToday()}</Text>
           </View>
+          {bell}
           <TouchableOpacity style={styles.headerIconBtn} onPress={load} activeOpacity={0.8}>
             <Ionicons name="refresh" size={22} color={colors.accent} />
           </TouchableOpacity>
@@ -908,12 +956,12 @@ export default function TasksScreen() {
             <Text style={[styles.driverStatValue, { color: todayOnly ? colors.accent : colors.info }]}>{todayOnly ? todayCount : tasks.length}</Text>
             <Text style={styles.driverStatLabel}>{todayOnly ? t('d.statToday') : t('d.statTotal')}</Text>
           </TouchableOpacity>
-          <View style={[styles.driverStatCard, styles.driverStatAmber]}>
-            <Text style={[styles.driverStatValue, { color: colors.accent }]}>{getInProgressCount()}</Text>
+          <View style={[styles.driverStatCard, styles.driverStatGreen]}>
+            <Text style={[styles.driverStatValue, { color: colors.success }]}>{getInProgressCount()}</Text>
             <Text style={styles.driverStatLabel}>{t('tasks.inProgress')}</Text>
           </View>
-          <View style={[styles.driverStatCard, styles.driverStatGreen]}>
-            <Text style={[styles.driverStatValue, { color: colors.success }]}>{getCompletedCount()}</Text>
+          <View style={[styles.driverStatCard, styles.driverStatMuted]}>
+            <Text style={[styles.driverStatValue, { color: colors.textMuted }]}>{getCompletedCount()}</Text>
             <Text style={styles.driverStatLabel}>{t('tasks.completed')}</Text>
           </View>
         </View>
@@ -975,12 +1023,8 @@ export default function TasksScreen() {
           />
         </View>
       </View>
-
-      {/* Task List */}
-      <FlatList
-        data={filteredAdminTasks}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={tasks.length === 0 ? styles.empty : { padding: space.lg }}
+        )}
+        contentContainerStyle={[styles.adminListContent, filteredAdminTasks.length === 0 && { flexGrow: 1 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1547,17 +1591,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  // 左右留白由列表内容统一给（头部现在也是列表的一部分）
   driverListContentScroll: {
     paddingHorizontal: space.lg,
-    paddingTop: space.lg,
     paddingBottom: space.xxxl,
   },
   driverHeader: {
     paddingTop: space.huge + space.lg,
-    paddingHorizontal: space.lg,
     backgroundColor: colors.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   driverGreeting: {
     color: colors.text,
@@ -1598,6 +1639,10 @@ const styles = StyleSheet.create({
   },
   driverStatGreen: {
     borderColor: colors.success,
+  },
+  /** 已完成是「过去的事」，和已完成标签一样用中性灰，别抢进行中的绿 */
+  driverStatMuted: {
+    borderColor: colors.borderStrong,
   },
   /** 「只看今天」选中态 */
   driverStatCardOn: {
@@ -1670,30 +1715,30 @@ const styles = StyleSheet.create({
     padding: space.lg,
     marginBottom: space.md,
   },
+  /** 标题和状态标签同一行：标题收缩、标签不压缩（原来标签绝对定位在右上角，标题要留 80 的右内边距躲它） */
+  driverTaskHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    marginBottom: space.xs,
+  },
   driverStatusBadge: {
+    flexShrink: 0,
     borderRadius: radius.sm,
+    borderWidth: 1,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
-  },
-  driverStatusBadgeAbs: {
-    position: 'absolute',
-    top: space.md,
-    right: space.md,
-    zIndex: 1,
-  },
-  /** 给右上角绝对定位的状态标签让位,标题才不会压到它下面 */
-  driverTaskTitlePad: {
-    paddingRight: space.huge * 2,
   },
   driverStatusText: {
     fontSize: font.sm,
     fontWeight: weight.heavy,
   },
   driverTaskTitle: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: font.lg,
     fontWeight: weight.heavy,
-    marginBottom: space.xs,
   },
   driverTaskMeta: {
     color: colors.textMuted,
@@ -1847,6 +1892,19 @@ const styles = StyleSheet.create({
     fontSize: font.sm,
     fontWeight: weight.heavy,
   },
+  completeNotesInput: {
+    minHeight: 72,
+    textAlignVertical: 'top',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: colors.text,
+    fontSize: font.base,
+    marginBottom: space.lg,
+  },
   completeSubmitBtn: {
     backgroundColor: colors.success,
     borderRadius: radius.md,
@@ -1888,14 +1946,15 @@ const styles = StyleSheet.create({
     marginTop: space.md,
     fontWeight: weight.bold,
   },
-  empty: {
-    flex: 1,
+  adminListContent: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xxxl,
   },
   emptyBox: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: space.huge * 2,
+    paddingVertical: space.huge,
   },
   emptyIconContainer: {
     width: 80,
@@ -1951,7 +2010,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
     paddingTop: space.huge + space.lg,
     paddingBottom: space.lg,
-    paddingHorizontal: space.lg,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -1977,6 +2035,25 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -space.xs,
+    right: -space.xs,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  unreadBadgeText: {
+    color: colors.text,
+    fontSize: font.xs,
+    fontWeight: weight.heavy,
   },
   createBtn: {
     flexDirection: 'row',

@@ -19,7 +19,7 @@ export default function ProfileScreen() {
   const dispatch = useDispatch();
   const router = useRouter();
   const { user } = useSelector((s: RootState) => s.auth);
-  const { t } = useLang();
+  const { t, toggle } = useLang();
   const insets = useSafeAreaInsets();
 
   const [fullName, setFullName] = useState(user?.fullName || '');
@@ -99,7 +99,6 @@ export default function ProfileScreen() {
               {String(user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()}
             </Text>
           </View>
-          <View style={styles.statusIndicator} />
         </View>
         <Text style={styles.name}>{user?.fullName || user?.username}</Text>
         <Text style={styles.email}>{user?.email}</Text>
@@ -215,6 +214,24 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* 设置：语言开关原来只在登录页有，登进来之后就再也切不了 */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionIconBox}>
+            <Ionicons name="settings-outline" size={16} color={colors.accent} />
+          </View>
+          <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
+        </View>
+        <TouchableOpacity style={styles.settingRow} onPress={toggle} activeOpacity={0.8}>
+          <Ionicons name="language-outline" size={20} color={colors.textMuted} />
+          <Text style={styles.settingLabel}>{t('profile.language')}</Text>
+          <View style={styles.settingValuePill}>
+            <Text style={styles.settingValue}>{t('profile.languageValue')}</Text>
+            <Ionicons name="swap-horizontal" size={16} color={colors.accent} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {/* 退出登录 */}
       <TouchableOpacity
         style={styles.logoutBtn}
@@ -286,17 +303,6 @@ const styles = StyleSheet.create({
     fontSize: font.display,
     color: colors.onAccent,
     fontWeight: weight.heavy,
-  },
-  statusIndicator: {
-    position: 'absolute',
-    bottom: space.xs,
-    right: space.xs,
-    width: 20,
-    height: 20,
-    borderRadius: radius.pill,
-    backgroundColor: colors.success,
-    borderWidth: 3,
-    borderColor: colors.bg,
   },
   name: {
     fontSize: font.xl,
@@ -386,6 +392,35 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     backgroundColor: colors.accent,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: hit.min,
+  },
+  settingLabel: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: font.base,
+    fontWeight: weight.semibold,
+  },
+  settingValuePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    minHeight: hit.compact,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  settingValue: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: weight.bold,
   },
   logoutBtn: {
     backgroundColor: colors.dangerSoft,

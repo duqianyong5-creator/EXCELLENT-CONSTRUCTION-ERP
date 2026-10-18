@@ -83,7 +83,8 @@ export class TasksController {
   // 手机拍的工地照片压缩后通常 1~3MB，10MB 一张足够。
   @UseInterceptors(FilesInterceptor('images', 5, {
     storage: memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 10 },
+    // fieldSize：文本字段（完工备注）默认上限 1MB，一条记录就能塞进 1MB 文字；4KB 足够
+    limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 10, fieldSize: 4 * 1024 },
     fileFilter: (_req, file, cb) => {
       const ok = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype);
       cb(ok ? null : new BadRequestException(ErrorCode.UPLOAD_IMAGE_ONLY), ok);

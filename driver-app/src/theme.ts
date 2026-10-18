@@ -110,5 +110,17 @@ export const shadow = {
   },
 } as const;
 
-export const theme = { colors, space, font, weight, radius, hit, shadow } as const;
+/**
+ * 任务状态配色，全 App 一套：待派=品牌琥珀，已派(待接受)=信息蓝，进行中=绿，已完成=中性灰，已取消=红。
+ * 司机端、管理端、今日任务页都从这里取——同一个状态在谁眼里都是同一种颜色。
+ */
+export const statusColors = {
+  pending: { bg: colors.accentSoft, text: colors.accent, border: colors.accent },
+  assigned: { bg: colors.infoSoft, text: colors.info, border: colors.info },
+  in_progress: { bg: colors.successSoft, text: colors.success, border: colors.success },
+  completed: { bg: colors.border, text: colors.textMuted, border: colors.borderStrong },
+  cancelled: { bg: colors.dangerSoft, text: colors.danger, border: colors.danger },
+} as const;
+
+export const theme = { colors, space, font, weight, radius, hit, shadow, statusColors } as const;
 export default theme;
