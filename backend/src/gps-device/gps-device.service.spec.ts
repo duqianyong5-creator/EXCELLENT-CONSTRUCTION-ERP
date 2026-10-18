@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { ErrorCode } from '../common/i18n/messages';
 import { GpsDeviceService, normalizePlate } from './gps-device.service';
 import { TaskStatus } from '../tasks/task.entity';
 import type { Position } from './jt808.codec';
@@ -401,5 +402,94 @@ describe('GpsDeviceService: 设备连上后补传的存货', () => {
     const { service, alarms } = build();
     await service.deviceOnline('051160004464');
     expect(alarms.deviceBackOnline).toHaveBeenCalledWith('51160004464');
+  });
+});
+
+describe('GpsDeviceService: SIM ICCID', () => {
+  const ICCID = '898600F11926F0185264';
+
+  it('normalizes a hand-typed ICCID and rejects something that is not one', async () => {
+    const { service } = build({ device: null });
+    const created = await service.create({ deviceNo: '51160004464', iccid: ' 8986 00f1 1926 f018 5264 ' });
+    expect(created.iccid).toBe(ICCID);
+    await expect(service.create({ deviceNo: '51160004464', iccid: '12345' })).rejects.toBeInstanceOf(BadRequestException);
+    // 报的得是 ICCID 的错，不是设备号的错
+    await expect(service.create({ deviceNo: '51160004464', iccid: 'F'.repeat(20) })).rejects.toMatchObject({ message: ErrorCode.DEVICE_ICCID_INVALID });
+    const blank = await service.create({ deviceNo: '51160004464', iccid: '  ' });
+    expect(blank.iccid).toBeNull();
+    const none = await service.create({ deviceNo: '51160004464' });
+    expect(none.iccid).toBeNull();
+  });
+
+  it('update(): omitted leaves the ICCID alone, null clears it', async () => {
+    const { service, repo } = build({ device: { id: 'dev1', deviceNo: '51160004464', vehiclePlate: 'ABC 123', enabled: true, iccid: ICCID } });
+    await service.update('dev1', { name: 'truck 1' });
+    expect((repo.save.mock.calls[0] as any)[0].iccid).toBe(ICCID);
+    await service.update('dev1', { iccid: null as any });
+    expect((repo.save.mock.calls[1] as any)[0].iccid).toBeNull();
+  });
+
+  it('update() can set or clear the ICCID', async () => {
+    const { service, repo } = build();
+    await service.update('dev1', { iccid: ICCID.toLowerCase() });
+    expect((repo.save.mock.calls[0] as any)[0].iccid).toBe(ICCID);
+    await service.update('dev1', { iccid: '' });
+    expect((repo.save.mock.calls[1] as any)[0].iccid).toBeNull();
+  });
+
+  it('takes the ICCID the device reports, writes it once, and logs a SIM change', async () => {
+    const { service, repo, device } = build();
+    const warn = jest.spyOn((service as any).logger, 'warn');
+    await service.touch('51160004464', { iccid: ICCID });
+    expect((repo.update.mock.calls[0] as any)[1]).toMatchObject({ iccid: ICCID });
+    expect(warn).not.toHaveBeenCalled(); // 第一次知道这张卡，不是换卡
+    await service.touch('51160004464', { iccid: ICCID });
+    expect((repo.update.mock.calls[1] as any)[1]).not.toHaveProperty('iccid'); // 没变就不重写
+    await service.touch('51160004464', { iccid: '89640000000000000001' });
+    // 日志只留尾 6 位：ICCID 是计费标识，全值在库里
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('SIM changed: …185264 -> …000001'));
+    expect(device.iccid).toBe('89640000000000000001');
+  });
+
+  it('stops following a device whose ICCID flaps (frames replayed with a known device number)', async () => {
+    const { service, repo, device } = build();
+    const warn = jest.spyOn((service as any).logger, 'warn');
+    const a = '89860000000000000001';
+    const b = '89860000000000000002';
+    for (let i = 0; i < 10; i++) await service.touch('51160004464', { iccid: i % 2 ? b : a });
+    // 前 3 次跟着变（a, b, a），之后库里保持不动，只多一条「在刷」的警告
+    const written = repo.update.mock.calls.map((c: any) => c[1].iccid).filter(Boolean);
+    expect(written).toEqual([a, b, a]);
+    expect(device.iccid).toBe(a);
+    expect(warn.mock.calls.filter(([m]) => String(m).includes('keeps changing'))).toHaveLength(1);
+  });
+
+  it('picks the ICCID out of a position report too', async () => {
+    const { service, repo } = build();
+    await service.ingest('51160004464', pos({ extras: { raw: new Map(), iccid: ICCID } }));
+    expect((repo.update.mock.calls[0] as any)[1]).toMatchObject({ iccid: ICCID });
+  });
+
+  it('a blind-zone backfill point still records the ICCID (the SIM is static) but not the old battery', async () => {
+    const { service, repo } = build();
+    const old = new Date(Date.now() - 2 * 24 * 3600 * 1000);
+    await service.ingest('51160004464', pos({ time: old, extras: { raw: new Map(), iccid: ICCID, batteryPercent: 12 } }), { batch: true, blindZone: true });
+    const patch: any = (repo.update.mock.calls[0] as any)[1];
+    expect(patch.iccid).toBe(ICCID);
+    expect(patch.batteryPercent).toBeUndefined();
+  });
+
+  it('the device-reported ICCID overrides a hand-typed one and says so', async () => {
+    const { service, repo } = build({ device: { id: 'dev1', deviceNo: '51160004464', enabled: true, iccid: '8986001111111111111' } });
+    const warn = jest.spyOn((service as any).logger, 'warn');
+    await service.touch('51160004464', { iccid: ICCID });
+    expect((repo.update.mock.calls[0] as any)[1].iccid).toBe(ICCID);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('SIM changed'));
+  });
+
+  it('touch() for an unregistered device writes nothing', async () => {
+    const { service, repo } = build();
+    await service.touch('999', { iccid: ICCID });
+    expect(repo.update).not.toHaveBeenCalled();
   });
 });

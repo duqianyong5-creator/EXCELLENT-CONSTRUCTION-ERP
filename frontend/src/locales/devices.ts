@@ -35,6 +35,8 @@ export const devices: LocaleBundle = {
     'devices.colDeviceNo': '设备号',
     'devices.colPlate': '车牌',
     'devices.unbound': '未绑定',
+    'devices.colIccid': 'SIM 卡 ICCID',
+    'devices.iccidUnknown': '未上报',
     'devices.colStatus': '状态',
     'devices.online': '在线',
     'devices.offline': '离线',
@@ -65,7 +67,6 @@ export const devices: LocaleBundle = {
     // 网关状态
     'devices.gatewayFailed': '定位器网关启动失败：{{error}}',
     'devices.gatewayFailedDesc': '设备将无法连接。常见原因是端口被占用，改 JT808_PORT 后重新部署。',
-    'devices.gatewayRunning': '网关已启动，监听 TCP 端口 <code>{{port}}</code>；当前在线 <bold>{{online}}</bold> / {{total}} 台。设备的服务器地址请配置为本后端对外的 TCP 地址（Railway：Networking → TCP Proxy）。',
     'devices.gatewayOff': '定位器网关未启动：后端未设置环境变量 JT808_PORT。',
 
     // 未登记设备
@@ -98,6 +99,9 @@ export const devices: LocaleBundle = {
     'devices.plateExtra': '必须与司机接单时填写的车牌一致（不区分大小写与空格）',
     'devices.fieldName': '备注名称',
     'devices.namePlaceholder': '例如：1 号车 / 张三的车',
+    'devices.fieldIccid': 'SIM 卡 ICCID',
+    'devices.iccidPattern': '以 89 开头，共 18~22 位数字或 A~F 字母',
+    'devices.iccidExtra': '设备上线后会自动上报并填入；也可以照 SIM 卡上印的号码手填（留空表示未知）',
     'devices.fieldEnabled': '启用',
   },
   en: {
@@ -128,6 +132,8 @@ export const devices: LocaleBundle = {
     'devices.colDeviceNo': 'Device No.',
     'devices.colPlate': 'Plate',
     'devices.unbound': 'Unbound',
+    'devices.colIccid': 'SIM ICCID',
+    'devices.iccidUnknown': 'Not reported',
     'devices.colStatus': 'Status',
     'devices.online': 'Online',
     'devices.offline': 'Offline',
@@ -156,7 +162,6 @@ export const devices: LocaleBundle = {
 
     'devices.gatewayFailed': 'Tracker gateway failed to start: {{error}}',
     'devices.gatewayFailedDesc': 'Devices cannot connect. Usually the port is already in use — change JT808_PORT and redeploy.',
-    'devices.gatewayRunning': 'Gateway is running and listening on TCP port <code>{{port}}</code>; <bold>{{online}}</bold> of {{total}} devices online. Point the trackers at this backend’s public TCP address (Railway: Networking → TCP Proxy).',
     'devices.gatewayOff': 'Tracker gateway is not running: JT808_PORT is not set on the backend.',
 
     'devices.unregisteredTitle': 'Unregistered devices are trying to connect',
@@ -185,6 +190,9 @@ export const devices: LocaleBundle = {
     'devices.plateExtra': 'Must match the plate the driver types when accepting a job (case and spaces are ignored)',
     'devices.fieldName': 'Name',
     'devices.namePlaceholder': 'e.g. Truck #1',
+    'devices.fieldIccid': 'SIM ICCID',
+    'devices.iccidPattern': 'Starts with 89, 18-22 digits or letters A-F in total',
+    'devices.iccidExtra': 'Filled in automatically once the tracker reports it; you can also type the number printed on the SIM (leave empty if unknown)',
     'devices.fieldEnabled': 'Enabled',
   },
 };

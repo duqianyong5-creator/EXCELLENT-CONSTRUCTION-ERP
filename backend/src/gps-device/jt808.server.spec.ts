@@ -296,15 +296,62 @@ describe('Jt808Server (TCP gateway)', () => {
       const c = client(port);
       await c.ready;
       for (let i = 0; i < 3; i++) {
-        c.socket.write(encodeFrame(0x0107, KNOWN, 20 + i, Buffer.from([1, 2, 3])));
+        c.socket.write(encodeFrame(0x0112, KNOWN, 20 + i, Buffer.from([1, 2, 3])));
         await c.waitFor(MsgId.PLATFORM_ACK);
       }
-      const lines = logSpy.mock.calls.map(([m]) => String(m)).filter((m) => m.includes('sent 0x0107'));
-      expect(lines).toEqual([`device ${KNOWN_NO} sent 0x0107 (3 bytes, acked, not processed)`]);
+      const lines = logSpy.mock.calls.map(([m]) => String(m)).filter((m) => m.includes('sent 0x0112'));
+      expect(lines).toEqual([`device ${KNOWN_NO} sent 0x0112 (3 bytes, acked, not processed)`]);
       c.socket.destroy();
     } finally {
       logSpy.mockRestore();
     }
+  });
+
+  it('stores the SIM ICCID the device reports via 0x1107 and 0x0107', async () => {
+    const iccid = '898600F11926F0185264';
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeFrame(MsgId.ICCID, KNOWN, 9, Buffer.concat([
+      Buffer.from([20]), Buffer.from(iccid, 'latin1'), Buffer.from([4]), Buffer.from('A522', 'latin1'),
+    ])));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await until(() => devices.touch.mock.calls.length >= 1, 3000, 'touch');
+    expect(devices.touch).toHaveBeenCalledWith(KNOWN_NO, { iccid });
+
+    const attrs = Buffer.alloc(48);
+    Buffer.from('898600f11926f0185264', 'hex').copy(attrs, 34);
+    c.socket.write(encodeFrame(MsgId.ATTRIBUTES, KNOWN, 10, attrs));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await until(() => devices.touch.mock.calls.length >= 2, 3000, 'touch x2');
+    expect(devices.touch.mock.calls[1]).toEqual([KNOWN_NO, { iccid }]);
+    c.socket.destroy();
+  });
+
+  it('0x1107 from an unregistered device is refused and never reaches touch', async () => {
+    const c = client(port);
+    await c.ready;
+    const body = Buffer.concat([Buffer.from([20]), Buffer.from('898600F11926F0185264', 'latin1')]);
+    c.socket.write(encodeFrame(MsgId.ICCID, '000087654321', 1, body));
+    const a = await c.waitFor(MsgId.PLATFORM_ACK);
+    expect(a.body[4]).toBe(AckResult.FAIL);
+    await flush();
+    expect(devices.touch).not.toHaveBeenCalled();
+    expect(server.getUnregistered().some((u) => u.deviceNo === '87654321')).toBe(true);
+    server.clearUnregistered('87654321');
+    c.socket.destroy();
+  });
+
+  it('garbage 0x1107 / short 0x0107 keep the device alive without inventing an ICCID', async () => {
+    const c = client(port);
+    await c.ready;
+    c.socket.write(encodeFrame(MsgId.ICCID, KNOWN, 11, Buffer.concat([Buffer.from([20]), Buffer.from('ABCDE')])));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    c.socket.write(encodeFrame(MsgId.ATTRIBUTES, KNOWN, 12, Buffer.alloc(40)));
+    await c.waitFor(MsgId.PLATFORM_ACK);
+    await until(() => devices.touch.mock.calls.length >= 2, 3000, 'touch x2');
+    expect(devices.touch.mock.calls[0]).toEqual([KNOWN_NO, {}]);
+    expect(devices.touch.mock.calls[1]).toEqual([KNOWN_NO, {}]);
+    c.socket.destroy();
   });
 
   it('applies the timezone announced by 0x1007 to later positions', async () => {

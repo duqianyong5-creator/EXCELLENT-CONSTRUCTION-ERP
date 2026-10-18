@@ -395,6 +395,8 @@ export interface PositionExtras {
   moving?: boolean; // 0xE5
   alarmExt?: Buffer; // 0xE7 8 字节（原始）
   alarmExtState?: AlarmExtState; // 0xE7 解析后的报警/开关状态
+  /** SIM 卡 ICCID，来自 0xEB 子项 0x00B2（10 字节；中国移动的卡会带字母，按十六进制字符读） */
+  iccid?: string;
   voltage?: number; // 0xF0 0.01V
   currentMa?: number; // 0xF1
   gpsSatellites?: number; // 0xF2
@@ -474,11 +476,79 @@ export function parseExtras(buf: Buffer): PositionExtras {
       case 0xf2: if (len >= 1) ex.gpsSatellites = val[0]; break;
       case 0xf5: if (len >= 1) ex.networkType = val[0] === 1 ? '4G' : '2G'; break;
       case 0xf6: if (len >= 8) ex.imei = bcdToString(val.subarray(0, 8)).replace(/^0+/, ''); break;
+      case 0xeb: {
+        const iccid = parseExtendedTlv(val).get(0x00b2);
+        if (iccid && iccid.length === 10) ex.iccid = normalizeIccid(decodeIccidBcd(iccid)) ?? undefined;
+        break;
+      }
       default: break;
     }
     i += 2 + len;
   }
   return ex;
+}
+
+/**
+ * 0xEB 扩展：[长度(2)][子ID(2)][数据…] 重复，长度含子 ID 本身。
+ * 厂家 V1.54 文档里 0xEB 写的是基站列表，但这批固件实际发的是这种 TLV（2026-09-28 抓包验证：
+ * 0x00B2 = ICCID，0x00D8 = 4G 基站，0x00B9 = WiFi 列表）。只取需要的，其余原样忽略。
+ */
+export function parseExtendedTlv(buf: Buffer): Map<number, Buffer> {
+  const out = new Map<number, Buffer>();
+  let i = 0;
+  while (i + 4 <= buf.length) {
+    const len = buf.readUInt16BE(i);
+    const id = buf.readUInt16BE(i + 2);
+    if (len < 2 || i + 2 + len > buf.length) break; // 长度不合法：后面的也解不出来，停
+    out.set(id, buf.subarray(i + 4, i + 2 + len));
+    i += 2 + len;
+  }
+  return out;
+}
+
+/** 10 字节 ICCID：每个半字节一个字符。中国移动的 ICCID 真的含字母（厂家 0x1107 就是为此而设），不能当纯数字 BCD 读 */
+export function decodeIccidBcd(buf: Buffer): string {
+  return buf.toString('hex').toUpperCase();
+}
+
+/**
+ * ICCID 一律 89 开头（E.118 的电信行业标识），后面 16~20 位。字母只会是 A~F：
+ * 它来自半字节解码，不是任意文本。收紧之后，0x0107 若按另一种布局排、第 34 字节起是版本号文字，
+ * 解出来的 "56312E…" 会被拒掉，而不是当成「换卡」把真 ICCID 覆盖掉。
+ */
+const ICCID_RE = /^89[0-9A-F]{16,20}$/;
+
+/** 规范化 ICCID：去空白、大写；不像 ICCID 的返回 null（全 0 / 全 F 这类「没插卡」填充值自然过不了 89 前缀） */
+export function normalizeIccid(raw: string | null | undefined): string | null {
+  const v = String(raw ?? '').replace(/\s+/g, '').toUpperCase();
+  return ICCID_RE.test(v) ? v : null;
+}
+
+/**
+ * 0x1107 上传 ICCID：[长度(1)=20][ICCID 字符串][长度(1)][设备型号字符串]。
+ * 厂家专门为「带字母的 ICCID」加的消息。
+ */
+export function parseIccidMessage(body: Buffer): { iccid: string | null; model: string | null } {
+  if (body.length < 2) return { iccid: null, model: null };
+  const n = body[0];
+  const iccid = normalizeIccid(body.subarray(1, 1 + n).toString('latin1'));
+  let model: string | null = null;
+  if (body.length >= 2 + n) {
+    const m = body[1 + n];
+    const text = body.subarray(2 + n, 2 + n + m).toString('latin1').replace(/\0+$/, '').trim();
+    // 设备号可被伪造，这段文字会进日志：只认可打印 ASCII、限长，换行/控制符一律不要
+    model = /^[\x20-\x7E]{1,32}$/.test(text) ? text : null;
+  }
+  return { iccid, model };
+}
+
+/**
+ * 0x0107 查询终端属性应答：终端类型(2) 制造商(5) 型号(20) 终端ID(7) 之后、第 34 字节起是 SIM 卡 ICCID BCD[10]。
+ * 只取 ICCID，硬件/固件版本目前用不上。
+ */
+export function parseTerminalAttributes(body: Buffer): { iccid: string | null } {
+  if (body.length < 44) return { iccid: null };
+  return { iccid: normalizeIccid(decodeIccidBcd(body.subarray(34, 44))) };
 }
 
 /** 解析 0x0200 消息体（也用于 0x0704 里的每一项） */

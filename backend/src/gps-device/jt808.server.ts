@@ -8,6 +8,7 @@ import {
   parsePosition, parseBatchPositions, decodeTimezone, encodeTimezone,
   buildPlatformAck, buildRegisterAck, buildTimeSyncAck, buildSetParams, buildReboot, buildPositionQuery,
   realtimeUploadParam, dwordParam, byteParam, stringParam, MAX_BATCH_ITEMS,
+  parseIccidMessage, parseTerminalAttributes,
 } from './jt808.codec';
 import { ErrorCode } from '../common/i18n/messages';
 
@@ -695,8 +696,23 @@ export class Jt808Server implements OnModuleInit, OnModuleDestroy {
         }
         return;
       }
+      case MsgId.ATTRIBUTES: {
+        // 0x0107 终端属性：里面带 SIM 卡 ICCID（BCD）
+        ack();
+        const { iccid } = parseTerminalAttributes(frame.body);
+        await this.devices.touch(deviceNo, iccid ? { iccid } : {});
+        return;
+      }
+      case MsgId.ICCID: {
+        // 0x1107：厂家为「带字母的 ICCID」专门加的消息。记不记日志由 service 按「有没有变」决定，
+        // 这里不逐帧打——设备号可被伪造，逐帧日志就是任人刷的日志
+        ack();
+        const { iccid } = parseIccidMessage(frame.body);
+        await this.devices.touch(deviceNo, iccid ? { iccid } : {});
+        return;
+      }
       default: {
-        // 0x0107 属性、0x1107 ICCID、0x0112/0x0114 等：统一通用应答，保持终端在线。
+        // 0x0112/0x0114 等：统一通用应答，保持终端在线。
         // 每种记一次：设备在断电、休眠这些关头发了什么我们没处理的消息，是排查时唯一的线索
         if (!session.unhandledMsgIds.has(frame.msgId) && session.unhandledMsgIds.size < 32) {
           session.unhandledMsgIds.add(frame.msgId);

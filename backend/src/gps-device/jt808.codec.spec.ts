@@ -1,4 +1,5 @@
 import {
+  parseExtendedTlv, parseIccidMessage, parseTerminalAttributes, normalizeIccid,
   AckResult, MsgId, RegisterResult, ParamId, AlarmBit, ExtAlarmBit,
   decodeAlarms, parseAlarmExt,
   bcdToString, stringToBcd, normalizeDeviceNo,
@@ -215,6 +216,12 @@ describe('parsePosition on the vendor 0x0200 example', () => {
     expect(withE4('e4020150')).toMatchObject({ externalPower: false, batteryPercent: 80 });
     expect(withE4('e4020250').externalPower).toBeUndefined();
     expect(withE4('e4020250').batteryPercent).toBe(80);
+  });
+
+  it('reads the SIM ICCID out of the 0xEB extension (sub-item 0x00B2, letters included)', () => {
+    // 2026-09-28 真机抓包：0xEB 里是 [长度][子ID][数据] 的 TLV，不是文档写的基站列表
+    const b = Buffer.concat([body.subarray(0, 28), H('eb0e 000c 00b2 898600f11926f0185264')]);
+    expect(parsePosition(b, 8)!.extras.iccid).toBe('898600F11926F0185264');
   });
 
   it('ignores a truncated trailing extra item', () => {
@@ -477,5 +484,75 @@ describe('0x8600 设置圆形区域', () => {
     const codec = require('./jt808.codec');
     expect(codec.buildSetCircularArea).toBeUndefined();
     expect(Object.values(MsgId).some((id) => (id as number) >= 0x8600 && (id as number) <= 0x86ff)).toBe(false);
+  });
+});
+
+describe('SIM ICCID messages', () => {
+  const ICCID = '898600F11926F0185264';
+
+  it('parseExtendedTlv splits [len][id][data] items and stops at a bad length', () => {
+    const tlv = parseExtendedTlv(H('000c 00b2 898600f11926f0185264 0003 00a8 64 0006 0089 fffffffd'));
+    expect(tlv.get(0x00b2)!.toString('hex')).toBe('898600f11926f0185264');
+    expect(tlv.get(0x00a8)![0]).toBe(0x64);
+    expect(tlv.get(0x0089)!.toString('hex')).toBe('fffffffd');
+    expect(parseExtendedTlv(H('ffff 00b2 01')).size).toBe(0); // 长度超出：不解
+    expect(parseExtendedTlv(H('0001 00b2')).size).toBe(0); // 长度 < 2：停，不会原地打转
+    expect(parseExtendedTlv(H('0000 00b2 aa')).size).toBe(0);
+  });
+
+  it('0xEB: only a 10-byte 0x00B2 counts, and a bad inner length does not eat the extras after it', () => {
+    const withEb = (hex: string) => parsePosition(Buffer.concat([Buffer.alloc(28), H(hex)]), 8)!.extras;
+    expect(withEb('eb0f 000d 00b2 898600f11926f018526400').iccid).toBeUndefined(); // 11 字节
+    expect(withEb('eb0e 000c 00b2 ffffffffffffffffffff').iccid).toBeUndefined(); // 没插卡的填充值
+    const ex = withEb('eb05 ffff 00b2 01 3001 2a');
+    expect(ex.iccid).toBeUndefined();
+    expect(ex.signalPercent).toBe(42); // 后面的 0x30 照常解
+  });
+
+  it('parseIccidMessage reads 0x1107: [len][iccid][len][model]', () => {
+    const body = Buffer.concat([Buffer.from([20]), Buffer.from(ICCID, 'latin1'), Buffer.from([4]), Buffer.from('A522', 'latin1')]);
+    expect(parseIccidMessage(body)).toEqual({ iccid: ICCID, model: 'A522' });
+    expect(parseIccidMessage(Buffer.from([20]))).toEqual({ iccid: null, model: null });
+    expect(parseIccidMessage(Buffer.concat([Buffer.from([3]), Buffer.from('abc')])).iccid).toBeNull(); // 不像 ICCID
+    // 型号会进日志：带换行 / 控制符的不要
+    const hostile = Buffer.concat([Buffer.from([20]), Buffer.from(ICCID, 'latin1'), Buffer.from([9]), Buffer.from('A5\n[FAKE]', 'latin1')]);
+    expect(parseIccidMessage(hostile).model).toBeNull();
+    // 长度字节大于实际内容、空消息体：不抛错，当没报
+    expect(parseIccidMessage(Buffer.concat([Buffer.from([20]), Buffer.from('ABCDE')]))).toEqual({ iccid: null, model: null });
+    expect(parseIccidMessage(Buffer.alloc(0))).toEqual({ iccid: null, model: null });
+    // 小写、19 位、型号带 NUL 结尾
+    const lower = Buffer.concat([Buffer.from([19]), Buffer.from('8986001234567890123', 'latin1'), Buffer.from([6]), Buffer.from('A522\0\0', 'latin1')]);
+    expect(parseIccidMessage(lower)).toEqual({ iccid: '8986001234567890123', model: 'A522' });
+  });
+
+  it('parseTerminalAttributes takes the BCD ICCID at byte 34 of 0x0107', () => {
+    const body = Buffer.alloc(48);
+    H('898600f11926f0185264').copy(body, 34);
+    expect(parseTerminalAttributes(body).iccid).toBe(ICCID);
+    expect(parseTerminalAttributes(Buffer.alloc(40)).iccid).toBeNull(); // 太短
+    expect(parseTerminalAttributes(body.subarray(0, 43)).iccid).toBeNull(); // 差一个字节
+    expect(parseTerminalAttributes(body.subarray(0, 44)).iccid).toBe(ICCID); // 刚好够
+    expect(parseTerminalAttributes(Buffer.alloc(48)).iccid).toBeNull(); // 全 0 不是 ICCID
+    const allF = Buffer.alloc(48); allF.fill(0xff, 34, 44);
+    expect(parseTerminalAttributes(allF).iccid).toBeNull();
+  });
+
+  it('normalizeIccid strips spaces, upper-cases and refuses non-ICCIDs', () => {
+    expect(normalizeIccid(' 8986 00f1 1926 f018 5264 ')).toBe(ICCID);
+    expect(normalizeIccid('12345')).toBeNull();
+    expect(normalizeIccid('')).toBeNull();
+    expect(normalizeIccid(undefined)).toBeNull();
+    // 0x0107 按另一种布局排时第 34 字节起是版本号文字 "V1.54.0.1"：解出来是 20 个十六进制字符，但不以 89 开头
+    expect(normalizeIccid('56312E35342E302E3100')).toBeNull();
+    expect(normalizeIccid('898600G11926F0185264')).toBeNull(); // G 不是半字节
+    // 长度：18~22 位（含 89 前缀）
+    expect(normalizeIccid('89' + '1'.repeat(15))).toBeNull();
+    expect(normalizeIccid('89' + '1'.repeat(16))).toBe('89' + '1'.repeat(16));
+    expect(normalizeIccid('8986001234567890123')).toBe('8986001234567890123'); // 19 位
+    expect(normalizeIccid('89' + '1'.repeat(20))).toBe('89' + '1'.repeat(20));
+    expect(normalizeIccid('89' + '1'.repeat(21))).toBeNull();
+    expect(normalizeIccid('F'.repeat(20))).toBeNull();
+    expect(normalizeIccid('0'.repeat(20))).toBeNull();
+    expect(normalizeIccid('8986-00F1-1926-F018-5264')).toBeNull(); // 连字符不是空白，不剥
   });
 });

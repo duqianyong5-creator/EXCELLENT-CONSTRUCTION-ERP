@@ -9,7 +9,7 @@ import {
   DisconnectOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import { RootState } from '../../store';
 import { gpsDevicesApi } from '../../api';
@@ -20,7 +20,7 @@ const AMBER = '#F59E0B';
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 type Device = {
-  id: string; deviceNo: string; vehiclePlate?: string | null; name?: string | null; enabled: boolean;
+  id: string; deviceNo: string; vehiclePlate?: string | null; name?: string | null; enabled: boolean; iccid?: string | null;
   lastSeenAt?: string | null; lastFixAt?: string | null; lastLatitude?: number | null; lastLongitude?: number | null;
   lastSpeed?: number | null; batteryPercent?: number | null; externalPower?: boolean | null; signalPercent?: number | null;
   online: boolean; connection?: { addr: string; connectedAt: string; tzOffset: number } | null;
@@ -89,13 +89,13 @@ export default function DevicesPage() {
   const openCreate = (deviceNo = '') => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ deviceNo, vehiclePlate: '', name: '', enabled: true });
+    form.setFieldsValue({ deviceNo, vehiclePlate: '', name: '', iccid: '', enabled: true });
     setOpen(true);
   };
 
   const openEdit = (d: Device) => {
     setEditing(d);
-    form.setFieldsValue({ deviceNo: d.deviceNo, vehiclePlate: d.vehiclePlate || '', name: d.name || '', enabled: d.enabled });
+    form.setFieldsValue({ deviceNo: d.deviceNo, vehiclePlate: d.vehiclePlate || '', name: d.name || '', iccid: d.iccid || '', enabled: d.enabled });
     setOpen(true);
   };
 
@@ -104,7 +104,7 @@ export default function DevicesPage() {
     setSubmitting(true);
     try {
       if (editing) {
-        await gpsDevicesApi.update(editing.id, { vehiclePlate: values.vehiclePlate, name: values.name, enabled: values.enabled });
+        await gpsDevicesApi.update(editing.id, { vehiclePlate: values.vehiclePlate, name: values.name, iccid: values.iccid, enabled: values.enabled });
         message.success(t('devices.saved'));
       } else {
         await gpsDevicesApi.create(values);
@@ -158,6 +158,13 @@ export default function DevicesPage() {
       render: (v: string | null) => v
         ? <Tag color="gold" style={{ fontWeight: 700, letterSpacing: 1 }}>{v}</Tag>
         : <Text type="warning">{t('devices.unbound')}</Text>,
+    },
+    {
+      // 哪张卡装在哪台设备、哪辆车上：换本地卡以后这是唯一能对上的线索
+      title: t('devices.colIccid'), dataIndex: 'iccid', key: 'iccid', width: 200,
+      render: (v: string | null) => v
+        ? <Text copyable={{ text: v }} style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
+        : <Text type="secondary" style={{ fontSize: 12 }}>{t('devices.iccidUnknown')}</Text>,
     },
     {
       title: t('devices.colStatus'), key: 'status', width: 110,
@@ -299,26 +306,12 @@ export default function DevicesPage() {
           description={t('devices.gatewayFailedDesc')}
         />
       )}
-      {gateway && !gateway.error && (
-        gateway.port
-          ? (
-            <Alert
-              type="info" showIcon style={{ marginBottom: 16, borderRadius: 10 }}
-              message={(
-                <Trans
-                  i18nKey="devices.gatewayRunning"
-                  values={{ port: gateway.port, online: onlineCount, total: list.length }}
-                  components={{ code: <Text code />, bold: <Text strong /> }}
-                />
-              )}
-            />
-          )
-          : (
-            <Alert
-              type="warning" showIcon style={{ marginBottom: 16, borderRadius: 10 }}
-              message={t('devices.gatewayOff')}
-            />
-          )
+      {/* 网关正常时不再放一条说明横幅：在线数筛选器里有，服务器地址是部署时的事，天天看只是占地方 */}
+      {gateway && !gateway.error && !gateway.port && (
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 16, borderRadius: 10 }}
+          message={t('devices.gatewayOff')}
+        />
       )}
 
       {gateway && gateway.unregistered.length > 0 && (
@@ -422,7 +415,7 @@ export default function DevicesPage() {
         </div>
         <Table
           columns={columns} dataSource={visibleList} rowKey="id" loading={loading}
-          pagination={{ pageSize: 20 }} scroll={{ x: 1180 }}
+          pagination={{ pageSize: 20 }} scroll={{ x: 1380 }}
           locale={{ emptyText: t('devices.emptyText') }}
         />
       </Card>
@@ -449,6 +442,15 @@ export default function DevicesPage() {
           </Form.Item>
           <Form.Item name="name" label={t('devices.fieldName')}>
             <Input placeholder={t('devices.namePlaceholder')} maxLength={128} />
+          </Form.Item>
+          {/* 卡上印的号码常常四位一组带空格：输入时就去空格、转大写，校验和后端同一条规则（89 开头 + 16~20 位十六进制） */}
+          <Form.Item
+            name="iccid" label={t('devices.fieldIccid')}
+            normalize={(v) => String(v ?? '').replace(/\s+/g, '').toUpperCase()}
+            rules={[{ pattern: /^89[0-9A-F]{16,20}$/, message: t('devices.iccidPattern') }]}
+            extra={t('devices.iccidExtra')}
+          >
+            <Input placeholder="898600F11926F0185264" maxLength={22} style={{ fontFamily: 'monospace' }} />
           </Form.Item>
           <Form.Item name="enabled" label={t('devices.fieldEnabled')} valuePropName="checked">
             <Switch />

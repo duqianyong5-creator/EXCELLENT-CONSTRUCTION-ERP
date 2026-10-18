@@ -10,11 +10,12 @@ import { Geofence } from './geofence.entity';
  * 按 SQL 文本响应，而不是按调用顺序：DDL 语句增减时测试不会跟着碎掉。
  */
 function guardWith(opts: {
-  columnOk?: boolean; tableOk?: boolean; geofencesOk?: boolean; ddlFails?: boolean | number;
+  columnOk?: boolean; iccidOk?: boolean; tableOk?: boolean; geofencesOk?: boolean; ddlFails?: boolean | number;
 } = {}) {
-  const { columnOk = true, tableOk = true, geofencesOk = true, ddlFails = false } = opts;
+  const { columnOk = true, iccidOk = true, tableOk = true, geofencesOk = true, ddlFails = false } = opts;
   let ddlCalls = 0;
   const query = jest.fn(async (sql: string) => {
+    if (sql.includes("column_name = 'iccid'")) return [{ ok: iccidOk }];
     if (sql.includes('information_schema.columns')) return [{ ok: columnOk }];
     if (sql.includes("table_name = 'geofences'")) return [{ ok: geofencesOk }];
     if (sql.includes('information_schema.tables')) return [{ ok: tableOk }];
@@ -34,7 +35,17 @@ describe('GpsDeviceSchemaGuard', () => {
     await guard.ensureSchema();
     const executed = query.mock.calls.map((c) => c[0]);
     for (const ddl of GPS_DEVICE_DDL) expect(executed).toContain(ddl);
-    expect(executed.filter((s) => s.includes('information_schema'))).toHaveLength(3);
+    expect(executed.filter((s) => s.includes('information_schema'))).toHaveLength(4);
+  });
+
+  it('refuses to start when gps_devices.iccid is missing (the entity already selects it)', async () => {
+    const { guard } = guardWith({ iccidOk: false });
+    await expect(guard.ensureSchema()).rejects.toThrow(/gps_devices\.iccid/);
+  });
+
+  it('sets the lock timeout on the iccid ALTER too', () => {
+    const alter = GPS_DEVICE_DDL.find((s) => s.includes('ADD COLUMN IF NOT EXISTS iccid')) as string;
+    expect(alter).toMatch(/^SET lock_timeout = '5s'; ALTER/);
   });
 
   it('sets the lock timeout in the same statement as the ALTER (pool hands out other connections)', () => {
@@ -94,10 +105,10 @@ describe('GpsDeviceSchemaGuard', () => {
 
 describe('GPS_DEVICE_DDL matches the code and the SQL migration', () => {
   const createTable = GPS_DEVICE_DDL.find((s) => s.includes('CREATE TABLE IF NOT EXISTS gps_devices')) as string;
-  const migration = fs.readFileSync(
-    path.join(__dirname, '../../../database/migrations/2026-09-14_gps_devices.sql'),
-    'utf8',
-  );
+  // 列是分两次加的：建表那份 + 2026-10-19 补 iccid 那份，两份加起来要覆盖实体的每一列
+  const migration = ['2026-09-14_gps_devices.sql', '2026-10-19_gps_devices_iccid.sql']
+    .map((f) => fs.readFileSync(path.join(__dirname, '../../../database/migrations', f), 'utf8'))
+    .join('\n');
 
   it('creates every column the GpsDevice entity maps (drift guard)', () => {
     // 实体加了列却忘了改建表语句 => 生产上每个设备查询都 500，设备页直接空白
@@ -116,6 +127,15 @@ describe('GPS_DEVICE_DDL matches the code and the SQL migration', () => {
         expect(statement).toMatch(/IF NOT EXISTS/i);
       }
     }
+  });
+
+  it('the fresh-install database.sql also lists every entity column', () => {
+    // 老库走迁移脚本，新库走 database.sql：两条路都得有这些列
+    const fresh = fs.readFileSync(path.join(__dirname, '../../../database/database.sql'), 'utf8');
+    const columns = getMetadataArgsStorage().columns
+      .filter((c) => c.target === GpsDevice)
+      .map((c) => c.options.name || c.propertyName);
+    for (const name of columns) expect(fresh).toContain(name);
   });
 
   it('stays in sync with database/migrations (same table, columns and index)', () => {

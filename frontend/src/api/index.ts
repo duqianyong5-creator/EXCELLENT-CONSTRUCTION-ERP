@@ -96,9 +96,9 @@ export const vehiclesApi = {
 export const gpsDevicesApi = {
   list: () => api.get('/gps-devices'),
   gateway: () => api.get('/gps-devices/gateway'),
-  create: (data: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean }) =>
+  create: (data: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }) =>
     api.post('/gps-devices', data),
-  update: (id: string, data: { vehiclePlate?: string; name?: string; enabled?: boolean }) =>
+  update: (id: string, data: { vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }) =>
     api.patch(`/gps-devices/${id}`, data),
   delete: (id: string) => api.delete(`/gps-devices/${id}`),
   command: (id: string, data: { type: 'reboot' | 'realtime' | 'locate'; intervalSec?: number; tzOffset?: number }) =>

@@ -26,6 +26,13 @@ export class GpsDevice {
   @Column({ default: true })
   enabled: boolean;
 
+  /**
+   * SIM 卡 ICCID（20 位，中国移动的卡会带字母）。设备上报（0x1107 / 0x0107 / 定位附加 0xEB）时自动填，
+   * 也允许管理员手填——换了本地卡之后才知道哪张卡装在哪台设备、哪辆车上。
+   */
+  @Column({ length: 32, nullable: true })
+  iccid: string;
+
   // 统一用 timestamptz，与 database/migrations 里的建表语句一致；
   // 否则开发环境的 synchronize 会把列改成不带时区的 timestamp，两边时间差一个时区。
   @Column({ name: 'last_seen_at', type: 'timestamptz', nullable: true })

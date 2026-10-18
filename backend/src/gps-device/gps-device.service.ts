@@ -7,7 +7,7 @@ import { GpsService } from '../gps/gps.service';
 import { RucService } from '../ruc/ruc.service';
 import { DeviceAlarmService } from './device-alarm.service';
 import { haversineKm } from '../gps/geo.util';
-import { normalizeDeviceNo, Position } from './jt808.codec';
+import { normalizeDeviceNo, normalizeIccid, Position } from './jt808.codec';
 import { ErrorCode } from '../common/i18n/messages';
 import { normalizePlate } from './plate.util';
 
@@ -44,6 +44,17 @@ const MAX_PAST_SKEW_LIVE_MS = 5 * 60 * 1000;
  * 只有时钟可信时才这样认：时钟/时区没配对的设备报「几小时前」是配置错，仍按老办法用服务器时间兜底。
  */
 const REPLAY_LOG_GAP_MS = 5 * 60 * 1000;
+/**
+ * 一个设备号十分钟内 ICCID 换超过 3 次：不可能是真换卡，是有人拿着设备号在刷。
+ * 停止跟随（库里保留原值）、只警告一次，免得把真正的换卡提醒淹掉。
+ */
+const SIM_CHANGE_WINDOW_MS = 10 * 60 * 1000;
+const MAX_SIM_CHANGES_PER_WINDOW = 3;
+
+/** 日志里只留尾 6 位：ICCID 是 SIM 卡的身份 / 计费标识，库里有全值就够了 */
+function maskIccid(v: string): string {
+  return `…${v.slice(-6)}`;
+}
 
 
 function numberOrNull(v: unknown): number | null {
@@ -58,6 +69,8 @@ export class GpsDeviceService {
   private taskCache = new Map<string, { target: TaskTarget | null; at: number }>();
   /** deviceNo -> 上一次收到补传点的时间：一段补传只记一行日志 */
   private replays = new Map<string, number>();
+  /** deviceNo -> 十分钟窗口内 ICCID 变了几次 */
+  private simChanges = new Map<string, { windowStart: number; count: number; muted: boolean }>();
 
   constructor(
     @InjectRepository(GpsDevice) private repo: Repository<GpsDevice>,
@@ -120,6 +133,15 @@ export class GpsDeviceService {
     return plate;
   }
 
+  /** 管理员手填的 ICCID：空 = 清掉；填了就必须像一个 ICCID */
+  private cleanIccid(value: string | undefined | null): string | null {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    const iccid = normalizeIccid(raw);
+    if (!iccid) throw new BadRequestException(ErrorCode.DEVICE_ICCID_INVALID);
+    return iccid;
+  }
+
   private cleanName(value: string | undefined | null): string | null {
     const name = String(value ?? '').trim();
     if (!name) return null;
@@ -127,7 +149,7 @@ export class GpsDeviceService {
     return name;
   }
 
-  async create(dto: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean }): Promise<GpsDevice> {
+  async create(dto: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }): Promise<GpsDevice> {
     const deviceNo = normalizeDeviceNo(dto.deviceNo);
     // 机身标签上常同时印 15 位 IMEI 和 11 位设备号，填错了在这里直接说清楚
     if (/^\d{15}$/.test(deviceNo)) {
@@ -140,6 +162,7 @@ export class GpsDeviceService {
       deviceNo,
       vehiclePlate: this.cleanPlate(dto.vehiclePlate),
       name: this.cleanName(dto.name),
+      iccid: this.cleanIccid(dto.iccid),
       enabled: dto.enabled === undefined ? true : !!dto.enabled,
     });
     const saved = await this.repo.save(device);
@@ -147,11 +170,12 @@ export class GpsDeviceService {
     return saved;
   }
 
-  async update(id: string, dto: { vehiclePlate?: string; name?: string; enabled?: boolean }): Promise<GpsDevice> {
+  async update(id: string, dto: { vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }): Promise<GpsDevice> {
     const device = await this.repo.findOne({ where: { id } });
     if (!device) throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     if (dto.vehiclePlate !== undefined) device.vehiclePlate = this.cleanPlate(dto.vehiclePlate);
     if (dto.name !== undefined) device.name = this.cleanName(dto.name);
+    if (dto.iccid !== undefined) device.iccid = this.cleanIccid(dto.iccid);
     if (dto.enabled !== undefined) device.enabled = !!dto.enabled;
     const saved = await this.repo.save(device);
     this.invalidate(device.deviceNo);
@@ -215,12 +239,41 @@ export class GpsDeviceService {
     return target;
   }
 
-  /** 心跳 / 电量等非定位消息：只刷新在线时间与电量 */
-  async touch(rawNo: string, patch: Partial<Pick<GpsDevice, 'batteryPercent' | 'externalPower' | 'signalPercent'>> = {}): Promise<void> {
+  /**
+   * 设备自己报上来的 ICCID 永远以设备为准（管理员手填的可能抄错）。
+   * 换卡是要知道的事：以前那张卡可能还在别的车上、还在产生流量费。
+   * 顺手把缓存里的对象也改掉，30 秒缓存期内不会每帧重复报一次「换卡」。
+   */
+  private noteIccid(device: GpsDevice, iccid: string | undefined, patch: Partial<GpsDevice>): void {
+    if (!iccid || iccid === device.iccid) return;
+    const now = Date.now();
+    let s = this.simChanges.get(device.deviceNo);
+    if (!s || now - s.windowStart > SIM_CHANGE_WINDOW_MS) s = { windowStart: now, count: 0, muted: false };
+    s.count++;
+    if (this.simChanges.size >= MAX_DEVICE_CACHE_ENTRIES && !this.simChanges.has(device.deviceNo)) this.simChanges.clear();
+    this.simChanges.set(device.deviceNo, s);
+    if (s.count > MAX_SIM_CHANGES_PER_WINDOW) {
+      if (!s.muted) {
+        s.muted = true;
+        this.logger.warn(`${device.deviceNo} ICCID keeps changing (${s.count} times in 10 min) — ignoring further changes for now`);
+      }
+      return;
+    }
+    if (device.iccid) this.logger.warn(`${device.deviceNo} SIM changed: ${maskIccid(device.iccid)} -> ${maskIccid(iccid)}`);
+    else this.logger.log(`${device.deviceNo} reports SIM ICCID ${maskIccid(iccid)}`);
+    patch.iccid = iccid;
+    device.iccid = iccid;
+  }
+
+  /** 心跳 / 电量 / ICCID 等非定位消息：只刷新在线时间与这些状态 */
+  async touch(rawNo: string, patch: Partial<Pick<GpsDevice, 'batteryPercent' | 'externalPower' | 'signalPercent' | 'iccid'>> = {}): Promise<void> {
     const device = await this.findByDeviceNo(rawNo);
     if (!device) return;
+    const { iccid, ...rest } = patch;
+    const dbPatch: Partial<GpsDevice> = { lastSeenAt: new Date(), ...rest };
+    this.noteIccid(device, iccid ?? undefined, dbPatch);
     try {
-      await this.repo.update(device.id, { lastSeenAt: new Date(), ...patch });
+      await this.repo.update(device.id, dbPatch);
     } catch (e: any) {
       this.logger.warn(`touch ${device.deviceNo} failed: ${e?.message || e}`);
     }
@@ -279,6 +332,7 @@ export class GpsDeviceService {
       && Math.abs(pos.latitude) <= 90 && Math.abs(pos.longitude) <= 180;
 
     const patch: Partial<GpsDevice> = { lastSeenAt: new Date(now) };
+    this.noteIccid(device, pos.extras.iccid, patch); // 卡是静态的，补传的旧点带的也是同一张卡
     if (!historical) {
       if (pos.extras.batteryPercent !== undefined) patch.batteryPercent = pos.extras.batteryPercent;
       if (pos.extras.externalPower !== undefined) patch.externalPower = pos.extras.externalPower;

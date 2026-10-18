@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS gps_devices (
     vehicle_plate   VARCHAR(32),
     name            VARCHAR(128),
     enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    iccid           VARCHAR(32),
     last_seen_at    TIMESTAMPTZ,
     last_latitude   DECIMAL(10, 7),
     last_longitude  DECIMAL(10, 7),

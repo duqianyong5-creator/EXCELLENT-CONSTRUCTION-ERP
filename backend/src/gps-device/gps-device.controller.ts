@@ -21,14 +21,20 @@ export class GpsDeviceController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.DISPATCHER, UserRole.MONITOR)
   @ApiOperation({ summary: '车载定位器列表（含在线状态与当前任务）' })
-  async list() {
+  async list(@CurrentUser() user: { role: UserRole }) {
     const [devices, online] = [await this.service.listWithTasks(), this.server.getOnline()];
     const onlineMap = new Map(online.map((o) => [o.deviceNo, o]));
-    return devices.map((d) => ({
-      ...d,
-      online: onlineMap.has(d.deviceNo),
-      connection: onlineMap.get(d.deviceNo) ?? null,
-    }));
+    // 监控（大屏）账号常年登录、路过的人都看得到：SIM 卡号和设备来源地址不给它
+    const full = user.role !== UserRole.MONITOR;
+    return devices.map(({ iccid, ...d }) => {
+      const conn = onlineMap.get(d.deviceNo);
+      return {
+        ...d,
+        ...(full ? { iccid } : {}),
+        online: !!conn,
+        connection: conn ? (full ? conn : { tzOffset: conn.tzOffset }) : null,
+      };
+    });
   }
 
   @Get('plates')
@@ -53,7 +59,7 @@ export class GpsDeviceController {
   @Post()
   @Roles(UserRole.ADMIN, UserRole.DISPATCHER)
   @ApiOperation({ summary: '登记定位器（设备号 + 车牌）' })
-  async create(@Body() body: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean }) {
+  async create(@Body() body: { deviceNo: string; vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }) {
     const device = await this.service.create(body);
     this.server.clearUnregistered(device.deviceNo);
     return device;
@@ -61,7 +67,7 @@ export class GpsDeviceController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.DISPATCHER)
-  update(@Param('id') id: string, @Body() body: { vehiclePlate?: string; name?: string; enabled?: boolean }) {
+  update(@Param('id') id: string, @Body() body: { vehiclePlate?: string; name?: string; enabled?: boolean; iccid?: string }) {
     return this.service.update(id, body);
   }
 

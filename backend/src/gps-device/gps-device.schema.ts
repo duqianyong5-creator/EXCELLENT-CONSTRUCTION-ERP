@@ -21,6 +21,7 @@ export const GPS_DEVICE_DDL: string[] = [
       vehicle_plate   VARCHAR(32),
       name            VARCHAR(128),
       enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+      iccid           VARCHAR(32),
       last_seen_at    TIMESTAMPTZ,
       last_latitude   DECIMAL(10, 7),
       last_longitude  DECIMAL(10, 7),
@@ -34,6 +35,9 @@ export const GPS_DEVICE_DDL: string[] = [
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
    )`,
   `CREATE INDEX IF NOT EXISTS idx_gps_devices_plate ON gps_devices(vehicle_plate)`,
+  // 2026-10-19 追加：SIM 卡 ICCID。老库的表已经建好了，CREATE TABLE IF NOT EXISTS 不会补列。
+  // 同样要带 lock_timeout：滚动部署时旧实例还在每帧 UPDATE 这张表，ALTER 等锁不能把启动卡死
+  `SET lock_timeout = '5s'; ALTER TABLE gps_devices ADD COLUMN IF NOT EXISTS iccid VARCHAR(32)`,
   // 与 database/migrations 里的脚本保持一致：两条路径不能建出安全属性不同的表
   `ALTER TABLE gps_devices ENABLE ROW LEVEL SECURITY`,
   // 圆形电子围栏。设备端不支持 0x8600，围栏由平台侧逐点判定（见 geofence.service.ts）
@@ -101,6 +105,21 @@ export class GpsDeviceSchemaGuard implements OnModuleInit {
     if (!devicesOk) {
       throw new Error(
         'gps_devices table is missing and could not be created — run database/migrations/2026-09-14_gps_devices.sql. '
+        + `Details: ${failures.join(' | ') || 'no error reported'}`,
+      );
+    }
+
+    // 实体已经 select 这一列：列不在的话每一帧的 findByDeviceNo 和设备页都会 500，整个车队掉线。
+    // 上面那条 ALTER 失败会被收进 failures、启动照样继续 —— 所以这里必须单独验
+    const [{ ok: iccidOk }] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'gps_devices' AND column_name = 'iccid'
+       ) AS ok`,
+    );
+    if (!iccidOk) {
+      throw new Error(
+        'gps_devices.iccid is missing and could not be added — run database/migrations/2026-10-19_gps_devices_iccid.sql, then redeploy. '
         + `Details: ${failures.join(' | ') || 'no error reported'}`,
       );
     }

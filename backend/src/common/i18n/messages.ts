@@ -27,6 +27,7 @@ export const ErrorCode = {
   DEVICE_PLATE_TOO_LONG: 'DEVICE_PLATE_TOO_LONG',
   DEVICE_NAME_TOO_LONG: 'DEVICE_NAME_TOO_LONG',
   DEVICE_NO_INVALID: 'DEVICE_NO_INVALID',
+  DEVICE_ICCID_INVALID: 'DEVICE_ICCID_INVALID',
   DEVICE_NO_EXISTS: 'DEVICE_NO_EXISTS',
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
   DEVICE_OFFLINE: 'DEVICE_OFFLINE',
@@ -44,6 +45,7 @@ export const ErrorCode = {
   VEHICLE_DEVICE_PLATE_TAKEN: 'VEHICLE_DEVICE_PLATE_TAKEN',
 
   UPLOAD_IMAGE_ONLY: 'UPLOAD_IMAGE_ONLY',
+  NOTES_TOO_LONG: 'NOTES_TOO_LONG',
 
   RUC_PURCHASE_DATE_INVALID: 'RUC_PURCHASE_DATE_INVALID',
   RUC_READINGS_NOT_NUMBERS: 'RUC_READINGS_NOT_NUMBERS',
@@ -108,6 +110,10 @@ const MESSAGES: Record<string, Record<Lang, string>> = {
     zh: '设备号须为 5~20 位数字',
     en: 'Device number must be 5-20 digits',
   },
+  [ErrorCode.DEVICE_ICCID_INVALID]: {
+    zh: 'ICCID 须以 89 开头、共 18~22 位数字或 A~F 字母（印在 SIM 卡上，通常 20 位）',
+    en: 'ICCID must start with 89 and be 18-22 digits or letters A-F (printed on the SIM, usually 20 characters)',
+  },
   [ErrorCode.DEVICE_NO_EXISTS]: {
     zh: '该设备号已登记',
     en: 'Device number already registered',
@@ -163,6 +169,10 @@ const MESSAGES: Record<string, Record<Lang, string>> = {
     en: 'Another tracker is already bound to this plate — one per vehicle, or the mileage estimate breaks',
   },
 
+  [ErrorCode.NOTES_TOO_LONG]: {
+    zh: '备注过长，最多 2000 个字符',
+    en: 'Notes too long (max 2000 characters)',
+  },
   [ErrorCode.UPLOAD_IMAGE_ONLY]: {
     zh: '只能上传图片（JPG / PNG / WEBP / HEIC），单张不超过 10MB',
     en: 'Images only (JPG / PNG / WEBP / HEIC), up to 10MB each',
