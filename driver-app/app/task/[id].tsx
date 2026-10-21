@@ -8,8 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
 import { tasksApi, workRecordsApi } from '../../src/api';
-import { stopBackgroundGps } from '../../src/backgroundLocation';
-import { setActiveTask, setGpsRunning } from '../../src/store/taskSlice';
+import { setActiveTask } from '../../src/store/taskSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
@@ -23,7 +22,7 @@ export default function TaskDetailScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
   const { user } = useSelector((s: RootState) => s.auth);
-  const { isGpsRunning, activeTaskId } = useSelector((s: RootState) => s.task);
+  const { activeTaskId } = useSelector((s: RootState) => s.task);
   const { t } = useLang();
   const role = user?.role || '';
   const canOperate = role === 'driver';
@@ -58,13 +57,6 @@ export default function TaskDetailScreen() {
   }, [id]);
 
   useEffect(() => { loadTask(); }, [loadTask]);
-
-  // 完工后把后台定位停掉。以前这里只清自己的定时器，而上报其实是列表页起的后台服务——
-  // 从详情页完工的话它会一直跑到下次回到列表
-  const stopGpsUpload = useCallback(() => {
-    stopBackgroundGps();
-    dispatch(setGpsRunning(false));
-  }, [dispatch]);
 
   // 接单必须填车牌（车上的定位器靠车牌对到任务），这个流程在任务列表页：带着 accept 参数跳过去。
   // 以前这里直接 start，车牌是空的——那趟活的轨迹永远对不上定位器
@@ -117,7 +109,6 @@ export default function TaskDetailScreen() {
         text: t('td.completeOk'), onPress: async () => {
           try {
             setCompleting(true);
-            stopGpsUpload();
             const formData = new FormData();
             photos.forEach((uri, index) => {
               const filename = `photo_${index}.jpg`;
@@ -171,14 +162,6 @@ export default function TaskDetailScreen() {
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>{task.title}</Text>
       </View>
-
-      {/* GPS 状态栏 */}
-      {canOperate && isActive && (
-        <View style={styles.gpsBanner}>
-          <View style={styles.gpsIndicator} />
-          <Text style={styles.gpsText}>{t('td.gpsRunning')}</Text>
-        </View>
-      )}
 
       {/* 任务信息 */}
       <View style={styles.section}>
@@ -362,20 +345,6 @@ const styles = StyleSheet.create({
   },
   backText: { color: colors.accent, fontSize: font.sm, fontWeight: weight.heavy },
   topTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: font.lg, fontWeight: weight.bold },
-  gpsBanner: {
-    backgroundColor: colors.successSoft,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.success,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-  },
-  gpsIndicator: {
-    width: space.sm, height: space.sm, borderRadius: radius.pill, backgroundColor: colors.success,
-  },
-  gpsText: { color: colors.success, fontSize: font.sm, fontWeight: weight.semibold },
   section: {
     backgroundColor: colors.surface,
     marginHorizontal: space.lg,

@@ -2,24 +2,21 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Modal, TextInput, ScrollView, Image,
-  DeviceEventEmitter, AppState,
+  DeviceEventEmitter,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDispatch, useSelector } from 'react-redux';
-import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { gpsApi, gpsDevicesApi, notificationsApi, tasksApi, usersApi } from '../../src/api';
-import { setActiveTask, setGpsRunning } from '../../src/store/taskSlice';
+import { gpsDevicesApi, notificationsApi, tasksApi, usersApi } from '../../src/api';
+import { setActiveTask } from '../../src/store/taskSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { showAppAlert } from '../../src/AppDialog';
-import { startBackgroundGps, stopBackgroundGps } from '../../src/backgroundLocation';
 import { colors, space, font, weight, radius, hit, statusColors } from '../../src/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const GPS_UPLOAD_INTERVAL_MS = 10000;
 
 // 状态配色全 App 一套，定义在 theme.ts
 const STATUS_COLOR: Record<string, { bg: string; text: string; border: string }> = statusColors;
@@ -67,8 +64,6 @@ export default function TasksScreen() {
   const [completePhotos, setCompletePhotos] = useState<string[]>([]);
   const [completeNotes, setCompleteNotes] = useState('');
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
-  const gpsInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const gpsResumedFor = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     // 已退出登录(无角色)就别再拉取，否则会因没有 token 失败、在登录页弹「加载失败」
@@ -114,12 +109,6 @@ export default function TasksScreen() {
     if (target.status === 'assigned') openAcceptTask(target);
   }, [tasks, acceptParam]);
 
-  useEffect(() => {
-    return () => {
-      if (gpsInterval.current) clearInterval(gpsInterval.current);
-    };
-  }, []);
-
   const onRefresh = () => { setRefreshing(true); load(); };
 
   // 计划执行时间：Android 先选日期再选时间，合并成完整时间。
@@ -154,73 +143,12 @@ export default function TasksScreen() {
   const getPersonName = (person: any) =>
     person?.fullName || person?.username || person?.email || '-';
 
-  const uploadLocationOnce = async (taskId: string) => {
-    // 优先实时定位；拿不到（室内/信号弱）就用最后已知位置，保证仍能上报，地图不掉点
-    let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
-    if (!loc) loc = await Location.getLastKnownPositionAsync();
-    if (!loc) return;
-    await gpsApi.upload({
-      taskId,
-      latitude: loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      speed: Math.max(0, (loc.coords.speed ?? 0) * 3.6),
-      heading: loc.coords.heading ?? undefined,
-      accuracy: loc.coords.accuracy ?? undefined,
-    });
-  };
-
-  const ensureLocationPermission = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      showAppAlert(t('d.locPerm'), t('d.locPermMsg'));
-      return false;
-    }
-    return true;
-  };
-
-  const startGpsUpload = async (taskId: string) => {
-    if (gpsInterval.current) { clearInterval(gpsInterval.current); gpsInterval.current = null; }
-    dispatch(setGpsRunning(true));
-    // 先传一次，立刻有点
-    try { await uploadLocationOnce(taskId); } catch (e: any) {
-      if (__DEV__) console.log('[gps] first upload failed:', e?.message || e);
-    }
-    // 优先后台定位（锁屏/切后台也上报）
-    const bgOk = await startBackgroundGps(taskId);
-    if (bgOk) {
-      if (__DEV__) console.log('[gps] background location started');
-      return true; // 后台服务接管，不再开前台定时器
-    }
-    // 回退：前台定时上报（如 Expo Go 不支持后台时）
-    if (__DEV__) console.log('[gps] background not available, using foreground interval');
-    gpsInterval.current = setInterval(async () => {
-      try {
-        await uploadLocationOnce(taskId);
-      } catch (e: any) {
-        if (__DEV__) console.log('[gps] upload failed:', e?.message || e);
-      }
-    }, GPS_UPLOAD_INTERVAL_MS);
-    return true;
-  };
-
-  const stopGpsUpload = () => {
-    if (gpsInterval.current) {
-      clearInterval(gpsInterval.current);
-      gpsInterval.current = null;
-    }
-    dispatch(setGpsRunning(false));
-    stopBackgroundGps();
-    gpsResumedFor.current = null;
-  };
-
-  // 自动恢复 GPS：司机重开 App / 回到任务页时，若有「进行中」任务但还没在上报，就自动开始上报。
-  // 不用再手动重新接受，修掉「重开 App 后 GPS 不传」。
+  // The phone no longer reports GPS: the vehicle's own tracker does, matched to the job by the plate the
+  // driver picks when accepting. The store still needs to know the job in progress (the detail screen reads it).
   useEffect(() => {
     if (role !== 'driver') return;
     const active = tasks.find((tk: any) => tk.status === 'in_progress');
     if (!active) return;
-    if (gpsResumedFor.current === active.id) return; // 已为该任务启动过
-    gpsResumedFor.current = active.id;
     dispatch(setActiveTask({
       id: active.id,
       title: active.title,
@@ -228,19 +156,6 @@ export default function TasksScreen() {
       endLocation: active.endLocation,
       status: 'in_progress',
     }));
-    startGpsUpload(active.id);
-  }, [tasks, role]);
-
-  // 回到前台时,若有进行中任务,确保后台定位仍在跑。
-  // 这样「定位卡住时重进 App 即可恢复」——不必重新登录(startBackgroundGps 幂等,在跑则不重复启动)。
-  useEffect(() => {
-    if (role !== 'driver') return;
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s !== 'active') return;
-      const active = tasks.find((tk: any) => tk.status === 'in_progress');
-      if (active) startBackgroundGps(active.id);
-    });
-    return () => sub.remove();
   }, [tasks, role]);
 
   const openAcceptTask = (task: any) => {
@@ -273,10 +188,7 @@ export default function TasksScreen() {
     }
     try {
       setStartingTaskId(acceptTask.id);
-      const gpsReady = await ensureLocationPermission();
-      if (!gpsReady) return;
       await tasksApi.start(acceptTask.id, vehiclePlate.trim());
-      await startGpsUpload(acceptTask.id);
       dispatch(setActiveTask({
         id: acceptTask.id,
         title: acceptTask.title,
@@ -358,7 +270,6 @@ export default function TasksScreen() {
       // 后端读的字段叫 notes（以前这里发 completionNotes，备注从来没存进去过）
       if (completeNotes.trim()) formData.append('notes', completeNotes.trim());
       await tasksApi.complete(completeTask.id, formData);
-      stopGpsUpload();
       dispatch(setActiveTask(null));
       setCompleteTask(null);
       setCompletePhotos([]);
