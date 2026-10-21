@@ -144,7 +144,7 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
       // 卡车图标原来只靠 drop-shadow 撑在瓦片上，亮底影像里几乎糊掉，改成实心圆底盘
       var label = '<div style="display:flex;flex-direction:column;align-items:center">'
         + '<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:${font.xl}px;line-height:1;border-radius:${radius.pill}px;background:${colors.surface};border:1px solid ${colors.borderStrong};box-shadow:${overlayShadow}">🚛</div>'
-        + '<div style="margin-top:${space.xs}px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${colors.surface};color:${colors.text};border:1px solid ${colors.borderStrong};border-radius:${radius.sm}px;padding:${space.xs}px ${space.sm}px;font-size:${font.xs}px;font-weight:${weight.bold};box-shadow:${overlayShadow}">' + text + '</div>'
+        + '<div style="margin-top:${space.xs}px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${colors.surface};color:${colors.text};border:1px solid ${colors.borderStrong};border-radius:${radius.sm}px;padding:${space.xs}px ${space.sm}px;font-size:${font.xs}px;font-weight:${weight.semibold};box-shadow:${overlayShadow}">' + text + '</div>'
         + '</div>';
       var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [180, 48], iconAnchor: [90, 16] }) });
       m.bindPopup(

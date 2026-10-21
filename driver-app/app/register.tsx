@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
+import type { TextInputProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,11 +16,10 @@ import { colors, space, font, weight, radius, hit, shadow } from '../src/theme';
 /** How far the form card climbs over the hero's bottom edge */
 const CARD_OVERLAP = space.xxxl;
 
-/** Navy header shared by the form and the success state: logo tile, screen title, one-line hint */
+/** Navy header shared by the form and the success state: the login shell, with the screen title where the brand sits */
 function Hero({ title, subtitle, topInset }: { title: string; subtitle: string; topInset: number }) {
   return (
     <View style={[styles.hero, { paddingTop: topInset + space.xl }]}>
-      <View style={styles.heroGlow} />
       <View style={styles.logoTile}>
         <Image source={require('../assets/log.png')} style={styles.logo} resizeMode="contain" />
       </View>
@@ -29,14 +29,22 @@ function Hero({ title, subtitle, topInset }: { title: string; subtitle: string; 
   );
 }
 
-/** A labelled input with a leading icon; `children` renders trailing controls such as the eye button */
-function Field({ icon, name, label, focused, setFocused, children, ...props }: any) {
+type FieldProps = TextInputProps & {
+  name: string;
+  label: string;
+  focused: string | null;
+  setFocused: (name: string | null) => void;
+  /** Trailing controls inside the field, such as the eye button */
+  children?: React.ReactNode;
+};
+
+/** A caption label over a 48pt field on the inner surface; focus is the only time the accent appears */
+function Field({ name, label, focused, setFocused, children, ...props }: FieldProps) {
   const active = focused === name;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.inputWrap, active && styles.inputWrapFocused]}>
-        <Ionicons name={icon} size={20} color={active ? colors.accent : colors.textFaint} />
         <TextInput
           style={styles.input}
           placeholderTextColor={colors.textFaint}
@@ -101,7 +109,7 @@ export default function RegisterScreen() {
           <View style={bodyStyle}>
             <View style={styles.card}>
               <View style={styles.successIcon}>
-                <Ionicons name="checkmark" size={40} color={colors.success} />
+                <Ionicons name="checkmark" size={32} color={colors.success} />
               </View>
               <Text style={styles.successTitle}>{t('reg.successTitle')}</Text>
               <Text style={styles.successDesc}>{t('reg.successDesc')}</Text>
@@ -126,16 +134,16 @@ export default function RegisterScreen() {
           <View style={bodyStyle}>
             {/* Form card, floating over the hero's bottom edge */}
             <View style={styles.card}>
-              <Field icon="person-outline" label={t('login.account')} placeholder={t('reg.usernamePh')} value={form.username}
+              <Field label={t('login.account')} placeholder={t('reg.usernamePh')} value={form.username}
                 onChangeText={(v: string) => set('username', v)} name="username" focused={focused} setFocused={setFocused} autoCapitalize="none" />
-              <Field icon="mail-outline" label={t('profile.email')} placeholder={t('reg.emailPh')} value={form.email}
+              <Field label={t('profile.email')} placeholder={t('reg.emailPh')} value={form.email}
                 onChangeText={(v: string) => set('email', v)} name="email" focused={focused} setFocused={setFocused} keyboardType="email-address" autoCapitalize="none" />
-              <Field icon="id-card-outline" label={t('profile.name')} placeholder={t('reg.fullNamePh')} value={form.fullName}
+              <Field label={t('profile.name')} placeholder={t('reg.fullNamePh')} value={form.fullName}
                 onChangeText={(v: string) => set('fullName', v)} name="fullName" focused={focused} setFocused={setFocused} />
-              <Field icon="call-outline" label={t('profile.phone')} placeholder={t('reg.phonePh')} value={form.phone}
+              <Field label={t('profile.phone')} placeholder={t('reg.phonePh')} value={form.phone}
                 onChangeText={(v: string) => set('phone', v)} name="phone" focused={focused} setFocused={setFocused} keyboardType="phone-pad" />
 
-              {/* Role: a segmented control, the chosen pill filled amber */}
+              {/* Role: a segmented control on the field surface; the chosen segment is ink, amber stays with the primary button */}
               <View style={styles.field}>
                 <Text style={styles.label}>{t('reg.role')}</Text>
                 <View style={styles.segment}>
@@ -158,10 +166,10 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
-              <Field icon="lock-closed-outline" label={t('login.password')} placeholder={t('reg.passwordPh')} value={form.password}
+              <Field label={t('login.password')} placeholder={t('reg.passwordPh')} value={form.password}
                 onChangeText={(v: string) => set('password', v)} name="password" focused={focused} setFocused={setFocused} secureTextEntry={!showPassword}>
                 <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
                 </TouchableOpacity>
               </Field>
 
@@ -170,6 +178,7 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Secondary action as a text link, as on the login screen */}
             <View style={styles.footer}>
               <Text style={styles.footerText}>{t('reg.haveAccount')}</Text>
               <TouchableOpacity style={styles.footerBtn} onPress={() => router.replace('/login')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -199,7 +208,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '45%',
+    height: '35%',
     backgroundColor: colors.hero,
   },
   hero: {
@@ -207,37 +216,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: space.xxl,
     // Room for the card that climbs over the bottom edge
-    paddingBottom: CARD_OVERLAP + space.xxl,
-    overflow: 'hidden',
-  },
-  // A slightly lighter navy disc in the corner: depth without a second colour
-  heroGlow: {
-    position: 'absolute',
-    top: -140,
-    right: -80,
-    width: 300,
-    height: 300,
-    borderRadius: radius.pill,
-    backgroundColor: colors.heroAlt,
+    paddingBottom: CARD_OVERLAP + space.lg,
   },
   logoTile: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: space.md,
-    ...shadow.raised,
+    marginBottom: space.lg,
   },
   logo: {
-    width: 52,
-    height: 52,
+    width: 56,
+    height: 56,
     borderRadius: radius.md,
   },
   heroTitle: {
     fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontWeight: weight.bold,
     color: colors.heroText,
     textAlign: 'center',
   },
@@ -258,29 +255,31 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: -CARD_OVERLAP,
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     padding: space.xl,
-    ...shadow.raised,
+    ...shadow.card,
   },
   field: {
     marginBottom: space.lg,
   },
   label: {
-    fontSize: font.sm,
-    color: colors.textMuted,
-    fontWeight: weight.semibold,
-    marginBottom: space.sm,
+    fontSize: font.xs,
+    fontWeight: weight.medium,
+    color: colors.textFaint,
+    letterSpacing: 0.2,
+    marginBottom: space.xs,
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    minHeight: hit.min,
+    height: hit.min,
     paddingHorizontal: space.md,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+    // Clips the input (and its web focus ring) inside the border, so the amber focus border stays whole
+    overflow: 'hidden',
   },
   inputWrapFocused: {
     borderColor: colors.accent,
@@ -289,9 +288,14 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: space.md,
+    alignSelf: 'stretch',
+    paddingVertical: 0,
     fontSize: font.base,
     color: colors.text,
+    // The amber border on the wrapper shows focus; on web the browser ring is painted in the
+    // focused wrapper colour so it disappears instead of drawing a second, black ring
+    outlineWidth: 0,
+    outlineColor: colors.surface,
   },
   eyeBtn: {
     width: hit.min,
@@ -304,38 +308,38 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: 'row',
     gap: space.xs,
+    height: hit.min,
     padding: space.xs,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
   segmentBtn: {
     flex: 1,
-    minHeight: hit.compact,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   segmentBtnActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.text,
   },
   segmentText: {
     fontSize: font.sm,
     color: colors.textMuted,
-    fontWeight: weight.semibold,
+    fontWeight: weight.medium,
   },
   segmentTextActive: {
-    color: colors.onAccent,
-    fontWeight: weight.bold,
+    color: colors.surface,
+    fontWeight: weight.semibold,
   },
   submitBtn: {
-    minHeight: hit.min,
+    height: hit.min,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: space.sm,
+    marginTop: space.xs,
   },
   submitBtnDisabled: {
     opacity: 0.6,
@@ -343,8 +347,7 @@ const styles = StyleSheet.create({
   submitText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.bold,
-    letterSpacing: 0.2,
+    fontWeight: weight.semibold,
   },
   footer: {
     flexDirection: 'row',
@@ -365,11 +368,11 @@ const styles = StyleSheet.create({
   footerLink: {
     color: colors.accentDark,
     fontSize: font.sm,
-    fontWeight: weight.bold,
+    fontWeight: weight.semibold,
   },
   successIcon: {
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
     borderRadius: radius.pill,
     backgroundColor: colors.successSoft,
     alignItems: 'center',
@@ -378,8 +381,8 @@ const styles = StyleSheet.create({
     marginBottom: space.lg,
   },
   successTitle: {
-    fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontSize: font.lg,
+    fontWeight: weight.semibold,
     color: colors.text,
     textAlign: 'center',
   },
@@ -388,7 +391,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textMuted,
     marginTop: space.sm,
-    marginBottom: space.lg,
+    marginBottom: space.xl,
     textAlign: 'center',
   },
 });

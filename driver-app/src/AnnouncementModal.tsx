@@ -13,10 +13,11 @@ import { colors, space, font, weight, radius, hit, shadow } from './theme';
 
 const SEEN_KEY = 'seen_announcements';
 
-const TARGET_LABEL: Record<string, { key: string; color: string; soft: string }> = {
-  all: { key: 'ann.targetAll', color: colors.info, soft: colors.infoSoft },
-  client: { key: 'role.client', color: colors.success, soft: colors.successSoft },
-  driver: { key: 'role.driver', color: colors.accentDark, soft: colors.accentSoft },
+/** Who an announcement was sent to, shown as a word in the meta line */
+const TARGET_KEY: Record<string, string> = {
+  all: 'ann.targetAll',
+  client: 'role.client',
+  driver: 'role.driver',
 };
 
 export default function AnnouncementModal() {
@@ -93,7 +94,7 @@ export default function AnnouncementModal() {
 
           <View style={styles.header}>
             <View style={styles.headerIcon}>
-              <Ionicons name="megaphone" size={20} color={colors.accent} />
+              <Ionicons name="megaphone-outline" size={18} color={colors.accentDark} />
             </View>
             <Text style={styles.headerTitle} numberOfLines={1}>{t('ann.title')}</Text>
           </View>
@@ -105,18 +106,14 @@ export default function AnnouncementModal() {
             bounces={false}
           >
             {items.map((a, i) => {
-              const tg = TARGET_LABEL[a.targetRole] || TARGET_LABEL.all;
-              const date = formatDate(a.createdAt);
+              const meta = [t(TARGET_KEY[a.targetRole] || TARGET_KEY.all), formatDate(a.createdAt)]
+                .filter(Boolean)
+                .join(' · ');
               return (
                 <View key={a.id} style={[styles.item, i > 0 && styles.itemDivider]}>
-                  <View style={styles.itemTop}>
-                    <Text style={styles.itemTitle} numberOfLines={2}>{a.title}</Text>
-                    <View style={[styles.badge, { backgroundColor: tg.soft }]}>
-                      <Text style={[styles.badgeText, { color: tg.color }]}>{t(tg.key)}</Text>
-                    </View>
-                  </View>
+                  <Text style={styles.itemTitle} numberOfLines={2}>{a.title}</Text>
                   <Text style={styles.itemContent}>{a.content}</Text>
-                  {!!date && <Text style={styles.itemDate}>{date}</Text>}
+                  <Text style={styles.itemMeta}>{meta}</Text>
                 </View>
               );
             })}
@@ -148,7 +145,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     alignSelf: 'center',
-    width: 40,
+    width: 36,
     height: 4,
     borderRadius: radius.pill,
     backgroundColor: colors.borderStrong,
@@ -158,12 +155,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    marginBottom: space.md,
+    marginBottom: space.sm,
   },
   headerIcon: {
-    width: hit.compact,
-    height: hit.compact,
-    borderRadius: radius.md,
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
     backgroundColor: colors.accentSoft,
     justifyContent: 'center',
     alignItems: 'center',
@@ -173,7 +170,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   item: {
     paddingVertical: space.md,
@@ -182,54 +179,36 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  itemTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: space.sm,
-    marginBottom: space.sm,
-  },
   itemTitle: {
-    // 标题长了要自己收窄，不能顶到右边的标签上
-    flex: 1,
-    minWidth: 0,
     color: colors.text,
     fontSize: font.base,
     lineHeight: 22,
-    fontWeight: weight.bold,
-  },
-  badge: {
-    flexShrink: 0,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    borderRadius: radius.pill,
-  },
-  badgeText: {
-    fontSize: font.xs,
-    fontWeight: weight.bold,
+    fontWeight: weight.semibold,
   },
   itemContent: {
-    color: colors.text,
-    fontSize: font.base,
-    lineHeight: 24,
+    marginTop: space.xs,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    lineHeight: 20,
   },
-  itemDate: {
+  itemMeta: {
     marginTop: space.sm,
     color: colors.textFaint,
     fontSize: font.xs,
-    fontWeight: weight.medium,
+    lineHeight: 16,
+    letterSpacing: 0.2,
   },
   button: {
     marginTop: space.lg,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
-    minHeight: hit.min,
-    paddingVertical: space.md,
+    height: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
 });

@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useLang } from './i18n';
 import { colors, space, font, weight, radius, hit, shadow } from './theme';
 
 
 type Btn = { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' };
 type DialogState = { visible: boolean; title: string; message?: string; buttons: Btn[] };
+
+/** How a button is drawn: one filled confirm, a red one when destructive, a text-style cancel */
+type BtnKind = 'primary' | 'danger' | 'quiet' | 'cancel';
 
 // 全局可调用的主题化弹窗（替代系统白底 Alert.alert，与 App 的卡片+琥珀风格统一）
 let _show: (title: string, message?: string, buttons?: Btn[]) => void = () => {};
@@ -14,19 +18,31 @@ export function showAppAlert(title: string, message?: string, buttons?: Btn[]) {
 }
 
 export default function AppDialog() {
+  const { t } = useLang();
   const [s, setS] = useState<DialogState>({ visible: false, title: '', buttons: [] });
 
   useEffect(() => {
     _show = (title, message, buttons) =>
-      setS({ visible: true, title, message, buttons: buttons && buttons.length ? buttons : [{ text: 'OK' }] });
+      setS({ visible: true, title, message, buttons: buttons || [] });
     return () => { _show = () => {}; };
   }, []);
 
   const close = () => setS((p) => ({ ...p, visible: false }));
   const handle = (b: Btn) => { close(); if (b.onPress) setTimeout(b.onPress, 10); };
 
-  // Three or more choices stack vertically; one or two sit side by side
-  const stacked = s.buttons.length > 2;
+  // No buttons given: a single "close"
+  const buttons: Btn[] = s.buttons.length ? s.buttons : [{ text: t('common.close') }];
+  // Three or more choices stack vertically like an action sheet; one or two sit side by side
+  const stacked = buttons.length > 2;
+  // Only the last plain choice is filled amber; in a stack every choice stays quiet
+  const lastDefault = stacked
+    ? -1
+    : buttons.map((b) => !b.style || b.style === 'default').lastIndexOf(true);
+  const kindOf = (b: Btn, i: number): BtnKind => {
+    if (b.style === 'cancel') return 'cancel';
+    if (b.style === 'destructive') return 'danger';
+    return i === lastDefault ? 'primary' : 'quiet';
+  };
 
   return (
     <Modal visible={s.visible} transparent animationType="fade" onRequestClose={close}>
@@ -35,27 +51,16 @@ export default function AppDialog() {
           <Text style={styles.title}>{s.title}</Text>
           {!!s.message && <Text style={styles.message}>{s.message}</Text>}
           <View style={[styles.btnRow, stacked && styles.btnCol]}>
-            {s.buttons.map((b, i) => {
-              const cancel = b.style === 'cancel';
-              const danger = b.style === 'destructive';
+            {buttons.map((b, i) => {
+              const kind = kindOf(b, i);
               return (
                 <TouchableOpacity
                   key={i}
-                  style={[
-                    styles.btn,
-                    stacked && styles.btnFull,
-                    cancel ? styles.btnCancel : danger ? styles.btnDanger : styles.btnPrimary,
-                  ]}
-                  activeOpacity={0.85}
+                  style={[styles.btn, stacked ? styles.btnFull : styles.btnFlex, btnStyle[kind]]}
+                  activeOpacity={0.8}
                   onPress={() => handle(b)}
                 >
-                  <Text
-                    style={[
-                      styles.btnText,
-                      cancel ? styles.btnTextCancel : danger ? styles.btnTextDanger : styles.btnTextPrimary,
-                    ]}
-                    numberOfLines={1}
-                  >
+                  <Text style={[styles.btnText, btnTextStyle[kind]]} numberOfLines={1}>
                     {b.text}
                   </Text>
                 </TouchableOpacity>
@@ -79,9 +84,9 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 360,
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     padding: space.xl,
     ...shadow.raised,
   },
@@ -89,58 +94,55 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     lineHeight: 24,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   message: {
     color: colors.textMuted,
-    fontSize: font.base,
-    lineHeight: 24,
+    fontSize: font.sm,
+    lineHeight: 20,
     marginTop: space.sm,
   },
   btnRow: {
     flexDirection: 'row',
-    gap: space.md,
+    gap: space.sm,
     marginTop: space.xl,
   },
   btnCol: {
     flexDirection: 'column',
   },
   btn: {
-    flex: 1,
     // 对话框按钮是最常被误点的地方，给足可点高度（司机可能戴手套）
-    minHeight: hit.min,
+    height: hit.min,
     paddingHorizontal: space.lg,
-    paddingVertical: space.md,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Side by side: share the row equally
+  btnFlex: {
+    flex: 1,
+  },
+  // Stacked: full width at the fixed height (no flex, which would collapse the height on web)
   btnFull: {
-    flex: 0,
     width: '100%',
-  },
-  btnPrimary: {
-    backgroundColor: colors.accent,
-  },
-  btnDanger: {
-    backgroundColor: colors.danger,
-  },
-  btnCancel: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
   },
   btnText: {
     fontSize: font.base,
-    fontWeight: weight.bold,
-  },
-  btnTextPrimary: {
-    color: colors.onAccent,
-  },
-  btnTextDanger: {
-    color: colors.heroText,
-  },
-  btnTextCancel: {
-    color: colors.text,
+    fontWeight: weight.semibold,
   },
 });
+
+const btnStyle: Record<BtnKind, object> = {
+  primary: { backgroundColor: colors.accent },
+  danger: { backgroundColor: colors.danger },
+  quiet: { backgroundColor: colors.surfaceAlt },
+  // A text button: no box, so the one filled confirm is the only thing that stands out
+  cancel: { backgroundColor: 'transparent' },
+};
+
+const btnTextStyle: Record<BtnKind, object> = {
+  primary: { color: colors.onAccent },
+  danger: { color: colors.heroText },
+  quiet: { color: colors.text },
+  cancel: { color: colors.textMuted },
+};

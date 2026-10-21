@@ -48,11 +48,17 @@ export default function TrackingScreen() {
   // Staff can switch from trucks on a job to every registered GPS tracker, like the console's full-screen map
   const canToggleTrackers = role === 'admin' || role === 'dispatcher';
   const [showTrackers, setShowTrackers] = useState(false);
+  // a role without the toggle never keeps it on (e.g. the screen survived a switch of account)
+  useEffect(() => { if (!canToggleTrackers) setShowTrackers(false); }, [canToggleTrackers]);
   // Height of the floating header, so the map's controls start below it whatever the device
   const [headerHeight, setHeaderHeight] = useState(0);
   const timer = useRef<any>(null);
 
+  // drop answers that arrive after the view has switched (toggling quickly, slow network)
+  const fetchId = useRef(0);
   const fetchPositions = useCallback(async () => {
+    const myId = ++fetchId.current;
+    const stale = () => myId !== fetchId.current;
     try {
       if (role === 'driver') {
         const tasks: any[] = (await tasksApi.today()) as any;
@@ -83,7 +89,7 @@ export default function TrackingScreen() {
           })
           .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && !(p.latitude === 0 && p.longitude === 0))
           .sort((a, b) => rank[a.state!] - rank[b.state!] || String(a.driverName || '').localeCompare(String(b.driverName || '')));
-        setPositions(list);
+        if (!stale()) setPositions(list);
       } else if (role === 'admin' || role === 'dispatcher' || role === 'client') {
         // Staff get every truck on a job; a client gets only the trucks on that client's own jobs
         // (the server scopes it, the app cannot widen it). Both carry the driver's name.
@@ -99,7 +105,7 @@ export default function TrackingScreen() {
             taskId: p.task_id ?? p.taskId,
           }));
           list.sort((a, b) => String(a.driverName || '').localeCompare(String(b.driverName || '')));
-          setPositions(list);
+          if (!stale()) setPositions(list);
         }
       }
     } catch {
@@ -227,7 +233,8 @@ export default function TrackingScreen() {
         {canToggleTrackers && (
           <TouchableOpacity
             style={[styles.trackersBtn, showTrackers && styles.trackersBtnActive]}
-            onPress={() => { setSelected(null); setShowTrackers((v) => !v); }}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            onPress={() => { setSelected(null); setPositions([]); setShowTrackers((v) => !v); }}
             activeOpacity={0.85}
             accessibilityLabel={t('trk.trackersBtn')}
           >
@@ -238,11 +245,12 @@ export default function TrackingScreen() {
         {positions.length > 0 && (
           <TouchableOpacity
             style={[styles.filterBtn, selected && styles.filterBtnActive]}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             onPress={() => setPickerOpen(true)}
             activeOpacity={0.85}
             accessibilityLabel={t('trk.filter')}
           >
-            <Ionicons name={selected ? 'funnel' : 'funnel-outline'} size={20} color={selected ? colors.onAccent : colors.text} />
+            <Ionicons name={selected ? 'funnel' : 'funnel-outline'} size={18} color={selected ? colors.onAccent : colors.text} />
           </TouchableOpacity>
         )}
         </View>
@@ -313,7 +321,7 @@ const styles = StyleSheet.create({
   driverTodayTitle: {
     color: colors.text,
     fontSize: font.xxl,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   driverTodaySub: {
     color: colors.textMuted,
@@ -341,7 +349,7 @@ const styles = StyleSheet.create({
   driverTodayNo: {
     color: colors.accent,
     fontSize: font.sm,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   driverTodayTimeRow: {
     flexDirection: 'row',
@@ -351,12 +359,12 @@ const styles = StyleSheet.create({
   driverTodayTime: {
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   driverTodayName: {
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   driverTodayMeta: {
     color: colors.textMuted,
@@ -384,7 +392,7 @@ const styles = StyleSheet.create({
   driverTodayEmptyTitle: {
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   driverTodayEmptySub: {
     color: colors.textFaint,
@@ -410,19 +418,19 @@ const styles = StyleSheet.create({
   headerBtns: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   trackersBtn: {
     flexDirection: 'row', alignItems: 'center', gap: space.xs,
-    height: hit.min, paddingHorizontal: space.md, borderRadius: radius.pill,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
-    ...shadow.raised,
+    height: hit.compact, paddingHorizontal: space.md, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    ...shadow.card,
   },
   trackersBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  trackersBtnText: { fontSize: font.sm, fontWeight: weight.heavy, color: colors.text },
+  trackersBtnText: { fontSize: font.sm, fontWeight: weight.medium, color: colors.text },
   trackersBtnTextActive: { color: colors.onAccent },
   metaOffline: { color: colors.textFaint },
   filterBtn: {
-    width: hit.min, height: hit.min, borderRadius: radius.pill,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
+    width: hit.compact, height: hit.compact, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
-    ...shadow.raised,
+    ...shadow.card,
   },
   filterBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
@@ -430,8 +438,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
     paddingHorizontal: space.lg, paddingTop: space.md, ...shadow.raised,
   },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.borderStrong, marginBottom: space.md },
-  sheetTitle: { fontSize: font.lg, fontWeight: weight.heavy, color: colors.text, marginBottom: space.sm },
+  sheetHandle: { alignSelf: 'center', width: 36, height: 4, borderRadius: radius.pill, backgroundColor: colors.borderStrong, marginBottom: space.md },
+  sheetTitle: { fontSize: font.lg, fontWeight: weight.semibold, color: colors.text, marginBottom: space.sm },
   sheetRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
     minHeight: hit.min + space.sm, paddingHorizontal: space.md, borderRadius: radius.md,
@@ -439,16 +447,16 @@ const styles = StyleSheet.create({
   },
   sheetRowActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   sheetIcon: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
-  sheetRowName: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.bold, color: colors.text },
-  sheetRowMeta: { fontSize: font.sm, fontWeight: weight.bold, color: colors.success },
+  sheetRowName: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.medium, color: colors.text },
+  sheetRowMeta: { fontSize: font.sm, fontWeight: weight.medium, color: colors.success },
   headerPill: {
     flexDirection: 'row', alignItems: 'center',
     maxWidth: '100%',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    paddingHorizontal: space.lg, paddingVertical: space.md,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    ...shadow.raised,
+    paddingHorizontal: space.md, paddingVertical: space.sm,
+    borderWidth: 1, borderColor: colors.border,
+    ...shadow.card,
   },
   // 不能用 flex:1：RN 里它等于 flexBasis 0，而外层药丸是按内容收缩的（没有 flexGrow），
   // 结果文字列分到 0 宽，标题和「N 位司机在线」整个看不见，只剩一个绿点。
@@ -459,8 +467,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success, marginRight: space.sm,
   },
   onlineDotOff: { backgroundColor: colors.textFaint },
-  headerTitle: { fontSize: font.base, fontWeight: weight.heavy, color: colors.text },
-  headerSub: { fontSize: font.xs, color: colors.textMuted, marginTop: space.xs },
+  headerTitle: { fontSize: font.sm, fontWeight: weight.semibold, color: colors.text },
+  headerSub: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
 
   emptyOverlay: {
     position: 'absolute',
@@ -478,7 +486,7 @@ const styles = StyleSheet.create({
   },
   // 文字直接压在瓦片上会看不清，所以自己带一块实色底
   emptyText: {
-    fontSize: font.lg, color: colors.text, fontWeight: weight.heavy,
+    fontSize: font.lg, color: colors.text, fontWeight: weight.semibold,
     backgroundColor: colors.surface, overflow: 'hidden',
     borderRadius: radius.sm, paddingHorizontal: space.md, paddingVertical: space.xs,
     textAlign: 'center',
@@ -504,5 +512,5 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     ...shadow.raised,
   },
-  refreshText: { fontSize: font.sm, color: colors.accent, fontWeight: weight.heavy, marginLeft: space.sm },
+  refreshText: { fontSize: font.sm, color: colors.accent, fontWeight: weight.semibold, marginLeft: space.sm },
 });

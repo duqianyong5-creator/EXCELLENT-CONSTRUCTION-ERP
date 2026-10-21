@@ -19,7 +19,9 @@ import { showAppAlert } from '../../src/AppDialog';
 import { colors, space, font, weight, radius, hit, shadow, statusColors } from '../../src/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Remembered per account so a shared phone never offers one driver another driver's plate
 const LAST_PLATE_KEY = 'last_vehicle_plate';
+const plateKey = (userId?: string) => `${LAST_PLATE_KEY}_${userId || 'anon'}`;
 
 
 // 状态配色全 App 一套，定义在 theme.ts
@@ -174,7 +176,8 @@ export default function TasksScreen() {
   const openAcceptTask = (task: any) => {
     setAcceptTask(task);
     setVehiclePlate('');
-    SecureStore.getItemAsync(LAST_PLATE_KEY).then((p) => { if (p) setVehiclePlate(p); }).catch(() => {});
+    // only fill an empty field: never overwrite what the driver has already started typing
+    SecureStore.getItemAsync(plateKey(user?.id)).then((p) => { if (p) setVehiclePlate((cur) => cur || p); }).catch(() => {});
   };
 
   const platesRequestId = useRef(0);
@@ -203,7 +206,7 @@ export default function TasksScreen() {
     try {
       setStartingTaskId(acceptTask.id);
       await tasksApi.start(acceptTask.id, vehiclePlate.trim());
-      SecureStore.setItemAsync(LAST_PLATE_KEY, vehiclePlate.trim()).catch(() => {});
+      SecureStore.setItemAsync(plateKey(user?.id), vehiclePlate.trim()).catch(() => {});
       dispatch(setActiveTask({
         id: acceptTask.id,
         title: acceptTask.title,
@@ -435,7 +438,7 @@ export default function TasksScreen() {
   // Notification bell: sits on the navy hero; the unread count is a red badge on its corner
   const bell = (
     <TouchableOpacity style={styles.heroBtn} onPress={() => setNotificationsOpen(true)} activeOpacity={0.8}>
-      <Ionicons name="notifications-outline" size={22} color={colors.heroText} />
+      <Ionicons name="notifications-outline" size={20} color={colors.heroText} />
       {unreadCount > 0 && (
         <View style={styles.unreadBadge}>
           <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
@@ -444,48 +447,38 @@ export default function TasksScreen() {
     </TouchableOpacity>
   );
 
-  // Stat tile: a white card with a coloured icon chip, the number and a label. Only the
-  // "total / today" tile is tappable (it toggles the today-only filter).
-  const statTile = (tile: {
-    icon: React.ComponentProps<typeof Ionicons>['name'];
-    chipBg: string;
-    chipColor: string;
-    value: number;
-    label: string;
-    active?: boolean;
-    onPress?: () => void;
-  }) => {
+  // KPI strip: one white card with three cells and hairline dividers, no icons. Only the first
+  // cell ("all jobs" / "today") is tappable: it toggles the today-only filter.
+  const kpiCell = (cell: { value: number; label: string; active?: boolean; onPress?: () => void }) => {
     const body = (
       <>
-        <View style={[styles.statChip, { backgroundColor: tile.chipBg }]}>
-          <Ionicons name={tile.icon} size={18} color={tile.chipColor} />
-        </View>
-        <Text style={styles.statValue} numberOfLines={1}>{tile.value}</Text>
-        <Text style={styles.statLabel}>{tile.label}</Text>
+        <Text style={[styles.kpiValue, cell.active && styles.kpiValueActive]} numberOfLines={1}>{cell.value}</Text>
+        <Text style={styles.kpiLabel} numberOfLines={1}>{cell.label}</Text>
       </>
     );
-    if (!tile.onPress) return <View style={styles.statTile}>{body}</View>;
+    if (!cell.onPress) return <View style={styles.kpiCell}>{body}</View>;
     return (
-      <TouchableOpacity
-        style={[styles.statTile, tile.active && styles.statTileActive]}
-        onPress={tile.onPress}
-        activeOpacity={0.85}
-      >
+      <TouchableOpacity style={styles.kpiCell} onPress={cell.onPress} activeOpacity={0.7}>
         {body}
       </TouchableOpacity>
     );
   };
 
-  // Every role gets the same first tile: all jobs, or only today's while the filter is on
-  const todayTile = statTile({
-    icon: todayOnly ? 'calendar' : 'calendar-outline',
-    chipBg: todayOnly ? colors.accentSoft : colors.infoSoft,
-    chipColor: todayOnly ? colors.accentDark : colors.info,
-    value: todayOnly ? todayCount : tasks.length,
-    label: todayOnly ? t('d.statToday') : t('d.statTotal'),
-    active: todayOnly,
-    onPress: () => setTodayOnly(v => !v),
-  });
+  // Every role gets the same first cell: all jobs, or only today's while the filter is on
+  const kpiStrip = (second: { value: number; label: string }, third: { value: number; label: string }) => (
+    <View style={styles.kpiStrip}>
+      {kpiCell({
+        value: todayOnly ? todayCount : tasks.length,
+        label: todayOnly ? t('d.statToday') : t('d.statTotal'),
+        active: todayOnly,
+        onPress: () => setTodayOnly(v => !v),
+      })}
+      <View style={styles.kpiDivider} />
+      {kpiCell(second)}
+      <View style={styles.kpiDivider} />
+      {kpiCell(third)}
+    </View>
+  );
 
   // Filter chips: a horizontal pill row that bleeds to the screen edges
   const filterPills = <K extends string>(
@@ -512,7 +505,7 @@ export default function TasksScreen() {
 
   const searchBox = (
     <View style={styles.searchBox}>
-      <Ionicons name="search" size={20} color={colors.textFaint} />
+      <Ionicons name="search-outline" size={18} color={colors.textFaint} />
       <TextInput
         value={searchText}
         onChangeText={setSearchText}
@@ -523,17 +516,23 @@ export default function TasksScreen() {
     </View>
   );
 
-  const statusTag = (st: { bg: string; text: string; border: string }, label: string) => (
-    <View style={[styles.statusTag, { backgroundColor: st.bg, borderColor: st.border }]}>
-      <Text style={[styles.statusTagText, { color: st.text }]} numberOfLines={1}>{label}</Text>
+  // Status on a card: a coloured dot and the word, in the status colour
+  const statusMark = (st: { bg: string; text: string; border: string }, label: string) => (
+    <View style={styles.statusRow}>
+      <View style={[styles.statusDot, { backgroundColor: st.text }]} />
+      <Text style={[styles.statusText, { color: st.text }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 
   const plateChip = (plate: string) => (
     <View style={styles.plateChip}>
-      <Ionicons name="car-outline" size={14} color={colors.textMuted} />
       <Text style={styles.plateChipText}>{plate}</Text>
     </View>
+  );
+
+  // Card meta: the secondary facts in one line separated by middle dots; empty facts are skipped
+  const metaLine = (parts: Array<string | false | null | undefined>) => (
+    <Text style={styles.metaLine} numberOfLines={2}>{parts.filter(Boolean).join(' · ')}</Text>
   );
 
   // Sheet chrome shared by every modal on this screen: drag handle, title and close button
@@ -543,7 +542,7 @@ export default function TasksScreen() {
       <View style={styles.sheetHeader}>
         <Text style={styles.sheetTitle} numberOfLines={1}>{titleText}</Text>
         <TouchableOpacity onPress={onClose} style={styles.sheetClose} activeOpacity={0.8}>
-          <Ionicons name="close" size={22} color={colors.textMuted} />
+          <Ionicons name="close-outline" size={20} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
     </>
@@ -582,18 +581,18 @@ export default function TasksScreen() {
               </View>
               <View style={styles.sheetActions}>
                 <TouchableOpacity
-                  style={[styles.btnSecondary, { flex: 1 }]}
-                  onPress={() => setAcceptTask(null)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.btnSecondaryText}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btnPrimary, { flex: 1 }]}
+                  style={styles.btnPrimary}
                   onPress={handleConfirmTaskInfo}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.btnPrimaryText}>{t('d.confirm')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnText}
+                  onPress={() => setAcceptTask(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.btnTextLabel}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -614,24 +613,23 @@ export default function TasksScreen() {
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={[styles.notificationItem, !item.isRead && styles.notificationItemUnread]}
+                style={styles.notificationItem}
                 onPress={() => openNotification(item)}
-                activeOpacity={0.85}
+                activeOpacity={0.7}
               >
-                <View style={styles.notificationIcon}>
-                  <Ionicons
-                    name="notifications-outline"
-                    size={18}
-                    color={item.isRead ? colors.textMuted : colors.accentDark}
-                  />
-                </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={styles.notificationItemHeader}>
-                    <Text style={styles.notificationItemTitle} numberOfLines={1}>{item.title}</Text>
                     {!item.isRead && <View style={styles.unreadDot} />}
+                    <Text
+                      style={[styles.notificationItemTitle, !item.isRead && styles.notificationItemTitleUnread]}
+                      numberOfLines={1}
+                    >
+                      {item.title}
+                    </Text>
                   </View>
                   <Text style={styles.notificationItemBody} numberOfLines={2}>{item.content}</Text>
                 </View>
+                <Ionicons name="chevron-forward-outline" size={16} color={colors.textFaint} />
               </TouchableOpacity>
             )}
             ListEmptyComponent={
@@ -648,9 +646,7 @@ export default function TasksScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <View style={styles.loadingSpinner}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
+        <ActivityIndicator size="large" color={colors.accent} />
         <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
@@ -670,7 +666,7 @@ export default function TasksScreen() {
           // Greeting, stats, filters and search scroll with the list so small phones keep room for cards
           ListHeaderComponent={(
             <View>
-              <View style={[styles.hero, { paddingTop: insets.top + space.lg }]}>
+              <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
                 <View style={styles.heroRow}>
                   <View style={styles.heroTextBlock}>
                     <Text style={styles.heroTitle} numberOfLines={1}>{t('d.greetingPrefix')}{driverName}</Text>
@@ -681,23 +677,10 @@ export default function TasksScreen() {
               </View>
 
               <View style={styles.headerBody}>
-                <View style={styles.statsRow}>
-                  {todayTile}
-                  {statTile({
-                    icon: 'car-outline',
-                    chipBg: colors.successSoft,
-                    chipColor: colors.success,
-                    value: driverInProgressCount,
-                    label: t('d.statActive'),
-                  })}
-                  {statTile({
-                    icon: 'alert-circle-outline',
-                    chipBg: colors.dangerSoft,
-                    chipColor: colors.danger,
-                    value: driverOverdueCount,
-                    label: t('d.statOverdue'),
-                  })}
-                </View>
+                {kpiStrip(
+                  { value: driverInProgressCount, label: t('d.statActive') },
+                  { value: driverOverdueCount, label: t('d.statOverdue') },
+                )}
               </View>
 
               {filterPills(driverFilterItems, driverFilter, (key) => setDriverFilter(key))}
@@ -719,9 +702,7 @@ export default function TasksScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <View style={styles.emptyIcon}>
-                <Ionicons name="clipboard-outline" size={32} color={colors.accentDark} />
-              </View>
+              <Ionicons name="clipboard-outline" size={48} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>{t('d.emptyTitle')}</Text>
               <Text style={styles.emptySub}>{t('d.emptySub')}</Text>
             </View>
@@ -735,45 +716,32 @@ export default function TasksScreen() {
                 style={styles.card}
                 // The whole card is tappable: a job to accept opens the accept flow, the rest open the detail
                 onPress={() => (item.status === 'assigned' ? openAcceptTask(item) : router.push(`/task/${item.id}`))}
-                activeOpacity={0.85}
+                activeOpacity={0.9}
               >
                 <View style={styles.cardHead}>
                   <Text style={styles.cardTitle} numberOfLines={1}>{item.title || t('d.taskFallback')}</Text>
-                  {statusTag(st, statusText)}
+                  {statusMark(st, statusText)}
                 </View>
 
                 {!!item.endLocation && (
                   <View style={styles.destRow}>
-                    <Ionicons name="location-outline" size={16} color={colors.textFaint} />
+                    <Ionicons name="location-outline" size={16} color={colors.textMuted} />
                     <Text style={styles.destText} numberOfLines={1}>{item.endLocation}</Text>
                   </View>
                 )}
 
-                <View style={styles.metaGrid}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="cube-outline" size={14} color={colors.textFaint} />
-                    <Text style={styles.metaText} numberOfLines={1}>
-                      {(item.cargo || t('d.cargoFallback'))}{item.cargoWeight ? ` · ${item.cargoWeight} ${t('tasks.ton')}` : ''}
-                    </Text>
-                  </View>
-                  {clientName !== '-' && (
-                    <View style={styles.metaItem}>
-                      <Ionicons name="business-outline" size={14} color={colors.textFaint} />
-                      <Text style={styles.metaText} numberOfLines={1}>{clientName}</Text>
-                    </View>
-                  )}
-                  <View style={[styles.metaItem, styles.metaItemWide]}>
-                    <Ionicons name="time-outline" size={14} color={colors.textFaint} />
-                    <Text style={styles.metaText} numberOfLines={1}>{t('d.due')} {formatDriverDateTime(item.scheduledAt)}</Text>
-                  </View>
-                </View>
+                {metaLine([
+                  clientName !== '-' && clientName,
+                  item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : t('tasks.unscheduled'),
+                  item.cargo || t('d.cargoFallback'),
+                  !!item.cargoWeight && `${item.cargoWeight} ${t('tasks.ton')}`,
+                ])}
 
-                <View style={styles.cardDivider} />
-
-                <View style={styles.cardFooter}>
-                  <Text style={styles.footerHint} numberOfLines={1}>{t('d.createdAt')} {formatDriverDateTime(item.createdAt)}</Text>
-                  {!!item.vehiclePlate && plateChip(item.vehiclePlate)}
-                </View>
+                {!!item.vehiclePlate && (
+                  <View style={styles.cardFooter}>
+                    {plateChip(item.vehiclePlate)}
+                  </View>
+                )}
 
                 {item.status === 'assigned' && (
                   <TouchableOpacity
@@ -822,7 +790,7 @@ export default function TasksScreen() {
                 />
                 {knownPlates.length > 0 && vehiclePlate.trim().length > 0 && !plateHasTracker && (
                   <View style={styles.plateWarnBox}>
-                    <Ionicons name="alert-circle-outline" size={18} color={colors.accentDark} />
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.accentDark} />
                     <Text style={styles.plateWarnText}>
                       {t('d.plateNoTracker')}
                     </Text>
@@ -865,13 +833,13 @@ export default function TasksScreen() {
                         onPress={() => setCompletePhotos(prev => prev.filter((_, i) => i !== index))}
                         activeOpacity={0.8}
                       >
-                        <Ionicons name="close" size={14} color={colors.heroText} />
+                        <Ionicons name="close-outline" size={16} color={colors.heroText} />
                       </TouchableOpacity>
                     </View>
                   ))}
                   {completePhotos.length < 5 && (
                     <TouchableOpacity style={styles.photoAdd} onPress={handleTakeCompletePhoto} activeOpacity={0.85}>
-                      <Ionicons name="camera-outline" size={24} color={colors.textMuted} />
+                      <Ionicons name="camera-outline" size={20} color={colors.textMuted} />
                       <Text style={styles.photoAddText}>{t('d.takePhoto')}</Text>
                     </TouchableOpacity>
                   )}
@@ -917,7 +885,7 @@ export default function TasksScreen() {
         // Title, stats, filters and search scroll with the list (same as the driver view)
         ListHeaderComponent={(
           <View>
-            <View style={[styles.hero, { paddingTop: insets.top + space.lg }]}>
+            <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
               <View style={styles.heroRow}>
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroTitle} numberOfLines={1}>{title}</Text>
@@ -925,29 +893,16 @@ export default function TasksScreen() {
                 </View>
                 {bell}
                 <TouchableOpacity style={styles.heroBtn} onPress={load} activeOpacity={0.8}>
-                  <Ionicons name="refresh" size={22} color={colors.heroText} />
+                  <Ionicons name="refresh-outline" size={20} color={colors.heroText} />
                 </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.headerBody}>
-              <View style={styles.statsRow}>
-                {todayTile}
-                {statTile({
-                  icon: 'car-outline',
-                  chipBg: colors.successSoft,
-                  chipColor: colors.success,
-                  value: getInProgressCount(),
-                  label: t('tasks.inProgress'),
-                })}
-                {statTile({
-                  icon: 'checkmark-circle-outline',
-                  chipBg: STATUS_COLOR.completed.bg,
-                  chipColor: STATUS_COLOR.completed.text,
-                  value: getCompletedCount(),
-                  label: t('tasks.completed'),
-                })}
-              </View>
+              {kpiStrip(
+                { value: getInProgressCount(), label: t('tasks.inProgress') },
+                { value: getCompletedCount(), label: t('tasks.completed') },
+              )}
               {canManage && (
                 <TouchableOpacity
                   style={styles.createBtn}
@@ -993,15 +948,18 @@ export default function TasksScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyBox}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="clipboard-outline" size={32} color={colors.accentDark} />
-            </View>
+            <Ionicons name="clipboard-outline" size={48} color={colors.textFaint} />
             <Text style={styles.emptyTitle}>{t('tasks.emptyTitle')}</Text>
             <Text style={styles.emptySub}>{t('tasks.emptySub')}</Text>
           </View>
         }
         renderItem={({ item }) => {
           const statusStyle = STATUS_COLOR[item.status] || STATUS_COLOR.pending;
+          // A driver is required at creation so jobs never sit in pending; an assigned job that has not
+          // started can still be reassigned or cancelled, and a finished one can be deleted
+          const canEdit = canManage && (item.status === 'pending' || item.status === 'assigned');
+          const canDelete = canManage && (item.status === 'completed' || item.status === 'cancelled');
+          const iconHitSlop = { top: space.sm, bottom: space.sm, left: space.xs, right: space.xs };
           return (
             <TouchableOpacity
               style={styles.card}
@@ -1014,113 +972,106 @@ export default function TasksScreen() {
                   router.push(`/task/${item.id}`);
                 }
               }}
-              activeOpacity={0.85}
+              activeOpacity={0.9}
             >
               <View style={styles.cardHead}>
                 <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-                {statusTag(statusStyle, t('status.' + item.status))}
+                {statusMark(statusStyle, t('status.' + item.status))}
               </View>
 
               <View style={styles.destRow}>
-                <Ionicons name="location-outline" size={16} color={colors.textFaint} />
+                <Ionicons name="location-outline" size={16} color={colors.textMuted} />
                 <Text style={styles.destText} numberOfLines={1}>{item.endLocation}</Text>
               </View>
 
-              <View style={styles.metaGrid}>
-                <View style={styles.metaItem}>
-                  <Ionicons name="business-outline" size={14} color={colors.textFaint} />
-                  <Text style={styles.metaText} numberOfLines={1}>{getPersonName(item.client)}</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Ionicons name="person-outline" size={14} color={colors.textFaint} />
-                  <Text style={styles.metaText} numberOfLines={1}>{getPersonName(item.driver)}</Text>
-                </View>
-                <View style={[styles.metaItem, styles.metaItemWide]}>
-                  <Ionicons name="time-outline" size={14} color={colors.textFaint} />
-                  <Text style={styles.metaText} numberOfLines={1}>
-                    {item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : t('tasks.unscheduled')}
-                  </Text>
-                </View>
-                {item.cargo && (
-                  <View style={[styles.metaItem, styles.metaItemWide]}>
-                    <Ionicons name="cube-outline" size={14} color={colors.textFaint} />
-                    <Text style={styles.metaText} numberOfLines={1}>
-                      {item.cargo}
-                      {item.cargoWeight ? ` · ${item.cargoWeight} ${t('tasks.ton')}` : ''}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              {metaLine([
+                getPersonName(item.client),
+                getPersonName(item.driver),
+                item.scheduledAt ? formatDriverDateTime(item.scheduledAt) : t('tasks.unscheduled'),
+                item.cargo,
+                !!item.cargo && !!item.cargoWeight && `${item.cargoWeight} ${t('tasks.ton')}`,
+              ])}
 
-              {canManage && (
-                <View style={styles.actionRow}>
-                  {/* A driver is required at creation so jobs never sit in pending; an assigned job that has not started can still be reassigned */}
-                  {(item.status === 'pending' || item.status === 'assigned') && (
-                    <TouchableOpacity
-                      style={[styles.smallBtn, styles.smallBtnOutline]}
-                      onPress={async () => {
-                        try {
-                          const d: any = await usersApi.drivers();
-                          setDrivers(Array.isArray(d) ? d : []);
-                        } catch {
-                          setDrivers([]);
-                        }
-                        setAssigningTask(item);
-                        setPickOpen('driver');
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="person-add-outline" size={16} color={colors.text} />
-                      <Text style={styles.smallBtnText}>{t('tasks.assignDriver')}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {(item.status === 'pending' || item.status === 'assigned') && (
-                    <TouchableOpacity
-                      style={[styles.smallBtn, styles.smallBtnDanger]}
-                      onPress={() => {
-                        showAppAlert(t('tasks.cancelTask'), t('tasks.cancelConfirm'), [
-                          { text: t('tasks.dontCancel'), style: 'cancel' },
-                          {
-                            text: t('tasks.cancelTask'), style: 'destructive', onPress: async () => {
-                              try {
-                                await tasksApi.cancel(item.id);
-                                load();
-                              } catch (e: any) {
-                                showAppAlert(t('common.fail'), e?.message || t('tasks.cancelFailed'));
-                              }
-                            },
-                          },
-                        ]);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
-                      <Text style={styles.smallBtnTextDanger}>{t('tasks.cancel')}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {(item.status === 'completed' || item.status === 'cancelled') && (
-                    <TouchableOpacity
-                      style={[styles.smallBtn, styles.smallBtnDanger]}
-                      onPress={() => {
-                        showAppAlert(t('tasks.deleteTask'), t('tasks.deleteConfirm'), [
-                          { text: t('common.cancel'), style: 'cancel' },
-                          {
-                            text: t('tasks.delete'), style: 'destructive', onPress: async () => {
-                              try {
-                                await tasksApi.delete(item.id);
-                                load();
-                              } catch (e: any) {
-                                showAppAlert(t('common.fail'), e?.message || t('tasks.deleteFailed'));
-                              }
-                            },
-                          },
-                        ]);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                      <Text style={styles.smallBtnTextDanger}>{t('tasks.delete')}</Text>
-                    </TouchableOpacity>
+              {/* Footer only when there is something to put in it: the plate, the admin's icon buttons, or both */}
+              {(!!item.vehiclePlate || canEdit || canDelete) && (
+                <View style={styles.cardFooter}>
+                  {!!item.vehiclePlate && plateChip(item.vehiclePlate)}
+                  {(canEdit || canDelete) && (
+                    <View style={styles.iconBtnRow}>
+                      {canEdit && (
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          hitSlop={iconHitSlop}
+                          onPress={async () => {
+                            try {
+                              const d: any = await usersApi.drivers();
+                              setDrivers(Array.isArray(d) ? d : []);
+                            } catch {
+                              setDrivers([]);
+                            }
+                            setAssigningTask(item);
+                            setPickOpen('driver');
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('tasks.assignDriver')}
+                        >
+                          <Ionicons name="person-add-outline" size={16} color={colors.textMuted} />
+                        </TouchableOpacity>
+                      )}
+                      {canEdit && (
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          hitSlop={iconHitSlop}
+                          onPress={() => {
+                            showAppAlert(t('tasks.cancelTask'), t('tasks.cancelConfirm'), [
+                              { text: t('tasks.dontCancel'), style: 'cancel' },
+                              {
+                                text: t('tasks.cancelTask'), style: 'destructive', onPress: async () => {
+                                  try {
+                                    await tasksApi.cancel(item.id);
+                                    load();
+                                  } catch (e: any) {
+                                    showAppAlert(t('common.fail'), e?.message || t('tasks.cancelFailed'));
+                                  }
+                                },
+                              },
+                            ]);
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('tasks.cancel')}
+                        >
+                          <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+                        </TouchableOpacity>
+                      )}
+                      {canDelete && (
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          hitSlop={iconHitSlop}
+                          onPress={() => {
+                            showAppAlert(t('tasks.deleteTask'), t('tasks.deleteConfirm'), [
+                              { text: t('common.cancel'), style: 'cancel' },
+                              {
+                                text: t('tasks.delete'), style: 'destructive', onPress: async () => {
+                                  try {
+                                    await tasksApi.delete(item.id);
+                                    load();
+                                  } catch (e: any) {
+                                    showAppAlert(t('common.fail'), e?.message || t('tasks.deleteFailed'));
+                                  }
+                                },
+                              },
+                            ]);
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('tasks.delete')}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   )}
                 </View>
               )}
@@ -1145,20 +1096,8 @@ export default function TasksScreen() {
                   activeOpacity={0.85}
                 >
                   <Text style={styles.continueBtnText}>{t('d.continue')}</Text>
-                  <Ionicons name="arrow-forward" size={18} color={colors.heroText} />
+                  <Ionicons name="arrow-forward-outline" size={18} color={colors.heroText} />
                 </TouchableOpacity>
-              )}
-
-              {role !== 'driver' && (
-                <>
-                  <View style={styles.cardDivider} />
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.footerHint} numberOfLines={1}>{t('d.viewTask')}</Text>
-                    {item.vehiclePlate
-                      ? plateChip(item.vehiclePlate)
-                      : <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}
-                  </View>
-                </>
               )}
             </TouchableOpacity>
           );
@@ -1208,15 +1147,12 @@ export default function TasksScreen() {
                 <Text style={styles.sheetSubtitle} numberOfLines={1}>{taskNamePreview}</Text>
               </View>
               <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.sheetClose} activeOpacity={0.8}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
+                <Ionicons name="close-outline" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Step 1: client and driver */}
-              <View style={styles.formSectionHead}>
-                <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{t('tasks.secClientDriver')}</Text>
-              </View>
+              <Text style={styles.formSectionTitle}>{t('tasks.secClientDriver')}</Text>
               <TouchableOpacity
                 style={[styles.selectRow, selectedClient && styles.selectRowFilled]}
                 onPress={() => { setPickSearch(''); setPickOpen('client'); }}
@@ -1225,7 +1161,7 @@ export default function TasksScreen() {
                 <View style={[styles.selectAvatar, selectedClient && styles.selectAvatarFilled]}>
                   {selectedClient
                     ? <Text style={styles.selectAvatarText}>{String(selectedClient.fullName || selectedClient.username || '?').slice(0, 1).toUpperCase()}</Text>
-                    : <Ionicons name="business-outline" size={20} color={colors.textMuted} />}
+                    : <Ionicons name="business-outline" size={18} color={colors.textFaint} />}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.selectRowLabel}>{t('tasks.client')} <Text style={styles.requiredMark}>*</Text></Text>
@@ -1233,7 +1169,7 @@ export default function TasksScreen() {
                     {selectedClient ? (selectedClient.fullName || selectedClient.username || selectedClient.email) : t('tasks.selectClient')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+                <Ionicons name="chevron-forward-outline" size={18} color={colors.textFaint} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.selectRow, selectedDriver && styles.selectRowFilled]}
@@ -1243,7 +1179,7 @@ export default function TasksScreen() {
                 <View style={[styles.selectAvatar, selectedDriver && styles.selectAvatarFilled]}>
                   {selectedDriver
                     ? <Text style={styles.selectAvatarText}>{String(selectedDriver.fullName || selectedDriver.username || '?').slice(0, 1).toUpperCase()}</Text>
-                    : <Ionicons name="person-outline" size={20} color={colors.textMuted} />}
+                    : <Ionicons name="person-outline" size={18} color={colors.textFaint} />}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.selectRowLabel}>{t('tasks.driver')} <Text style={styles.requiredMark}>*</Text></Text>
@@ -1251,47 +1187,41 @@ export default function TasksScreen() {
                     {selectedDriver ? (selectedDriver.fullName || selectedDriver.username || selectedDriver.email) : t('tasks.selectDriver')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+                <Ionicons name="chevron-forward-outline" size={18} color={colors.textFaint} />
               </TouchableOpacity>
 
               {/* Step 2: shipment */}
-              <View style={styles.formSectionHead}>
-                <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{t('tasks.secShipment')}</Text>
-              </View>
+              <Text style={styles.formSectionTitle}>{t('tasks.secShipment')}</Text>
               <Text style={styles.formLabel}>{t('tasks.endAddr')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="location-outline" size={20} color={colors.textFaint} style={styles.inputRowIcon} />
+                <Ionicons name="location-outline" size={18} color={colors.textFaint} style={styles.inputRowIcon} />
                 <TextInput value={endLocation} onChangeText={setEndLocation} style={styles.inputRowField} placeholder={t('tasks.endAddrPh')} placeholderTextColor={colors.textFaint} />
               </View>
               <Text style={styles.formLabel}>{t('tasks.cargo')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="cube-outline" size={20} color={colors.textFaint} style={styles.inputRowIcon} />
+                <Ionicons name="cube-outline" size={18} color={colors.textFaint} style={styles.inputRowIcon} />
                 <TextInput value={cargo} onChangeText={setCargo} style={styles.inputRowField} placeholder={t('tasks.cargoPh')} placeholderTextColor={colors.textFaint} />
               </View>
               <Text style={styles.formLabel}>{t('tasks.weight')} <Text style={styles.requiredMark}>*</Text></Text>
               <View style={styles.inputRow}>
-                <Ionicons name="scale-outline" size={20} color={colors.textFaint} style={styles.inputRowIcon} />
+                <Ionicons name="scale-outline" size={18} color={colors.textFaint} style={styles.inputRowIcon} />
                 <TextInput value={cargoWeight} onChangeText={setCargoWeight} style={styles.inputRowField} placeholder={t('tasks.weightPh')} placeholderTextColor={colors.textFaint} keyboardType="numeric" />
                 <Text style={styles.inputSuffix}>{t('tasks.ton')}</Text>
               </View>
 
               {/* Step 3: schedule and notes */}
-              <View style={styles.formSectionHead}>
-                <View style={styles.formSectionBar} />
-                <Text style={styles.formSectionTitle}>{t('tasks.secSchedule')}</Text>
-              </View>
+              <Text style={styles.formSectionTitle}>{t('tasks.secSchedule')}</Text>
               <Text style={styles.formLabel}>{t('tasks.scheduledTime')} <Text style={styles.requiredMark}>*</Text></Text>
               <TouchableOpacity
                 style={styles.inputRow}
                 onPress={() => { setTempDate(scheduledAt || new Date()); setPicker('date'); }}
                 activeOpacity={0.85}
               >
-                <Ionicons name="calendar-outline" size={20} color={scheduledAt ? colors.accentDark : colors.textFaint} style={styles.inputRowIcon} />
+                <Ionicons name="calendar-outline" size={18} color={scheduledAt ? colors.textMuted : colors.textFaint} style={styles.inputRowIcon} />
                 <Text style={[styles.inputRowField, !scheduledAt && styles.inputRowFieldPlaceholder]}>
                   {scheduledAt ? formatDriverDateTime(scheduledAt.toISOString()) : t('tasks.pickTime')}
                 </Text>
-                <Ionicons name="chevron-down" size={18} color={colors.textFaint} />
+                <Ionicons name="chevron-down-outline" size={18} color={colors.textFaint} />
               </TouchableOpacity>
               {picker && (
                 <DateTimePicker
@@ -1348,7 +1278,7 @@ export default function TasksScreen() {
               >
                 {saving ? <ActivityIndicator color={colors.onAccent} /> : (
                   <>
-                    <Ionicons name="paper-plane" size={18} color={colors.onAccent} />
+                    <Ionicons name="paper-plane-outline" size={18} color={colors.onAccent} />
                     <Text style={styles.btnPrimaryText}>{t('tasks.createDispatch')}</Text>
                   </>
                 )}
@@ -1366,7 +1296,7 @@ export default function TasksScreen() {
               () => { setPickOpen(null); setAssigningTask(null); },
             )}
             <View style={styles.pickSearchBox}>
-              <Ionicons name="search" size={18} color={colors.textFaint} />
+              <Ionicons name="search-outline" size={18} color={colors.textFaint} />
               <TextInput
                 value={pickSearch}
                 onChangeText={setPickSearch}
@@ -1419,7 +1349,7 @@ export default function TasksScreen() {
                       </Text>
                       <Text style={styles.pickItemSub} numberOfLines={1}>{item.email}</Text>
                     </View>
-                    {selected && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
+                    {selected && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
                   </TouchableOpacity>
                 );
               }}
@@ -1448,7 +1378,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 280,
+    height: 240,
     backgroundColor: colors.hero,
   },
   /** The hero is full-bleed; gutters are given by each block below it and by the cards themselves */
@@ -1461,15 +1391,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.bg,
-  },
-  loadingSpinner: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.xl,
-    backgroundColor: colors.accentSoft,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: space.lg,
+    gap: space.md,
   },
   loadingText: {
     color: colors.textMuted,
@@ -1477,27 +1399,26 @@ const styles = StyleSheet.create({
   },
 
   // ===== Hero header =====
-  /** Extra bottom padding leaves room for the stat tiles that overlap the hero's lower edge */
+  /** Compact navy block: title and one subtitle line. The extra bottom padding is what the KPI strip overlaps. */
   hero: {
     backgroundColor: colors.hero,
-    paddingHorizontal: space.xl,
-    paddingBottom: space.xl + space.huge,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg + space.xxxl,
   },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
+    gap: space.sm,
   },
   heroTextBlock: {
     flex: 1,
     minWidth: 0,
+    marginRight: space.xs,
   },
   heroTitle: {
     color: colors.heroText,
     fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontWeight: weight.bold,
     lineHeight: 28,
   },
   heroSubtitle: {
@@ -1506,8 +1427,8 @@ const styles = StyleSheet.create({
     marginTop: space.xs,
   },
   heroBtn: {
-    width: hit.min,
-    height: hit.min,
+    width: hit.compact,
+    height: hit.compact,
     borderRadius: radius.md,
     backgroundColor: colors.heroAlt,
     borderWidth: 1,
@@ -1519,8 +1440,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -space.xs,
     right: -space.xs,
-    minWidth: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     paddingHorizontal: space.xs,
     borderRadius: radius.pill,
     backgroundColor: colors.danger,
@@ -1532,54 +1453,54 @@ const styles = StyleSheet.create({
   unreadBadgeText: {
     color: colors.heroText,
     fontSize: font.xs,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
 
-  // ===== Blocks under the hero: stats, create button, search =====
+  // ===== Blocks under the hero: KPI strip, create button, chips, search =====
   headerBody: {
     paddingHorizontal: space.lg,
   },
-  statsRow: {
+  /** One white card with three cells and hairline dividers; it rides up over the hero's lower edge */
+  kpiStrip: {
     flexDirection: 'row',
-    gap: space.md,
-    marginTop: -space.huge,
-  },
-  statTile: {
-    flex: 1,
+    alignItems: 'stretch',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: space.md,
+    marginTop: -space.xxxl,
     ...shadow.card,
   },
-  /** "Today only" is on */
-  statTileActive: {
-    borderColor: colors.accent,
-  },
-  statChip: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
+  kpiCell: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
   },
-  statValue: {
+  kpiDivider: {
+    width: 1,
+    marginVertical: space.md,
+    backgroundColor: colors.border,
+  },
+  kpiValue: {
     color: colors.text,
-    fontSize: font.xxl,
-    fontWeight: weight.heavy,
-    lineHeight: 34,
-    marginTop: space.md,
+    fontSize: font.xl,
+    fontWeight: weight.bold,
+    lineHeight: 28,
   },
-  statLabel: {
-    color: colors.textMuted,
+  /** "Today only" is on */
+  kpiValueActive: {
+    color: colors.accentDark,
+  },
+  kpiLabel: {
+    color: colors.textFaint,
     fontSize: font.xs,
-    fontWeight: weight.semibold,
+    letterSpacing: 0.2,
     marginTop: space.xs,
   },
+  /** The screen's one primary action */
   createBtn: {
     marginTop: space.lg,
-    minHeight: hit.min,
+    height: hit.min,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
@@ -1588,7 +1509,7 @@ const styles = StyleSheet.create({
   createBtnText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   filterRow: {
     paddingHorizontal: space.lg,
@@ -1597,8 +1518,8 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   filterPill: {
-    minHeight: hit.min,
-    paddingHorizontal: space.lg,
+    height: 34,
+    paddingHorizontal: space.md,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -1606,20 +1527,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** The active chip is ink, not amber: amber stays reserved for the primary action */
   filterPillActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.text,
+    borderColor: colors.text,
   },
   filterText: {
     color: colors.textMuted,
     fontSize: font.sm,
-    fontWeight: weight.bold,
+    fontWeight: weight.medium,
   },
   filterTextActive: {
-    color: colors.onAccent,
+    color: colors.surface,
   },
   searchBox: {
-    height: hit.min,
+    height: 44,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1643,8 +1565,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: space.lg,
     marginHorizontal: space.lg,
     marginBottom: space.md,
@@ -1652,7 +1572,7 @@ const styles = StyleSheet.create({
   },
   cardHead: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: space.md,
     marginBottom: space.sm,
   },
@@ -1660,130 +1580,87 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    fontSize: font.lg,
-    fontWeight: weight.heavy,
-    lineHeight: 24,
+    fontSize: font.base,
+    fontWeight: weight.semibold,
+    lineHeight: 22,
   },
-  /** The status tag never shrinks, so a long title truncates instead of wrapping the tag */
-  statusTag: {
+  /** Status is a dot and a word, not a filled tag; it never shrinks, so a long title truncates instead */
+  statusRow: {
     flexShrink: 0,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
   },
-  statusTagText: {
-    fontSize: font.sm,
-    fontWeight: weight.bold,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.pill,
+  },
+  statusText: {
+    fontSize: font.xs,
+    fontWeight: weight.medium,
   },
   destRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    marginBottom: space.sm,
+    marginBottom: space.xs,
   },
   destText: {
     flex: 1,
     minWidth: 0,
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.semibold,
+    fontWeight: weight.medium,
+    lineHeight: 22,
   },
-  metaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: space.sm,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    flexBasis: '50%',
-    paddingRight: space.sm,
-  },
-  metaItemWide: {
-    flexBasis: '100%',
-  },
-  metaText: {
-    flexShrink: 1,
-    minWidth: 0,
+  /** The secondary facts in one quiet line, separated by middle dots */
+  metaLine: {
     color: colors.textMuted,
     fontSize: font.sm,
-    fontWeight: weight.medium,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginTop: space.md,
-    marginBottom: space.md,
+    lineHeight: 20,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.md,
-  },
-  footerHint: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.textFaint,
-    fontSize: font.xs,
-    fontWeight: weight.medium,
+    marginTop: space.md,
   },
   plateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     borderRadius: radius.sm,
-    backgroundColor: colors.surface,
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
   },
   plateChipText: {
-    color: colors.text,
+    color: colors.textMuted,
     fontSize: font.xs,
-    fontWeight: weight.bold,
+    fontWeight: weight.medium,
     letterSpacing: 0.8,
   },
-  /** Admin actions on a card: quiet, content-sized buttons in a row */
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.sm,
-    marginTop: space.md,
-  },
-  smallBtn: {
-    minHeight: hit.min,
-    paddingHorizontal: space.lg,
-    borderRadius: radius.md,
+  /** Admin actions: small outline icon buttons at the footer's right */
+  iconBtnRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: space.sm,
+    marginLeft: 'auto',
   },
-  smallBtnOutline: {
-    backgroundColor: colors.surface,
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  smallBtnDanger: {
-    backgroundColor: colors.dangerSoft,
-  },
-  smallBtnText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: weight.bold,
-  },
-  smallBtnTextDanger: {
-    color: colors.danger,
-    fontSize: font.sm,
-    fontWeight: weight.bold,
-  },
-  /** A full-width action at the bottom of a card */
+  /** A full-width action at the bottom of a card: a touch lower than the sheet buttons */
   cardAction: {
     marginTop: space.md,
+    minHeight: 44,
   },
   continueBtn: {
     flexDirection: 'row',
@@ -1792,13 +1669,12 @@ const styles = StyleSheet.create({
     gap: space.sm,
     backgroundColor: colors.info,
     borderRadius: radius.md,
-    minHeight: hit.min,
     paddingHorizontal: space.lg,
   },
   continueBtnText: {
     color: colors.heroText,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
 
   // ===== Buttons shared by cards and sheets =====
@@ -1813,7 +1689,7 @@ const styles = StyleSheet.create({
   btnPrimaryText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   btnSuccess: {
     backgroundColor: colors.success,
@@ -1826,22 +1702,18 @@ const styles = StyleSheet.create({
   btnSuccessText: {
     color: colors.heroText,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
-  btnSecondary: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+  /** Cancel in a sheet is a text button, not a second boxed button */
+  btnText: {
     minHeight: hit.min,
-    paddingHorizontal: space.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnSecondaryText: {
-    color: colors.text,
+  btnTextLabel: {
+    color: colors.textMuted,
     fontSize: font.base,
-    fontWeight: weight.bold,
+    fontWeight: weight.medium,
   },
   /** Icon + label inside a button */
   btnRow: {
@@ -1861,25 +1733,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xxxl,
     paddingBottom: space.huge,
   },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.xl,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.lg,
-  },
   emptyTitle: {
     color: colors.text,
-    fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontSize: font.base,
+    fontWeight: weight.semibold,
     textAlign: 'center',
+    marginTop: space.lg,
   },
   emptySub: {
     color: colors.textMuted,
     fontSize: font.sm,
-    marginTop: space.sm,
+    marginTop: space.xs,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -1906,7 +1770,7 @@ const styles = StyleSheet.create({
   },
   sheetHandle: {
     alignSelf: 'center',
-    width: 40,
+    width: 36,
     height: 4,
     borderRadius: radius.pill,
     backgroundColor: colors.borderStrong,
@@ -1923,18 +1787,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
   sheetSubtitle: {
-    color: colors.accentDark,
+    color: colors.textFaint,
     fontSize: font.xs,
-    fontWeight: weight.bold,
     marginTop: space.xs,
   },
   sheetClose: {
-    width: hit.min,
-    height: hit.min,
-    borderRadius: radius.md,
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
     backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1943,7 +1806,7 @@ const styles = StyleSheet.create({
   sheetLead: {
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
     lineHeight: 22,
     marginBottom: space.md,
   },
@@ -1957,15 +1820,12 @@ const styles = StyleSheet.create({
     paddingVertical: space.xxl,
   },
   sheetActions: {
-    flexDirection: 'row',
-    gap: space.md,
     marginTop: space.lg,
+    gap: space.xs,
   },
   infoBox: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
     paddingHorizontal: space.md,
   },
   infoRow: {
@@ -1983,7 +1843,6 @@ const styles = StyleSheet.create({
     width: 96,
     color: colors.textMuted,
     fontSize: font.sm,
-    fontWeight: weight.medium,
     lineHeight: 22,
   },
   infoValue: {
@@ -1991,23 +1850,23 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.semibold,
+    fontWeight: weight.medium,
     lineHeight: 22,
   },
 
   // ===== Plate sheet =====
-  /** The plate reads like a plate: big, centred, spaced capitals */
+  /** The plate reads like a plate: centred, spaced capitals */
   plateInput: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
-    minHeight: hit.min + space.sm,
+    borderColor: colors.border,
+    height: hit.min,
     paddingHorizontal: space.lg,
-    paddingVertical: space.md,
+    paddingVertical: 0,
     color: colors.text,
-    fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontSize: font.lg,
+    fontWeight: weight.semibold,
     letterSpacing: 2,
     textAlign: 'center',
     marginBottom: space.md,
@@ -2028,7 +1887,7 @@ const styles = StyleSheet.create({
     color: colors.accentDark,
     fontSize: font.sm,
     lineHeight: 20,
-    fontWeight: weight.semibold,
+    fontWeight: weight.medium,
   },
 
   // ===== Finish-job sheet =====
@@ -2077,8 +1936,8 @@ const styles = StyleSheet.create({
   },
   photoAddText: {
     color: colors.textMuted,
-    fontSize: font.sm,
-    fontWeight: weight.bold,
+    fontSize: font.xs,
+    fontWeight: weight.medium,
   },
   notesInput: {
     minHeight: 80,
@@ -2097,24 +1956,12 @@ const styles = StyleSheet.create({
   // ===== Notifications sheet =====
   notificationItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: space.md,
     minHeight: hit.min,
-    padding: space.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    marginBottom: space.sm,
-  },
-  notificationItemUnread: {
-    backgroundColor: colors.accentSoft,
-  },
-  notificationIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   notificationItemHeader: {
     flexDirection: 'row',
@@ -2126,7 +1973,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.medium,
+  },
+  notificationItemTitleUnread: {
+    fontWeight: weight.semibold,
   },
   notificationItemBody: {
     color: colors.textMuted,
@@ -2135,8 +1985,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   unreadDot: {
-    width: space.sm,
-    height: space.sm,
+    width: 8,
+    height: 8,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
   },
@@ -2177,41 +2027,30 @@ const styles = StyleSheet.create({
   pickItemTitle: {
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.medium,
   },
   pickItemSub: {
-    color: colors.textFaint,
+    color: colors.textMuted,
     fontSize: font.sm,
     marginTop: space.xs,
   },
 
   // ===== Create-job form =====
-  formSectionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    marginTop: space.lg,
-    marginBottom: space.md,
-  },
-  formSectionBar: {
-    width: 3,
-    height: font.base,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
   formSectionTitle: {
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
+    marginTop: space.lg,
+    marginBottom: space.md,
   },
   requiredMark: {
     color: colors.danger,
-    fontWeight: weight.heavy,
   },
   formLabel: {
-    color: colors.textMuted,
+    color: colors.textFaint,
     fontSize: font.xs,
-    fontWeight: weight.bold,
+    fontWeight: weight.medium,
+    letterSpacing: 0.2,
     marginTop: space.sm,
     marginBottom: space.sm,
   },
@@ -2244,16 +2083,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     minHeight: hit.min,
     paddingHorizontal: space.md,
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
     marginBottom: space.md,
   },
   selectRowFilled: {
-    borderColor: colors.accent,
+    borderColor: colors.borderStrong,
   },
+  /** Initial avatar for a chosen person; an outlined placeholder circle before one is chosen */
   selectAvatar: {
-    width: hit.compact,
-    height: hit.compact,
-    borderRadius: radius.md,
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2266,23 +2106,23 @@ const styles = StyleSheet.create({
   },
   selectAvatarText: {
     color: colors.accentDark,
-    fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontSize: font.sm,
+    fontWeight: weight.semibold,
   },
   selectRowLabel: {
-    color: colors.textMuted,
+    color: colors.textFaint,
     fontSize: font.xs,
-    fontWeight: weight.bold,
+    letterSpacing: 0.2,
     marginBottom: space.xs,
   },
   selectRowValue: {
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.medium,
   },
   selectRowPlaceholder: {
     color: colors.textFaint,
-    fontWeight: weight.semibold,
+    fontWeight: weight.regular,
   },
   inputRow: {
     flexDirection: 'row',
@@ -2311,7 +2151,7 @@ const styles = StyleSheet.create({
   inputSuffix: {
     color: colors.textMuted,
     fontSize: font.sm,
-    fontWeight: weight.heavy,
+    fontWeight: weight.medium,
     marginLeft: space.sm,
   },
 });

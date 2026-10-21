@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   TextInput, ScrollView, ActivityIndicator,
 } from 'react-native';
+import type { TextInputProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useDispatch, useSelector } from 'react-redux';
@@ -21,14 +22,40 @@ const CARD_OVERLAP = space.xl;
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** Card title row: a 36px amber icon chip beside the title */
+/** Card title row: a 32px amber icon chip beside a quiet title */
 function SectionHeader({ icon, title }: { icon: IoniconName; title: string }) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionIconChip}>
-        <Ionicons name={icon} size={18} color={colors.accent} />
+        <Ionicons name={icon} size={16} color={colors.accent} />
       </View>
       <Text style={styles.sectionTitle}>{title}</Text>
+    </View>
+  );
+}
+
+type FieldProps = TextInputProps & {
+  name: string;
+  label: string;
+  focused: string | null;
+  setFocused: (name: string | null) => void;
+};
+
+/** A caption label over a 48pt field on the inner surface; focus is the only time the accent appears */
+function Field({ name, label, focused, setFocused, ...props }: FieldProps) {
+  const active = focused === name;
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.inputWrap, active && styles.inputWrapFocused]}>
+        <TextInput
+          style={styles.input}
+          placeholderTextColor={colors.textFaint}
+          onFocus={() => setFocused(name)}
+          onBlur={() => setFocused(null)}
+          {...props}
+        />
+      </View>
     </View>
   );
 }
@@ -47,6 +74,7 @@ export default function ProfileScreen() {
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
 
   // The hero sits under the status bar, so the status icons go light while this tab is on screen.
   // The <StatusBar> is mounted only while focused, so it hands the style back when the tab blurs.
@@ -118,9 +146,8 @@ export default function ProfileScreen() {
       <View style={styles.heroBackdrop} />
 
       <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Hero: avatar tile, name, e-mail, role pill */}
-        <View style={[styles.hero, { paddingTop: insets.top + space.xl }]}>
-          <View style={styles.heroGlow} />
+        {/* Hero: avatar tile, name, e-mail, outlined role pill */}
+        <View style={[styles.hero, { paddingTop: insets.top + space.lg }]}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
               {String(user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()}
@@ -129,7 +156,6 @@ export default function ProfileScreen() {
           <Text style={styles.name} numberOfLines={1}>{user?.fullName || user?.username}</Text>
           <Text style={styles.email} numberOfLines={1}>{user?.email}</Text>
           <View style={styles.rolePill}>
-            <Ionicons name="id-card-outline" size={14} color={colors.heroMuted} />
             <Text style={styles.roleText}>{t('role.' + (user?.role || 'driver'))}</Text>
           </View>
         </View>
@@ -139,41 +165,36 @@ export default function ProfileScreen() {
           <View style={[styles.card, styles.firstCard]}>
             <SectionHeader icon="person-outline" title={t('profile.basicInfo')} />
 
-            <Text style={styles.label}>{t('profile.name')}</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder={t('profile.namePh')}
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-
-            <Text style={styles.label}>{t('profile.phone')}</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder={t('profile.phonePh')}
-                keyboardType="phone-pad"
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-
-            <Text style={styles.label}>{t('profile.email')}</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder={t('profile.emailPh')}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
+            <Field
+              name="fullName"
+              label={t('profile.name')}
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder={t('profile.namePh')}
+              focused={focused}
+              setFocused={setFocused}
+            />
+            <Field
+              name="phone"
+              label={t('profile.phone')}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder={t('profile.phonePh')}
+              keyboardType="phone-pad"
+              focused={focused}
+              setFocused={setFocused}
+            />
+            <Field
+              name="email"
+              label={t('profile.email')}
+              value={email}
+              onChangeText={setEmail}
+              placeholder={t('profile.emailPh')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              focused={focused}
+              setFocused={setFocused}
+            />
 
             <TouchableOpacity
               style={[styles.primaryBtn, saving && styles.btnDisabled]}
@@ -193,29 +214,26 @@ export default function ProfileScreen() {
           <View style={styles.card}>
             <SectionHeader icon="lock-closed-outline" title={t('profile.changePw')} />
 
-            <Text style={styles.label}>{t('profile.oldPw')}</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={oldPwd}
-                onChangeText={setOldPwd}
-                secureTextEntry
-                placeholder={t('profile.oldPwPh')}
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-
-            <Text style={styles.label}>{t('profile.newPw')}</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={newPwd}
-                onChangeText={setNewPwd}
-                secureTextEntry
-                placeholder={t('profile.min6')}
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
+            <Field
+              name="oldPwd"
+              label={t('profile.oldPw')}
+              value={oldPwd}
+              onChangeText={setOldPwd}
+              secureTextEntry
+              placeholder={t('profile.oldPwPh')}
+              focused={focused}
+              setFocused={setFocused}
+            />
+            <Field
+              name="newPwd"
+              label={t('profile.newPw')}
+              value={newPwd}
+              onChangeText={setNewPwd}
+              secureTextEntry
+              placeholder={t('profile.min6')}
+              focused={focused}
+              setFocused={setFocused}
+            />
 
             <TouchableOpacity
               style={[styles.primaryBtn, changingPwd && styles.btnDisabled]}
@@ -235,10 +253,10 @@ export default function ProfileScreen() {
           <View style={styles.card}>
             <SectionHeader icon="settings-outline" title={t('profile.settings')} />
             <TouchableOpacity style={styles.settingRow} onPress={toggle} activeOpacity={0.7}>
-              <Ionicons name="language-outline" size={20} color={colors.textMuted} />
+              <Ionicons name="language-outline" size={16} color={colors.textMuted} />
               <Text style={styles.settingLabel}>{t('profile.language')}</Text>
               <Text style={styles.settingValue}>{t('profile.languageValue')}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
             </TouchableOpacity>
           </View>
 
@@ -248,7 +266,7 @@ export default function ProfileScreen() {
             onPress={confirmLogout}
             activeOpacity={0.8}
           >
-            <Ionicons name="log-out-outline" size={20} color={colors.danger} />
+            <Ionicons name="log-out-outline" size={18} color={colors.danger} />
             <Text style={styles.logoutText}>{t('profile.logout')}</Text>
           </TouchableOpacity>
 
@@ -269,7 +287,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    paddingBottom: space.lg,
+    paddingBottom: space.xxl,
   },
   heroBackdrop: {
     position: 'absolute',
@@ -284,37 +302,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: space.lg,
     // Room for the first card that climbs over the bottom edge
-    paddingBottom: CARD_OVERLAP + space.xxl,
-    overflow: 'hidden',
-  },
-  // A slightly lighter navy disc in the corner: depth without a second colour
-  heroGlow: {
-    position: 'absolute',
-    top: -140,
-    right: -60,
-    width: 280,
-    height: 280,
-    borderRadius: radius.pill,
-    backgroundColor: colors.heroAlt,
+    paddingBottom: CARD_OVERLAP + space.lg,
   },
   avatar: {
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: space.md,
-    ...shadow.raised,
   },
   avatarText: {
-    fontSize: font.xxl,
-    fontWeight: weight.heavy,
+    fontSize: font.xl,
+    fontWeight: weight.bold,
     color: colors.hero,
   },
   name: {
-    fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontSize: font.lg,
+    fontWeight: weight.semibold,
     color: colors.heroText,
     textAlign: 'center',
   },
@@ -325,21 +331,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   rolePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
     marginTop: space.md,
     paddingHorizontal: space.md,
-    paddingVertical: space.sm,
+    paddingVertical: space.xs,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.heroBorder,
-    backgroundColor: colors.heroBorder,
+    borderColor: colors.heroMuted,
   },
   roleText: {
-    color: colors.heroText,
-    fontSize: font.sm,
-    fontWeight: weight.semibold,
+    color: colors.heroMuted,
+    fontSize: font.xs,
+    fontWeight: weight.medium,
+    letterSpacing: 0.2,
   },
   body: {
     flex: 1,
@@ -363,9 +366,9 @@ const styles = StyleSheet.create({
     marginBottom: space.lg,
   },
   sectionIconChip: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.md,
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -374,41 +377,59 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
     color: colors.text,
   },
-  label: {
-    fontSize: font.sm,
-    color: colors.textMuted,
-    fontWeight: weight.semibold,
-    marginBottom: space.sm,
+  field: {
+    marginBottom: space.lg,
   },
-  inputContainer: {
+  label: {
+    fontSize: font.xs,
+    fontWeight: weight.medium,
+    color: colors.textFaint,
+    letterSpacing: 0.2,
+    marginBottom: space.xs,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: hit.min,
+    paddingHorizontal: space.md,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: space.lg,
+    // Clips the input (and its web focus ring) inside the border, so the amber focus border stays whole
+    overflow: 'hidden',
+  },
+  inputWrapFocused: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
   },
   input: {
-    minHeight: hit.min,
-    paddingVertical: space.md,
-    paddingHorizontal: space.md,
+    flex: 1,
+    minWidth: 0,
+    alignSelf: 'stretch',
+    paddingVertical: 0,
     fontSize: font.base,
     color: colors.text,
+    // The amber border on the wrapper shows focus; on web the browser ring is painted in the
+    // focused wrapper colour so it disappears instead of drawing a second, black ring
+    outlineWidth: 0,
+    outlineColor: colors.surface,
   },
   primaryBtn: {
-    minHeight: hit.min,
+    height: hit.min,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: space.xs,
   },
   primaryBtnText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.bold,
-    letterSpacing: 0.2,
+    fontWeight: weight.semibold,
   },
   btnDisabled: {
     opacity: 0.6,
@@ -424,20 +445,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: colors.text,
     fontSize: font.base,
-    fontWeight: weight.semibold,
+    fontWeight: weight.medium,
   },
   settingValue: {
     color: colors.textMuted,
     fontSize: font.sm,
-    fontWeight: weight.medium,
   },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.sm,
-    minHeight: hit.min,
-    marginTop: space.sm,
+    height: hit.min,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -446,7 +465,7 @@ const styles = StyleSheet.create({
   logoutText: {
     color: colors.danger,
     fontSize: font.base,
-    fontWeight: weight.bold,
+    fontWeight: weight.semibold,
   },
   version: {
     textAlign: 'center',

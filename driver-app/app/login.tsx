@@ -16,7 +16,7 @@ import { showAppAlert } from '../src/AppDialog';
 import { colors, space, font, weight, radius, hit, shadow } from '../src/theme';
 
 /** How far the form card climbs over the hero's bottom edge */
-const CARD_OVERLAP = space.huge;
+const CARD_OVERLAP = space.xxxl;
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -30,8 +30,8 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [focused, setFocused] = useState<'id' | 'pw' | null>(null);
 
-  // The navy hero owns the top 40% of the screen; the form card overlaps its bottom edge
-  const heroHeight = Math.round(windowHeight * 0.4);
+  // The navy hero owns about a third of the screen; the form card overlaps its bottom edge
+  const heroHeight = Math.round(windowHeight * 0.34);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
@@ -41,7 +41,7 @@ export default function LoginScreen() {
     try {
       setLoading(true);
       const res: any = await authApi.login({ identifier: identifier.trim(), password });
-      // 监控（大屏）账号仅限网页端使用，App 不允许登录
+      // Monitoring (big-screen) accounts are web-only; the app refuses them
       if (res.user?.role === 'monitor') {
         showAppAlert(t('login.loginFailed'), t('login.monitorOnly'));
         return;
@@ -52,8 +52,9 @@ export default function LoginScreen() {
       router.replace('/(tabs)/tasks');
     } catch (err: any) {
       if (__DEV__) console.error('Login Error:', err);
-      // 后端会明确告诉是账号不存在、密码错误还是账户待审核，直接把这句话给司机看。
-      // 只有压根没连上服务器时才显示技术细节（那时地址/网络才是真正要查的东西）。
+      // The server says plainly whether the account is unknown, the password is wrong or the
+      // account awaits approval, so the driver sees that sentence as-is. Technical detail is
+      // shown only when the server could not be reached at all (then the address is what matters).
       const serverMessage = err?.response?.data?.message ?? err?.data?.message;
       const noResponse = !err?.response && !err?.statusCode;
       if (serverMessage) {
@@ -87,9 +88,8 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero: logo tile, product name, one-line tagline */}
-          <View style={[styles.hero, { minHeight: heroHeight, paddingTop: insets.top + space.xl }]}>
-            <View style={styles.heroGlow} />
+          {/* Hero: logo tile, product name, one-line tagline, centred in the navy block */}
+          <View style={[styles.hero, { minHeight: heroHeight, paddingTop: insets.top + space.md }]}>
             <View style={styles.logoTile}>
               <Image source={require('../assets/log.png')} style={styles.logoImage} resizeMode="contain" />
             </View>
@@ -100,45 +100,47 @@ export default function LoginScreen() {
           {/* Form card, floating over the hero's bottom edge */}
           <View style={[styles.body, { paddingBottom: insets.bottom + space.lg }]}>
             <View style={styles.card}>
-              <Text style={styles.label}>{t('login.account')}</Text>
-              <View style={[styles.inputContainer, focused === 'id' && styles.inputContainerFocused]}>
-                <Ionicons name="person-outline" size={20} color={focused === 'id' ? colors.accent : colors.textFaint} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={t('login.accountPh')}
-                  value={identifier}
-                  onChangeText={setIdentifier}
-                  onFocus={() => setFocused('id')}
-                  onBlur={() => setFocused(null)}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  returnKeyType="next"
-                  placeholderTextColor={colors.textFaint}
-                />
+              <View style={styles.field}>
+                <Text style={styles.label}>{t('login.account')}</Text>
+                <View style={[styles.inputWrap, focused === 'id' && styles.inputWrapFocused]}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t('login.accountPh')}
+                    value={identifier}
+                    onChangeText={setIdentifier}
+                    onFocus={() => setFocused('id')}
+                    onBlur={() => setFocused(null)}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    returnKeyType="next"
+                    placeholderTextColor={colors.textFaint}
+                  />
+                </View>
               </View>
 
-              <Text style={styles.label}>{t('login.password')}</Text>
-              <View style={[styles.inputContainer, focused === 'pw' && styles.inputContainerFocused]}>
-                <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? colors.accent : colors.textFaint} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={t('login.passwordPh')}
-                  value={password}
-                  onChangeText={setPassword}
-                  onFocus={() => setFocused('pw')}
-                  onBlur={() => setFocused(null)}
-                  secureTextEntry={!showPassword}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                  placeholderTextColor={colors.textFaint}
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowPassword(v => !v)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
-                </TouchableOpacity>
+              <View style={styles.field}>
+                <Text style={styles.label}>{t('login.password')}</Text>
+                <View style={[styles.inputWrap, focused === 'pw' && styles.inputWrapFocused]}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t('login.passwordPh')}
+                    value={password}
+                    onChangeText={setPassword}
+                    onFocus={() => setFocused('pw')}
+                    onBlur={() => setFocused(null)}
+                    secureTextEntry={!showPassword}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    placeholderTextColor={colors.textFaint}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowPassword(v => !v)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <TouchableOpacity
@@ -155,6 +157,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Secondary action as a text link: the amber button is the only filled control on the screen */}
             <View style={styles.registerRow}>
               <Text style={styles.tip}>{t('login.noAccount')}</Text>
               <TouchableOpacity style={styles.registerBtn} onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -169,14 +172,13 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Language switch: a global toggle, so it sits in the hero corner rather than beside "register" */}
+      {/* Language switch: a global toggle, so it sits as a header button in the hero corner */}
       <TouchableOpacity
         onPress={toggle}
         style={[styles.langBtn, { top: insets.top + space.md }]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={0.85}
       >
-        <Ionicons name="globe-outline" size={16} color={colors.heroText} />
         <Text style={styles.langBtnText}>{t('login.langToggle')}</Text>
       </TouchableOpacity>
     </View>
@@ -207,40 +209,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: space.xxl,
     // Room for the card that climbs over the bottom edge
-    paddingBottom: CARD_OVERLAP + space.xxl,
-    overflow: 'hidden',
-  },
-  // A slightly lighter navy disc in the corner: depth without a second colour
-  heroGlow: {
-    position: 'absolute',
-    top: -120,
-    right: -80,
-    width: 320,
-    height: 320,
-    borderRadius: radius.pill,
-    backgroundColor: colors.heroAlt,
+    paddingBottom: CARD_OVERLAP + space.lg,
   },
   logoTile: {
-    width: 88,
-    height: 88,
-    borderRadius: radius.xl,
+    width: 72,
+    height: 72,
+    borderRadius: radius.lg,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: space.lg,
-    ...shadow.raised,
   },
   logoImage: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.lg,
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
   },
   brand: {
     fontSize: font.xl,
-    fontWeight: weight.heavy,
+    fontWeight: weight.bold,
     color: colors.heroText,
     textAlign: 'center',
-    letterSpacing: 0.3,
   },
   tagline: {
     fontSize: font.sm,
@@ -259,38 +248,47 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: -CARD_OVERLAP,
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     padding: space.xl,
-    ...shadow.raised,
+    ...shadow.card,
+  },
+  field: {
+    marginBottom: space.lg,
   },
   label: {
-    fontSize: font.sm,
-    color: colors.textMuted,
-    fontWeight: weight.semibold,
-    marginBottom: space.sm,
+    fontSize: font.xs,
+    fontWeight: weight.medium,
+    color: colors.textFaint,
+    letterSpacing: 0.2,
+    marginBottom: space.xs,
   },
-  inputContainer: {
+  inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    minHeight: hit.min,
+    height: hit.min,
     paddingHorizontal: space.md,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: space.lg,
+    // Clips the input (and its web focus ring) inside the border, so the amber focus border stays whole
+    overflow: 'hidden',
   },
-  inputContainerFocused: {
+  inputWrapFocused: {
     borderColor: colors.accent,
     backgroundColor: colors.surface,
   },
   input: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: space.md,
+    alignSelf: 'stretch',
+    paddingVertical: 0,
     fontSize: font.base,
     color: colors.text,
+    // The amber border on the wrapper shows focus; on web the browser ring is painted in the
+    // focused wrapper colour so it disappears instead of drawing a second, black ring
+    outlineWidth: 0,
+    outlineColor: colors.surface,
   },
   eyeBtn: {
     width: hit.min,
@@ -301,18 +299,17 @@ const styles = StyleSheet.create({
     marginRight: -space.md,
   },
   primaryBtn: {
-    minHeight: hit.min,
+    height: hit.min,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: space.sm,
+    marginTop: space.xs,
   },
   primaryBtnText: {
     color: colors.onAccent,
     fontSize: font.base,
-    fontWeight: weight.bold,
-    letterSpacing: 0.2,
+    fontWeight: weight.semibold,
   },
   btnDisabled: {
     opacity: 0.6,
@@ -336,27 +333,26 @@ const styles = StyleSheet.create({
   registerLink: {
     color: colors.accentDark,
     fontSize: font.sm,
-    fontWeight: weight.bold,
+    fontWeight: weight.semibold,
   },
   langBtn: {
     position: 'absolute',
     right: space.lg,
     zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    minHeight: hit.compact,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.heroBorder,
+    minWidth: hit.compact,
+    height: hit.compact,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.heroAlt,
     borderWidth: 1,
     borderColor: colors.heroBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   langBtnText: {
     color: colors.heroText,
     fontSize: font.sm,
-    fontWeight: weight.bold,
-    letterSpacing: 0.5,
+    fontWeight: weight.semibold,
   },
   version: {
     textAlign: 'center',

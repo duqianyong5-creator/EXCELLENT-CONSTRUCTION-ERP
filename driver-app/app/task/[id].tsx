@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Image, Platform, Modal, TextInput, useWindowDimensions,
+  ActivityIndicator, Image, Modal, TextInput, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** One line of a detail card: icon chip, small label, value */
+/** One line of a detail card: a quiet icon, a small label and the value */
 type Row = { icon: IconName; label: string; value: string; prominent?: boolean };
 
 const MAX_PHOTOS = 5;
@@ -155,13 +155,12 @@ export default function TaskDetailScreen() {
   if (!task) {
     return (
       <View style={styles.center}>
-        <Ionicons name="document-outline" size={32} color={colors.textFaint} />
-        <Text style={styles.errorText}>{t('td.notFound')}</Text>
+        <Ionicons name="document-outline" size={48} color={colors.textFaint} />
+        <Text style={styles.emptyTitle}>{t('td.notFound')}</Text>
       </View>
     );
   }
 
-  const isActive = task.status === 'in_progress' && activeTaskId === id;
   const statusStyle = statusColors[task.status as keyof typeof statusColors] || statusColors.assigned;
   const isClosed = task.status === 'completed' || task.status === 'cancelled';
 
@@ -174,9 +173,10 @@ export default function TaskDetailScreen() {
   const photoTile = Math.floor(
     (screenWidth - space.lg * 2 - space.lg * 2 - space.sm * (PHOTO_COLUMNS - 1)) / PHOTO_COLUMNS,
   );
+  const tileSize = { width: photoTile, height: photoTile };
 
   const infoRows: Row[] = [
-    { icon: 'location', label: t('td.to'), value: task.endLocation || '-', prominent: true },
+    { icon: 'location-outline', label: t('td.to'), value: task.endLocation || '-', prominent: true },
     { icon: 'business-outline', label: t('td.client'), value: task.client?.fullName || task.client?.username || '-' },
     ...(task.vehiclePlate ? [{ icon: 'car-outline' as IconName, label: t('td.plate'), value: task.vehiclePlate }] : []),
     ...(task.scheduledAt
@@ -197,86 +197,81 @@ export default function TaskDetailScreen() {
     ...(workRecord.completionNotes ? [{ icon: 'document-text-outline' as IconName, label: t('td.notes'), value: workRecord.completionNotes }] : []),
   ] : [];
 
+  const donePhotos: string[] = Array.isArray(workRecord?.imageUrls) ? workRecord.imageUrls : [];
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {/* Hero header: navy block, back button, title, status tag */}
+        {/* Hero: navy block with a square back button, the job title and its status as dot + text */}
         <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={t('td.backBtn')}
+          >
             <Ionicons name="chevron-back" size={20} color={colors.heroText} />
-            <Text style={styles.backText}>{t('td.backBtn')}</Text>
           </TouchableOpacity>
           <Text style={styles.heroTitle} numberOfLines={2}>{task.title}</Text>
-          <View style={styles.heroMetaRow}>
-            <View style={styles.statusTag}>
-              <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
-              <Text style={[styles.statusTagText, { color: statusStyle.text }]}>
-                {t('status.' + task.status)}
-              </Text>
-            </View>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
+            <Text style={styles.statusText}>{t('status.' + task.status)}</Text>
           </View>
         </View>
 
         <View style={styles.body}>
-          {/* Closed jobs: a quiet banner before the details */}
+          {/* Closed jobs: one quiet line before the details */}
           {isClosed && (
             <View style={[styles.card, styles.doneCard]}>
-              <View style={[
-                styles.doneBadge,
-                task.status === 'completed'
-                  ? { backgroundColor: colors.successSoft }
-                  : { backgroundColor: colors.dangerSoft },
-              ]}>
-                <Ionicons
-                  name={task.status === 'completed' ? 'checkmark' : 'close'}
-                  size={26}
-                  color={task.status === 'completed' ? colors.success : colors.danger}
-                />
-              </View>
-              <Text style={styles.doneText}>
+              <Ionicons
+                name={task.status === 'completed' ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                size={18}
+                color={task.status === 'completed' ? colors.success : colors.danger}
+              />
+              <Text style={styles.doneText} numberOfLines={1}>
                 {task.status === 'completed' ? t('td.taskDone') : t('td.taskCancelled')}
               </Text>
             </View>
           )}
 
           {/* Job information */}
-          <InfoCard icon="document-text-outline" title={t('td.taskInfo')} rows={infoRows} />
+          <InfoCard title={t('td.taskInfo')} rows={infoRows} />
 
           {/* Cargo and job notes */}
           {cargoRows.length > 0 && (
-            <InfoCard icon="cube-outline" title={t('td.cargo')} rows={cargoRows} />
+            <InfoCard title={t('td.cargo')} rows={cargoRows} />
           )}
 
           {showComplete && (
             <>
               {/* Work photos */}
               <View style={styles.card}>
-                <View style={styles.cardTitleRow}>
-                  <CardTitle icon="camera-outline" text={t('td.photos')} />
-                  <View style={styles.countChip}>
-                    <Text style={styles.countChipText}>{photos.length}/{MAX_PHOTOS}</Text>
-                  </View>
+                <View style={styles.cardHead}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>{t('td.photos')}</Text>
+                  <Text style={styles.cardMeta}>{photos.length}/{MAX_PHOTOS}</Text>
                 </View>
                 <View style={styles.photoGrid}>
                   {photos.map((uri, i) => (
-                    <View key={i} style={[styles.photoTile, { width: photoTile, height: photoTile }]}>
+                    <View key={i} style={[styles.photoTile, tileSize]}>
                       <Image source={{ uri }} style={styles.photo} />
                       <TouchableOpacity
                         style={styles.photoDelete}
                         hitSlop={{ top: space.md, bottom: space.md, left: space.md, right: space.md }}
                         onPress={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
                       >
-                        <Ionicons name="close" size={16} color={colors.heroText} />
+                        <Ionicons name="close" size={14} color={colors.heroText} />
                       </TouchableOpacity>
                     </View>
                   ))}
                   {photos.length < MAX_PHOTOS && (
                     <TouchableOpacity
-                      style={[styles.photoAdd, { width: photoTile, height: photoTile }]}
+                      style={[styles.photoAdd, tileSize]}
                       onPress={handlePickPhoto}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="camera" size={26} color={colors.accent} />
+                      <Ionicons name="camera-outline" size={20} color={colors.textMuted} />
                       <Text style={styles.photoAddText}>{t('td.addPhoto')}</Text>
                     </TouchableOpacity>
                   )}
@@ -286,8 +281,8 @@ export default function TaskDetailScreen() {
               {/* Completion notes */}
               {/* 备注原来有状态没有输入框，提交的永远是空的 */}
               <View style={styles.card}>
-                <View style={styles.cardTitleRow}>
-                  <CardTitle icon="create-outline" text={t('td.notes')} />
+                <View style={styles.cardHead}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>{t('td.notes')}</Text>
                 </View>
                 <TextInput
                   value={notes}
@@ -303,21 +298,17 @@ export default function TaskDetailScreen() {
 
           {/* Work record for completed jobs */}
           {task.status === 'completed' && workRecord && (
-            <InfoCard icon="time-outline" title={t('td.workRecord')} rows={recordRows}>
-              {Array.isArray(workRecord.imageUrls) && workRecord.imageUrls.length > 0 ? (
+            <InfoCard title={t('td.workRecord')} rows={recordRows}>
+              {donePhotos.length > 0 ? (
                 <View style={styles.donePhotos}>
                   <Text style={styles.donePhotosLabel}>{t('td.donePhotos')}</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.donePhotosRow}
-                  >
-                    {workRecord.imageUrls.map((u: string, i: number) => (
+                  <View style={styles.photoGrid}>
+                    {donePhotos.map((u, i) => (
                       <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => setViewerUrl(u)}>
-                        <Image source={{ uri: u }} style={styles.remotePhoto} />
+                        <Image source={{ uri: u }} style={[styles.photo, tileSize]} />
                       </TouchableOpacity>
                     ))}
-                  </ScrollView>
+                  </View>
                 </View>
               ) : null}
             </InfoCard>
@@ -325,12 +316,12 @@ export default function TaskDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Sticky primary action */}
+      {/* Sticky primary action: one button */}
       {hasActionBar && (
         <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
           {showStart && (
             <TouchableOpacity style={[styles.actionBtn, styles.startBtn]} onPress={handleStart} activeOpacity={0.85}>
-              <Text style={[styles.actionBtnText, { color: colors.onAccent }]}>{t('td.startBtn')}</Text>
+              <Text style={[styles.actionBtnText, { color: colors.onAccent }]}>{t('td.startTitle')}</Text>
             </TouchableOpacity>
           )}
           {showComplete && (
@@ -342,7 +333,7 @@ export default function TaskDetailScreen() {
             >
               {completing
                 ? <ActivityIndicator color={colors.heroText} />
-                : <Text style={[styles.actionBtnText, { color: colors.heroText }]}>{t('td.completeBtn')}</Text>
+                : <Text style={[styles.actionBtnText, { color: colors.heroText }]}>{t('td.completeTitle')}</Text>
               }
             </TouchableOpacity>
           )}
@@ -360,38 +351,25 @@ export default function TaskDetailScreen() {
   );
 }
 
-function CardTitle({ icon, text }: { icon: IconName; text: string }) {
-  return (
-    <View style={styles.cardTitle}>
-      <Ionicons name={icon} size={18} color={colors.textMuted} />
-      <Text style={styles.cardTitleText} numberOfLines={1}>{text}</Text>
-    </View>
-  );
-}
-
-/** A white card with a title row and label/value rows; `children` renders under the rows */
-function InfoCard({ icon, title, rows, children }: {
-  icon: IconName; title: string; rows: Row[]; children?: React.ReactNode;
-}) {
+/** A white card with a plain title and label-over-value rows; `children` renders under the rows */
+function InfoCard({ title, rows, children }: { title: string; rows: Row[]; children?: React.ReactNode }) {
   return (
     <View style={styles.card}>
-      <View style={styles.cardTitleRow}>
-        <CardTitle icon={icon} text={title} />
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
       </View>
       {rows.map((row, i) => (
-        <InfoRow key={i} {...row} first={i === 0} />
+        <InfoRow key={i} {...row} first={i === 0} last={i === rows.length - 1} />
       ))}
       {children}
     </View>
   );
 }
 
-function InfoRow({ icon, label, value, prominent, first }: Row & { first?: boolean }) {
+function InfoRow({ icon, label, value, prominent, first, last }: Row & { first?: boolean; last?: boolean }) {
   return (
-    <View style={[styles.infoRow, first && styles.infoRowFirst]}>
-      <View style={styles.infoChip}>
-        <Ionicons name={icon} size={16} color={colors.accentDark} />
-      </View>
+    <View style={[styles.infoRow, first && styles.infoRowFirst, last && styles.infoRowLast]}>
+      <Ionicons name={icon} size={16} color={colors.textMuted} />
       <View style={styles.infoText}>
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={[styles.infoValue, prominent && styles.infoValueProminent]}>{value}</Text>
@@ -406,53 +384,38 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: space.xxxl },
   center: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.bg, gap: space.md,
+    backgroundColor: colors.bg, gap: space.md, padding: space.xxl,
   },
-  errorText: { color: colors.textMuted, fontSize: font.base, fontWeight: weight.medium },
+  emptyTitle: { color: colors.text, fontSize: font.base, fontWeight: weight.semibold },
 
   // Hero
   hero: {
     backgroundColor: colors.hero,
     paddingHorizontal: space.lg,
-    paddingBottom: space.xxl,
+    paddingBottom: space.lg,
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
   },
   backBtn: {
-    alignSelf: 'flex-start',
-    height: 44,
-    minWidth: 44,
-    paddingLeft: space.sm,
-    paddingRight: space.md,
+    width: hit.compact,
+    height: hit.compact,
     borderRadius: radius.md,
     backgroundColor: colors.heroAlt,
     borderWidth: 1,
     borderColor: colors.heroBorder,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
+    justifyContent: 'center',
   },
-  backText: { color: colors.heroText, fontSize: font.sm, fontWeight: weight.semibold },
   heroTitle: {
-    marginTop: space.xl,
+    marginTop: space.lg,
     color: colors.heroText,
     fontSize: font.lg,
     lineHeight: 24,
-    fontWeight: weight.heavy,
+    fontWeight: weight.semibold,
   },
-  heroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
-  statusTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    backgroundColor: colors.surface,
-    paddingLeft: space.sm,
-    paddingRight: space.md,
-    height: 28,
-    borderRadius: radius.pill,
-  },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
   statusDot: { width: 8, height: 8, borderRadius: radius.pill },
-  statusTagText: { fontSize: font.xs, fontWeight: weight.bold, letterSpacing: 0.2 },
+  statusText: { color: colors.heroMuted, fontSize: font.sm, fontWeight: weight.medium },
 
   // Body and cards
   body: { paddingHorizontal: space.lg, paddingTop: space.lg, gap: space.md },
@@ -462,24 +425,16 @@ const styles = StyleSheet.create({
     padding: space.lg,
     ...shadow.card,
   },
-  cardTitleRow: {
+  cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.sm,
-    marginBottom: space.xs,
   },
-  cardTitle: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  cardTitleText: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.bold, color: colors.text },
-  countChip: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-  },
-  countChipText: { fontSize: font.xs, fontWeight: weight.semibold, color: colors.textMuted },
+  cardTitle: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.semibold, color: colors.text },
+  cardMeta: { fontSize: font.xs, color: colors.textFaint, letterSpacing: 0.2 },
 
-  // Info rows
+  // Info rows: icon, then label over value, hairline between rows
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -489,37 +444,29 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   infoRowFirst: { borderTopWidth: 0 },
-  infoChip: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoText: { flex: 1, minWidth: 0, gap: 2 },
-  infoLabel: { fontSize: font.xs, color: colors.textMuted, fontWeight: weight.medium },
-  infoValue: { fontSize: font.base, color: colors.text, fontWeight: weight.semibold, lineHeight: 22 },
-  infoValueProminent: { fontSize: font.lg, fontWeight: weight.bold, lineHeight: 24 },
+  infoRowLast: { paddingBottom: 0 },
+  infoText: { flex: 1, minWidth: 0, gap: space.xs },
+  infoLabel: { fontSize: font.xs, lineHeight: 16, color: colors.textFaint, letterSpacing: 0.2 },
+  infoValue: { fontSize: font.base, lineHeight: 22, color: colors.text, fontWeight: weight.medium },
+  infoValueProminent: { fontWeight: weight.semibold },
 
   // Photos
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
   photoTile: { borderRadius: radius.md },
   photo: { width: '100%', height: '100%', borderRadius: radius.md, backgroundColor: colors.surfaceAlt },
   photoDelete: {
     position: 'absolute', top: space.xs, right: space.xs,
-    width: 28, height: 28, borderRadius: radius.pill,
+    width: 24, height: 24, borderRadius: radius.pill,
     backgroundColor: colors.hero,
-    borderWidth: 2, borderColor: colors.surface,
     alignItems: 'center', justifyContent: 'center',
   },
   photoAdd: {
     borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: colors.borderStrong, borderStyle: 'dashed',
+    borderWidth: 1, borderColor: colors.borderStrong, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', gap: space.xs,
     backgroundColor: colors.surfaceAlt,
   },
-  photoAddText: { fontSize: font.xs, color: colors.textMuted, fontWeight: weight.semibold },
+  photoAddText: { fontSize: font.xs, color: colors.textMuted, fontWeight: weight.medium },
 
   // Notes
   notesInput: {
@@ -531,25 +478,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
-    marginTop: space.sm,
+    marginTop: space.md,
     color: colors.text,
     fontSize: font.base,
     lineHeight: 22,
   },
 
-  // Closed-job banner
-  doneCard: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  doneBadge: {
-    width: 48, height: 48, borderRadius: radius.pill,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  doneText: { flex: 1, minWidth: 0, fontSize: font.lg, color: colors.text, fontWeight: weight.heavy },
+  // Closed-job line
+  doneCard: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md },
+  doneText: { flex: 1, minWidth: 0, fontSize: font.base, color: colors.text, fontWeight: weight.semibold },
 
   // Completion photos inside the work record card
   donePhotos: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border },
-  donePhotosLabel: { fontSize: font.xs, color: colors.textMuted, fontWeight: weight.medium, marginBottom: space.sm },
-  donePhotosRow: { gap: space.sm },
-  remotePhoto: { width: 96, height: 96, borderRadius: radius.md, backgroundColor: colors.surfaceAlt },
+  donePhotosLabel: { fontSize: font.xs, lineHeight: 16, color: colors.textFaint, letterSpacing: 0.2 },
 
   // Sticky action bar
   actionBar: {
@@ -561,7 +502,7 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     width: '100%',
-    minHeight: hit.min,
+    height: hit.min,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
     alignItems: 'center',
@@ -570,7 +511,7 @@ const styles = StyleSheet.create({
   startBtn: { backgroundColor: colors.accent },
   completeBtn: { backgroundColor: colors.success },
   btnDisabled: { opacity: 0.6 },
-  actionBtnText: { fontSize: font.base, fontWeight: weight.heavy },
+  actionBtnText: { fontSize: font.base, fontWeight: weight.semibold },
 
   // Full-screen image viewer
   viewerBackdrop: {
