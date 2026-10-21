@@ -48,6 +48,8 @@ export default function TrackingScreen() {
   // Staff can switch from trucks on a job to every registered GPS tracker, like the console's full-screen map
   const canToggleTrackers = role === 'admin' || role === 'dispatcher';
   const [showTrackers, setShowTrackers] = useState(false);
+  // Height of the floating header, so the map's controls start below it whatever the device
+  const [headerHeight, setHeaderHeight] = useState(0);
   const timer = useRef<any>(null);
 
   const fetchPositions = useCallback(async () => {
@@ -191,15 +193,19 @@ export default function TrackingScreen() {
         positions={positions}
         focusId={selected?.driverId}
         style={StyleSheet.absoluteFill}
-        topInset={66}
-        bottomInset={18}
+        topInset={(headerHeight || insets.top + hit.min + space.md) + space.sm}
+        bottomInset={space.xl}
       />
 
       {/* 顶部遮罩，保证系统状态栏图标在浅色地图上可读 */}
       <View style={styles.topScrim} pointerEvents="none" />
 
       {/* 悬浮标题胶囊（全屏地图） */}
-      <View style={[styles.floatingHeader, { paddingTop: insets.top + space.md }]} pointerEvents="box-none">
+      <View
+        style={[styles.floatingHeader, { paddingTop: insets.top + space.md }]}
+        pointerEvents="box-none"
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+      >
         <View style={styles.headerPill}>
           <View style={[styles.onlineDot, positions.length === 0 && styles.onlineDotOff]} />
           <View style={styles.headerTexts}>
@@ -276,39 +282,6 @@ export default function TrackingScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* 司机列表面板 */}
-      {positions.length > 0 && (
-        <View style={styles.panel}>
-          <FlatList
-            data={positions}
-            keyExtractor={(p) => p.driverId}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: space.md }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.driverCard,
-                  selected?.driverId === item.driverId && styles.driverCardActive,
-                ]}
-                onPress={() => focusDriver(item)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.driverCardIcon}>🚛</Text>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.driverCardName} numberOfLines={1}>
-                    {item.driverName || t('d.driverFallback')}
-                  </Text>
-                  <Text style={[styles.driverCardSpeed, item.state === 'offline' && styles.metaOffline]}>
-                    {item.labelSuffix ?? (item.speed != null ? `${Math.round(item.speed)} km/h` : '—')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      )}
 
       {positions.length === 0 && (
         <View style={styles.emptyOverlay} pointerEvents="none">
@@ -489,37 +462,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: font.base, fontWeight: weight.heavy, color: colors.text },
   headerSub: { fontSize: font.xs, color: colors.textMuted, marginTop: space.xs },
 
-  panel: {
-    position: 'absolute',
-    // 让开右下角的刷新按钮（48 高 + 底部留白）
-    bottom: hit.min + space.xxxl,
-    left: 0,
-    right: 0,
-    paddingVertical: space.sm,
-  },
-  driverCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: space.md,
-    paddingHorizontal: space.md,
-    marginHorizontal: space.xs,
-    minHeight: hit.min,
-    minWidth: 150,
-    maxWidth: 210,
-    // 描边常驻 2px，选中时只换颜色，卡片不会跳动
-    borderWidth: 2,
-    borderColor: colors.border,
-    ...shadow.raised,
-  },
-  driverCardActive: {
-    borderColor: colors.accent,
-  },
-  driverCardIcon: { fontSize: font.xl },
-  driverCardName: { fontSize: font.sm, color: colors.text, fontWeight: weight.bold },
-  driverCardSpeed: { fontSize: font.xs, color: colors.success, marginTop: space.xs, fontWeight: weight.bold },
   emptyOverlay: {
     position: 'absolute',
     top: '40%',

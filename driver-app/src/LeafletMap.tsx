@@ -34,11 +34,9 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style id="insets">.leaflet-top{top:${topInset}px;}.leaflet-bottom{bottom:${bottomInset}px;}</style>
 <style>
   html,body,#map{height:100%;width:100%;margin:0;padding:0;background:${colors.bg};}
-  /* 把控件从屏幕最顶/最底挪开，避免被状态栏/刘海/手势条挡住、点不到 */
-  .leaflet-top{top:${topInset}px;}
-  .leaflet-bottom{bottom:${bottomInset}px;}
   /* 控件同时压在卫星影像和街道瓦片上，两种底都得读得清，所以一律给实心底色 + 描边，不用半透明 */
   .leaflet-control-layers,.leaflet-bar,
   .leaflet-touch .leaflet-control-layers,.leaflet-touch .leaflet-bar{
@@ -112,8 +110,13 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
   // 车队在奥克兰。原来是 [35,105] 缩放 4——中国地理中心；
   // 还没有车辆上报位置时，调度员打开定位页看到的就是整个中国
   var map = L.map('map', { zoomControl: false }).setView([-36.8485, 174.7633], 11);
-  // Zoom sits top-right (under the layer switcher) so the vehicle cards along the bottom never cover it
-  L.control.zoom({ position: 'topright' }).addTo(map);
+  // Zoom bottom-left, layers top-right: the floating header owns the top-left, the refresh button the bottom-right
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+  // The screen measures its floating header and pushes the controls below it without reloading the map
+  window.rnSetInsets = function (top, bottom) {
+    var s = document.getElementById('insets');
+    if (s) s.textContent = '.leaflet-top{top:' + top + 'px;}.leaflet-bottom{bottom:' + bottom + 'px;}';
+  };
   // 免费底图：街道(OSM) + 卫星(Esri)，右上角可切换，均无需 API Key
   var street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
@@ -184,15 +187,22 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
   const ref = useRef<WebView>(null);
   const { t } = useLang();
   const [ready, setReady] = useState(false);
+  // The HTML is built once per language; inset changes are injected so the map never reloads mid-use.
+  const initialInsets = useRef({ top: topInset, bottom: bottomInset });
   const html = React.useMemo(
-    () => buildHtml(topInset, bottomInset, {
+    () => buildHtml(initialInsets.current.top, initialInsets.current.bottom, {
       street: t('map.street'),
       satellite: t('map.satellite'),
       speed: t('map.speed'),
       coords: t('map.coords'),
     }),
-    [topInset, bottomInset, t],
+    [t],
   );
+
+  useEffect(() => {
+    if (!ready || !ref.current) return;
+    ref.current.injectJavaScript(`window.rnSetInsets && window.rnSetInsets(${Math.round(topInset)}, ${Math.round(bottomInset)}); true;`);
+  }, [ready, topInset, bottomInset]);
 
   useEffect(() => {
     if (!ready || !ref.current) return;
