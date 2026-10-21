@@ -340,7 +340,8 @@ export default function DashboardPage() {
     .filter((r) => r.hasFix)
     .map((r) => ({
       driverId: r.id,
-      driverName: `${r.label} · ${t(`dashboard.devices_state_${r.state}`)}`,
+      // Pin label: the plate plus the live speed for an online tracker, or "Offline" with its last known position.
+      driverName: `${r.label} · ${r.state === 'offline' ? t('dashboard.devices_state_offline') : `${r.speed.toFixed(0)} km/h`}`,
       latitude: r.lat, longitude: r.lng, speed: r.state === 'offline' ? 0 : r.speed,
     })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
