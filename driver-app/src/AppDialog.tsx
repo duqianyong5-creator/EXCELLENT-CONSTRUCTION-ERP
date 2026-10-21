@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { colors, space, font, weight, radius, hit } from './theme';
+import { colors, space, font, weight, radius, hit, shadow } from './theme';
 
 
 type Btn = { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' | 'default' };
 type DialogState = { visible: boolean; title: string; message?: string; buttons: Btn[] };
 
-// 全局可调用的主题化弹窗（替代系统白底 Alert.alert，与 App 暗色+琥珀风格统一）
+// 全局可调用的主题化弹窗（替代系统白底 Alert.alert，与 App 的卡片+琥珀风格统一）
 let _show: (title: string, message?: string, buttons?: Btn[]) => void = () => {};
 
 export function showAppAlert(title: string, message?: string, buttons?: Btn[]) {
@@ -25,6 +25,7 @@ export default function AppDialog() {
   const close = () => setS((p) => ({ ...p, visible: false }));
   const handle = (b: Btn) => { close(); if (b.onPress) setTimeout(b.onPress, 10); };
 
+  // Three or more choices stack vertically; one or two sit side by side
   const stacked = s.buttons.length > 2;
 
   return (
@@ -51,8 +52,9 @@ export default function AppDialog() {
                   <Text
                     style={[
                       styles.btnText,
-                      cancel ? styles.btnTextCancel : { color: colors.onAccent },
+                      cancel ? styles.btnTextCancel : danger ? styles.btnTextDanger : styles.btnTextPrimary,
                     ]}
+                    numberOfLines={1}
                   >
                     {b.text}
                   </Text>
@@ -69,8 +71,8 @@ export default function AppDialog() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    // 遮罩盖的是任意页面，不属于色板里的任何一种"表面"，所以保留字面值
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    // The scrim covers any page, so it is not one of the palette's surfaces: a translucent navy
+    backgroundColor: 'rgba(15,23,42,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: space.xxl,
@@ -80,20 +82,20 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: space.xl,
+    ...shadow.raised,
   },
   title: {
     color: colors.text,
     fontSize: font.lg,
+    lineHeight: 24,
     fontWeight: weight.heavy,
   },
   message: {
     color: colors.textMuted,
-    fontSize: font.sm,
-    lineHeight: 21,
-    marginTop: space.md,
+    fontSize: font.base,
+    lineHeight: 24,
+    marginTop: space.sm,
   },
   btnRow: {
     flexDirection: 'row',
@@ -107,6 +109,7 @@ const styles = StyleSheet.create({
     flex: 1,
     // 对话框按钮是最常被误点的地方，给足可点高度（司机可能戴手套）
     minHeight: hit.min,
+    paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderRadius: radius.md,
     alignItems: 'center',
@@ -119,21 +122,25 @@ const styles = StyleSheet.create({
   btnPrimary: {
     backgroundColor: colors.accent,
   },
-  // 红色按钮上用深色字：白字在 #EF4444 上只有 3.60:1（不达标），深色是 4.93:1。
-  // 这是退出登录、删除任务、取消任务的确认按钮，最不该看不清。
   btnDanger: {
     backgroundColor: colors.danger,
   },
   btnCancel: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderStrong,
   },
   btnText: {
     fontSize: font.base,
-    fontWeight: weight.heavy,
+    fontWeight: weight.bold,
+  },
+  btnTextPrimary: {
+    color: colors.onAccent,
+  },
+  btnTextDanger: {
+    color: colors.heroText,
   },
   btnTextCancel: {
-    color: colors.textMuted,
+    color: colors.text,
   },
 });

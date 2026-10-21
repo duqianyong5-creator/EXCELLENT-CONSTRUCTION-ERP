@@ -82,6 +82,8 @@ export const gpsApi = {
     accuracy?: number;
   }) => api.post('/gps/upload', data),
   positions: () => api.get('/gps/positions'),
+  // a client's own in-progress jobs only, scoped on the server
+  clientPositions: () => api.get('/gps/client-positions'),
   driverPosition: (driverId: string) => api.get(`/gps/driver/${driverId}/position`),
 };
 

@@ -10,7 +10,7 @@ import { colors, space, font, weight, radius, hit } from '../../src/theme';
 
 const ICONS: Record<string, { active: string; inactive: string }> = {
   tasks: { active: 'list', inactive: 'list-outline' },
-  tracking: { active: 'calendar', inactive: 'calendar-outline' },
+  tracking: { active: 'map', inactive: 'map-outline' },
   profile: { active: 'person', inactive: 'person-outline' },
 };
 
@@ -46,7 +46,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textFaint,
         tabBarStyle: {
-          backgroundColor: colors.bg,
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
           borderTopColor: colors.border,
           // 图标区按 hit.min 给足，再留出标签行；底部加上手势条的安全区

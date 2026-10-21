@@ -64,8 +64,6 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
     width:${hit.min}px;
     height:${hit.min}px;
     background-color:transparent;
-    /* 图层按钮是一张深色贴图，落在深色面板上会糊掉，反色后才看得见 */
-    filter:invert(1);
   }
   .leaflet-control-layers-expanded{padding:${space.sm}px ${space.md}px;background:${colors.surface};color:${colors.text};}
   .leaflet-control-layers label{
@@ -112,8 +110,8 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
   // 车队在奥克兰。原来是 [35,105] 缩放 4——中国地理中心；
   // 还没有车辆上报位置时，调度员打开定位页看到的就是整个中国
   var map = L.map('map', { zoomControl: false }).setView([-36.8485, 174.7633], 11);
-  // 缩放放到左下角，远离顶部状态栏；右上角放图层切换
-  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+  // Zoom sits top-right (under the layer switcher) so the vehicle cards along the bottom never cover it
+  L.control.zoom({ position: 'topright' }).addTo(map);
   // 免费底图：街道(OSM) + 卫星(Esri)，右上角可切换，均无需 API Key
   var street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap'
@@ -127,17 +125,23 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
   baseLayers[LBL.satellite] = satellite;
   L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
   var markers = {};
+  var focusedId = null;
+  function fitAll(pts) {
+    if (pts.length === 1) { map.setView(pts[0], 13); }
+    else if (pts.length > 1) { map.fitBounds(pts, { padding: [60, 60] }); }
+  }
   window.rnRender = function (list) {
     for (var k in markers) { map.removeLayer(markers[k]); }
     markers = {};
     var pts = [];
     list.forEach(function (p) {
+      var text = p.speed != null ? p.name + ' · ' + p.speed + ' km/h' : p.name;
       // 卡车图标原来只靠 drop-shadow 撑在瓦片上，亮底影像里几乎糊掉，改成实心圆底盘
       var label = '<div style="display:flex;flex-direction:column;align-items:center">'
         + '<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:${font.xl}px;line-height:1;border-radius:${radius.pill}px;background:${colors.surface};border:1px solid ${colors.borderStrong};box-shadow:${overlayShadow}">🚛</div>'
-        + '<div style="margin-top:${space.xs}px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${colors.surface};color:${colors.text};border:1px solid ${colors.borderStrong};border-radius:${radius.sm}px;padding:${space.xs}px ${space.sm}px;font-size:${font.xs}px;font-weight:${weight.bold};box-shadow:${overlayShadow}">' + p.name + '</div>'
+        + '<div style="margin-top:${space.xs}px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:${colors.surface};color:${colors.text};border:1px solid ${colors.borderStrong};border-radius:${radius.sm}px;padding:${space.xs}px ${space.sm}px;font-size:${font.xs}px;font-weight:${weight.bold};box-shadow:${overlayShadow}">' + text + '</div>'
         + '</div>';
-      var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [130, 48], iconAnchor: [65, 16] }) });
+      var m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: label, iconSize: [180, 48], iconAnchor: [90, 16] }) });
       m.bindPopup(
         '<div style="font-weight:${weight.bold};font-size:${font.sm}px;margin-bottom:${space.xs}px;color:${colors.text}">' + p.name + '</div>'
         + '<div style="font-size:${font.xs}px;color:${colors.textMuted}">' + LBL.speed + ' <b style="color:${colors.accent}">' + (p.speed != null ? p.speed : 0) + ' km/h</b></div>'
@@ -147,12 +151,21 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
       markers[p.id] = m;
       pts.push([p.lat, p.lng]);
     });
-    if (pts.length === 1) { map.setView(pts[0], 13); }
-    else if (pts.length > 1) { map.fitBounds(pts, { padding: [40, 40] }); }
+    // A followed vehicle keeps the camera; otherwise every refresh shows the whole fleet
+    if (focusedId && markers[focusedId]) { map.panTo(markers[focusedId].getLatLng()); }
+    else { focusedId = null; fitAll(pts); }
   };
   window.rnFocus = function (id) {
     var m = markers[id];
-    if (m) { map.setView(m.getLatLng(), 14); m.openPopup(); }
+    focusedId = id;
+    if (m) { map.setView(m.getLatLng(), 15); m.openPopup(); }
+  };
+  window.rnFitAll = function () {
+    focusedId = null;
+    map.closePopup();
+    var pts = [];
+    for (var k in markers) { pts.push(markers[k].getLatLng()); }
+    fitAll(pts);
   };
 </script>
 </body>
@@ -194,9 +207,9 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
   }, [ready, positions, t]);
 
   useEffect(() => {
-    if (ready && focusId && ref.current) {
-      ref.current.injectJavaScript(`window.rnFocus && window.rnFocus(${JSON.stringify(focusId)}); true;`);
-    }
+    if (!ready || !ref.current) return;
+    if (focusId) ref.current.injectJavaScript(`window.rnFocus && window.rnFocus(${JSON.stringify(focusId)}); true;`);
+    else ref.current.injectJavaScript('window.rnFitAll && window.rnFitAll(); true;');
   }, [ready, focusId]);
 
   return (

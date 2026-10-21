@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
-  TouchableOpacity, FlatList,
+  TouchableOpacity, FlatList, Modal, Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +40,8 @@ export default function TrackingScreen() {
   const [driverTodayTasks, setDriverTodayTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<DriverPos | null>(null);
+  // The vehicle picker: with a big fleet the map fits everyone by default and this is how you follow one
+  const [pickerOpen, setPickerOpen] = useState(false);
   const timer = useRef<any>(null);
 
   const fetchPositions = useCallback(async () => {
@@ -47,44 +49,23 @@ export default function TrackingScreen() {
       if (role === 'driver') {
         const tasks: any[] = (await tasksApi.today()) as any;
         setDriverTodayTasks(Array.isArray(tasks) ? tasks : []);
-      } else if (role === 'admin' || role === 'dispatcher') {
-        const data: any[] = (await gpsApi.positions()) as any;
+      } else if (role === 'admin' || role === 'dispatcher' || role === 'client') {
+        // Staff get every truck on a job; a client gets only the trucks on that client's own jobs
+        // (the server scopes it, the app cannot widen it). Both carry the driver's name.
+        const data: any[] = (await (role === 'client' ? gpsApi.clientPositions() : gpsApi.positions())) as any;
         if (Array.isArray(data)) {
-          setPositions(data.map((p) => ({
+          const list = data.map((p) => ({
             driverId: p.driver_id ?? p.driverId ?? '',
-            driverName: p.driverName ?? p.driver_name, // 后端已带账户名
+            driverName: p.driverName ?? p.driver_name,
             latitude: parseFloat(p.latitude),
             longitude: parseFloat(p.longitude),
             speed: p.speed,
             timestamp: p.timestamp,
             taskId: p.task_id ?? p.taskId,
-          })));
+          }));
+          list.sort((a, b) => String(a.driverName || '').localeCompare(String(b.driverName || '')));
+          setPositions(list);
         }
-      } else if (role === 'client') {
-        const tasks: any[] = (await tasksApi.list()) as any;
-        const active = (Array.isArray(tasks) ? tasks : []).filter(
-          (t) => t.status === 'in_progress' && (t.driverId || t.driver_id),
-        );
-        const results = await Promise.all(
-          active.map((t) =>
-            gpsApi.driverPosition(t.driverId ?? t.driver_id).catch(() => null),
-          ),
-        );
-        const valid: DriverPos[] = [];
-        results.forEach((pos: any, i) => {
-          if (pos && pos.latitude && pos.longitude) {
-            valid.push({
-              driverId: active[i].driverId ?? active[i].driver_id,
-              driverName: active[i].driverName ?? active[i].driver_name,
-              taskId: active[i].id,
-              latitude: parseFloat(pos.latitude),
-              longitude: parseFloat(pos.longitude),
-              speed: pos.speed,
-              timestamp: pos.timestamp,
-            });
-          }
-        });
-        setPositions(valid);
       }
     } catch {
       // silent
@@ -99,9 +80,14 @@ export default function TrackingScreen() {
     return () => clearInterval(timer.current);
   }, [fetchPositions]);
 
+  // Tap a vehicle to follow it; tap it again (or pick "All vehicles") to go back to the whole fleet
   const focusDriver = (pos: DriverPos) => {
-    setSelected(pos);
+    setSelected((cur) => (cur?.driverId === pos.driverId ? null : pos));
   };
+  // A followed vehicle that stopped reporting falls back to the fleet view
+  useEffect(() => {
+    if (selected && !positions.some((p) => p.driverId === selected.driverId)) setSelected(null);
+  }, [positions, selected]);
 
   const title = role === 'client' ? t('trk.titleClient') : t('trk.title');
 
@@ -186,11 +172,58 @@ export default function TrackingScreen() {
           <View style={styles.headerTexts}>
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
             <Text style={styles.headerSub} numberOfLines={1}>
-              {positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
+              {selected
+                ? t('trk.following', { name: selected.driverName || t('d.driverFallback') })
+                : positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
             </Text>
           </View>
         </View>
+        {positions.length > 0 && (
+          <TouchableOpacity
+            style={[styles.filterBtn, selected && styles.filterBtnActive]}
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('trk.filter')}
+          >
+            <Ionicons name={selected ? 'funnel' : 'funnel-outline'} size={20} color={selected ? colors.onAccent : colors.text} />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Vehicle picker */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t('trk.pickVehicle')}</Text>
+            <TouchableOpacity
+              style={[styles.sheetRow, !selected && styles.sheetRowActive]}
+              onPress={() => { setSelected(null); setPickerOpen(false); }}
+              activeOpacity={0.85}
+            >
+              <View style={styles.sheetIcon}><Ionicons name="layers-outline" size={20} color={colors.text} /></View>
+              <Text style={styles.sheetRowName}>{t('trk.allVehicles')}</Text>
+              <Text style={styles.sheetRowMeta}>{positions.length}</Text>
+            </TouchableOpacity>
+            <FlatList
+              data={positions}
+              keyExtractor={(p) => p.driverId}
+              style={{ maxHeight: 320 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.sheetRow, selected?.driverId === item.driverId && styles.sheetRowActive]}
+                  onPress={() => { setSelected(item); setPickerOpen(false); }}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.sheetIcon}><Text style={{ fontSize: font.lg }}>🚛</Text></View>
+                  <Text style={styles.sheetRowName} numberOfLines={1}>{item.driverName || t('d.driverFallback')}</Text>
+                  <Text style={styles.sheetRowMeta}>{item.speed != null ? `${Math.round(item.speed)} km/h` : '—'}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* 司机列表面板 */}
       {positions.length > 0 && (
@@ -341,14 +374,37 @@ const styles = StyleSheet.create({
   // 压在地图瓦片上的元素一律用实色底：半透明的底在卫星图上会糊掉
   topScrim: {
     position: 'absolute', top: 0, left: 0, right: 0, height: 64,
-    backgroundColor: colors.bg,
-    opacity: 0.55,
+    backgroundColor: colors.surface,
+    opacity: 0.6,
   },
   floatingHeader: {
     position: 'absolute', top: 0, left: 0, right: 0,
     paddingHorizontal: space.lg,
-    alignItems: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md,
   },
+  filterBtn: {
+    width: hit.min, height: hit.min, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
+    alignItems: 'center', justifyContent: 'center',
+    ...shadow.raised,
+  },
+  filterBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+    paddingHorizontal: space.lg, paddingTop: space.md, ...shadow.raised,
+  },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.borderStrong, marginBottom: space.md },
+  sheetTitle: { fontSize: font.lg, fontWeight: weight.heavy, color: colors.text, marginBottom: space.sm },
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', gap: space.md,
+    minHeight: hit.min + space.sm, paddingHorizontal: space.md, borderRadius: radius.md,
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  sheetRowActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  sheetIcon: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  sheetRowName: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.bold, color: colors.text },
+  sheetRowMeta: { fontSize: font.sm, fontWeight: weight.bold, color: colors.success },
   headerPill: {
     flexDirection: 'row', alignItems: 'center',
     maxWidth: '100%',

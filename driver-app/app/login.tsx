@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useDispatch } from 'react-redux';
@@ -12,18 +13,25 @@ import { authApi, getBaseUrl } from '../src/api';
 import { setCredentials } from '../src/store/authSlice';
 import { useLang } from '../src/i18n';
 import { showAppAlert } from '../src/AppDialog';
-import { colors, space, font, weight, radius, hit } from '../src/theme';
+import { colors, space, font, weight, radius, hit, shadow } from '../src/theme';
+
+/** How far the form card climbs over the hero's bottom edge */
+const CARD_OVERLAP = space.huge;
 
 export default function LoginScreen() {
   const router = useRouter();
   const dispatch = useDispatch();
   const { t, toggle } = useLang();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focused, setFocused] = useState<'id' | 'pw' | null>(null);
+
+  // The navy hero owns the top 40% of the screen; the form card overlaps its bottom edge
+  const heroHeight = Math.round(windowHeight * 0.4);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
@@ -65,106 +73,113 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.inner}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      {/* Navy behind the top of the scroll view, so an over-scroll at the top stays navy rather than grey */}
+      <View style={[styles.heroBackdrop, { height: heroHeight }]} />
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Header decoration */}
-        <View style={styles.topDecoration}>
-          <View style={styles.decorCircle1} />
-          <View style={styles.decorCircle2} />
-        </View>
-
-        {/* Logo area */}
-        <View style={styles.logoBox}>
-          <View style={styles.logoIconContainer}>
-            <Image source={require('../assets/log.png')} style={styles.logoImage} resizeMode="contain" />
-          </View>
-          <Text style={styles.logoTitle}>Excellent Construction</Text>
-          <Text style={styles.logoSub}>{t('login.portal')}</Text>
-        </View>
-
-        {/* Login card */}
-        <View style={styles.card}>
-          <Text style={styles.label}>{t('login.account')}</Text>
-          <View style={[styles.inputContainer, focused === 'id' && styles.inputContainerFocused]}>
-            <Ionicons name="person-outline" size={20} color={focused === 'id' ? colors.accent : colors.textFaint} />
-            <TextInput
-              style={styles.input}
-              placeholder={t('login.accountPh')}
-              value={identifier}
-              onChangeText={setIdentifier}
-              onFocus={() => setFocused('id')}
-              onBlur={() => setFocused(null)}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              returnKeyType="next"
-              placeholderTextColor={colors.textFaint}
-            />
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Hero: logo tile, product name, one-line tagline */}
+          <View style={[styles.hero, { minHeight: heroHeight, paddingTop: insets.top + space.xl }]}>
+            <View style={styles.heroGlow} />
+            <View style={styles.logoTile}>
+              <Image source={require('../assets/log.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.brand}>Excellent Construction</Text>
+            <Text style={styles.tagline}>{t('login.portal')}</Text>
           </View>
 
-          <Text style={styles.label}>{t('login.password')}</Text>
-          <View style={[styles.inputContainer, focused === 'pw' && styles.inputContainerFocused]}>
-            <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? colors.accent : colors.textFaint} />
-            <TextInput
-              style={styles.input}
-              placeholder={t('login.passwordPh')}
-              value={password}
-              onChangeText={setPassword}
-              onFocus={() => setFocused('pw')}
-              onBlur={() => setFocused(null)}
-              secureTextEntry={!showPassword}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-              placeholderTextColor={colors.textFaint}
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword(v => !v)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
-            </TouchableOpacity>
+          {/* Form card, floating over the hero's bottom edge */}
+          <View style={[styles.body, { paddingBottom: insets.bottom + space.lg }]}>
+            <View style={styles.card}>
+              <Text style={styles.label}>{t('login.account')}</Text>
+              <View style={[styles.inputContainer, focused === 'id' && styles.inputContainerFocused]}>
+                <Ionicons name="person-outline" size={20} color={focused === 'id' ? colors.accent : colors.textFaint} />
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('login.accountPh')}
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  onFocus={() => setFocused('id')}
+                  onBlur={() => setFocused(null)}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  placeholderTextColor={colors.textFaint}
+                />
+              </View>
+
+              <Text style={styles.label}>{t('login.password')}</Text>
+              <View style={[styles.inputContainer, focused === 'pw' && styles.inputContainerFocused]}>
+                <Ionicons name="lock-closed-outline" size={20} color={focused === 'pw' ? colors.accent : colors.textFaint} />
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('login.passwordPh')}
+                  value={password}
+                  onChangeText={setPassword}
+                  onFocus={() => setFocused('pw')}
+                  onBlur={() => setFocused(null)}
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                  placeholderTextColor={colors.textFaint}
+                />
+                <TouchableOpacity
+                  style={styles.eyeBtn}
+                  onPress={() => setShowPassword(v => !v)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textFaint} />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, loading && styles.btnDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color={colors.onAccent} />
+                ) : (
+                  <Text style={styles.primaryBtnText}>{t('login.login')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.registerRow}>
+              <Text style={styles.tip}>{t('login.noAccount')}</Text>
+              <TouchableOpacity style={styles.registerBtn} onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.registerLink}>{t('login.register')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Pushes the version line to the bottom of the screen when the form is short */}
+            <View style={styles.flex} />
+            <Text style={styles.version}>v1.0.1</Text>
           </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.loginBtn, loading && styles.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.onAccent} />
-            ) : (
-              <Text style={styles.loginBtnText}>{t('login.login')}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.registerRow}>
-          <Text style={styles.tip}>{t('login.noAccount')}</Text>
-          <TouchableOpacity style={styles.registerBtn} onPress={() => router.push('/register')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.registerLink}>{t('login.register')}</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.version}>v1.0.1</Text>
-      </ScrollView>
-
-      {/* 语言切换挂在右上角：它是全局开关，不该挤在"注册"旁边当第二个按钮 */}
+      {/* Language switch: a global toggle, so it sits in the hero corner rather than beside "register" */}
       <TouchableOpacity
         onPress={toggle}
         style={[styles.langBtn, { top: insets.top + space.md }]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={0.85}
       >
+        <Ionicons name="globe-outline" size={16} color={colors.heroText} />
         <Text style={styles.langBtnText}>{t('login.langToggle')}</Text>
       </TouchableOpacity>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -173,101 +188,102 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  inner: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: space.xxl,
+  flex: {
+    flex: 1,
   },
-  topDecoration: {
+  scroll: {
+    flexGrow: 1,
+  },
+  heroBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 300,
+    backgroundColor: colors.hero,
+  },
+  hero: {
+    backgroundColor: colors.hero,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.xxl,
+    // Room for the card that climbs over the bottom edge
+    paddingBottom: CARD_OVERLAP + space.xxl,
     overflow: 'hidden',
   },
-  decorCircle1: {
+  // A slightly lighter navy disc in the corner: depth without a second colour
+  heroGlow: {
     position: 'absolute',
-    top: -100,
-    right: -100,
-    width: 300,
-    height: 300,
+    top: -120,
+    right: -80,
+    width: 320,
+    height: 320,
     borderRadius: radius.pill,
-    backgroundColor: colors.text,
-    opacity: 0.08,
+    backgroundColor: colors.heroAlt,
   },
-  decorCircle2: {
-    position: 'absolute',
-    top: -50,
-    left: -100,
-    width: 250,
-    height: 250,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentDark,
-    opacity: 0.05,
-  },
-  logoBox: {
-    alignItems: 'center',
-    marginBottom: space.xxxl,
-  },
-  logoIconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: radius.xl,
-    // logo 本身是深色图，需要一块浅色底板才看得清
-    backgroundColor: colors.text,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: space.lg,
-  },
-  logoImage: {
+  logoTile: {
     width: 88,
     height: 88,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.lg,
+    ...shadow.raised,
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
     borderRadius: radius.lg,
   },
-  logoTitle: {
+  brand: {
     fontSize: font.xl,
     fontWeight: weight.heavy,
-    color: colors.text,
-    marginBottom: space.sm,
+    color: colors.heroText,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
-  logoSub: {
-    fontSize: font.xs,
-    color: colors.accent,
-    letterSpacing: 3,
-    fontWeight: weight.bold,
-    textTransform: 'uppercase',
+  tagline: {
+    fontSize: font.sm,
+    color: colors.heroMuted,
+    marginTop: space.xs,
+    textAlign: 'center',
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: space.lg,
+    backgroundColor: colors.bg,
   },
   card: {
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
+    marginTop: -CARD_OVERLAP,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     padding: space.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
+    ...shadow.raised,
   },
   label: {
     fontSize: font.sm,
     color: colors.textMuted,
-    marginBottom: space.sm,
     fontWeight: weight.semibold,
+    marginBottom: space.sm,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: space.md,
+    minHeight: hit.min,
+    paddingHorizontal: space.md,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: space.lg,
-    paddingHorizontal: space.lg,
-    gap: space.md,
-    minHeight: hit.min,
   },
   inputContainerFocused: {
     borderColor: colors.accent,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surface,
   },
   input: {
     flex: 1,
@@ -281,26 +297,22 @@ const styles = StyleSheet.create({
     height: hit.min,
     alignItems: 'center',
     justifyContent: 'center',
-    // 触区撑到 48，但视觉上仍贴着右边距
+    // A 48pt tap target that still sits flush with the right edge of the input
     marginRight: -space.md,
   },
-  btn: {
-    borderRadius: radius.md,
-    paddingVertical: space.lg,
+  primaryBtn: {
     minHeight: hit.min,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: space.sm,
   },
-  loginBtn: {
-    backgroundColor: colors.accent,
-    marginTop: space.xl,
-  },
-  loginBtnText: {
+  primaryBtnText: {
     color: colors.onAccent,
-    fontSize: font.lg,
-    fontWeight: weight.heavy,
-    letterSpacing: 0.3,
+    fontSize: font.base,
+    fontWeight: weight.bold,
+    letterSpacing: 0.2,
   },
   btnDisabled: {
     opacity: 0.6,
@@ -309,12 +321,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: space.sm,
-    marginTop: space.lg,
+    gap: space.xs,
+    marginTop: space.md,
   },
   tip: {
-    textAlign: 'center',
-    color: colors.textFaint,
+    color: colors.textMuted,
     fontSize: font.sm,
   },
   registerBtn: {
@@ -323,7 +334,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
   },
   registerLink: {
-    color: colors.accent,
+    color: colors.accentDark,
     fontSize: font.sm,
     fontWeight: weight.bold,
   },
@@ -331,17 +342,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: space.lg,
     zIndex: 10,
-    minHeight: hit.min,
-    paddingHorizontal: space.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: space.xs,
+    minHeight: hit.compact,
+    paddingHorizontal: space.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.heroBorder,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.heroBorder,
   },
   langBtnText: {
-    color: colors.textMuted,
+    color: colors.heroText,
     fontSize: font.sm,
     fontWeight: weight.bold,
     letterSpacing: 0.5,
@@ -349,8 +361,7 @@ const styles = StyleSheet.create({
   version: {
     textAlign: 'center',
     color: colors.textFaint,
-    marginTop: space.lg,
     fontSize: font.xs,
-    opacity: 0.6,
+    marginTop: space.lg,
   },
 });

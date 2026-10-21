@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, AppState,
+  Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, AppState, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { useSelector } from 'react-redux';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootState } from './store';
 import { announcementsApi } from './api';
 import { useLang } from './i18n';
@@ -15,12 +16,14 @@ const SEEN_KEY = 'seen_announcements';
 const TARGET_LABEL: Record<string, { key: string; color: string; soft: string }> = {
   all: { key: 'ann.targetAll', color: colors.info, soft: colors.infoSoft },
   client: { key: 'role.client', color: colors.success, soft: colors.successSoft },
-  driver: { key: 'role.driver', color: colors.accent, soft: colors.accentSoft },
+  driver: { key: 'role.driver', color: colors.accentDark, soft: colors.accentSoft },
 };
 
 export default function AnnouncementModal() {
   const { user } = useSelector((s: RootState) => s.auth);
   const { t } = useLang();
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const [items, setItems] = useState<any[]>([]);
   const [visible, setVisible] = useState(false);
   const visibleRef = useRef(false);
@@ -75,31 +78,45 @@ export default function AnnouncementModal() {
 
   if (!visible || !items.length) return null;
 
+  const formatDate = (value: unknown) => {
+    if (!value) return '';
+    const d = new Date(value as string);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(t('common.dateLocale'), { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={dismiss}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={dismiss}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+          <View style={styles.handle} />
+
           <View style={styles.header}>
             <View style={styles.headerIcon}>
               <Ionicons name="megaphone" size={20} color={colors.accent} />
             </View>
-            <Text style={styles.headerTitle}>{t('ann.title')}</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>{t('ann.title')}</Text>
           </View>
 
-          <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
-            {items.map((a) => {
+          {/* The list takes at most half the screen so the button stays in reach */}
+          <ScrollView
+            style={{ maxHeight: Math.round(screenHeight * 0.5) }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {items.map((a, i) => {
               const tg = TARGET_LABEL[a.targetRole] || TARGET_LABEL.all;
+              const date = formatDate(a.createdAt);
               return (
-                <View key={a.id} style={styles.item}>
+                <View key={a.id} style={[styles.item, i > 0 && styles.itemDivider]}>
                   <View style={styles.itemTop}>
                     <Text style={styles.itemTitle} numberOfLines={2}>{a.title}</Text>
-                    <View style={[styles.badge, { backgroundColor: tg.soft, borderColor: tg.color }]}>
+                    <View style={[styles.badge, { backgroundColor: tg.soft }]}>
                       <Text style={[styles.badgeText, { color: tg.color }]}>{t(tg.key)}</Text>
                     </View>
                   </View>
-                  <View style={styles.itemContentBox}>
-                    <Text style={styles.itemContent}>{a.content}</Text>
-                  </View>
+                  <Text style={styles.itemContent}>{a.content}</Text>
+                  {!!date && <Text style={styles.itemDate}>{date}</Text>}
                 </View>
               );
             })}
@@ -117,27 +134,31 @@ export default function AnnouncementModal() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    // 遮罩没有对应的色板 token：它压的是任意页面，只能是半透明黑
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: space.xxl,
+    // The scrim covers any page, so it is not one of the palette's surfaces: a translucent navy
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'flex-end',
   },
-  card: {
-    width: '100%',
-    maxWidth: 420,
+  sheet: {
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    padding: space.xl,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
     ...shadow.raised,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.borderStrong,
+    marginBottom: space.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    marginBottom: space.lg,
+    marginBottom: space.md,
   },
   headerIcon: {
     width: hit.compact,
@@ -151,59 +172,54 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    fontSize: font.xl,
+    fontSize: font.lg,
     fontWeight: weight.heavy,
   },
   item: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: space.lg,
-    marginBottom: space.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: space.md,
+  },
+  itemDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   itemTop: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.md,
+    alignItems: 'flex-start',
+    gap: space.sm,
+    marginBottom: space.sm,
   },
   itemTitle: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: weight.heavy,
     // 标题长了要自己收窄，不能顶到右边的标签上
     flex: 1,
     minWidth: 0,
-    marginRight: space.sm,
-    lineHeight: 24,
-  },
-  itemContentBox: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: space.md,
-    paddingVertical: space.md,
+    color: colors.text,
+    fontSize: font.base,
+    lineHeight: 22,
+    fontWeight: weight.bold,
   },
   badge: {
     flexShrink: 0,
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
-    borderRadius: radius.sm,
-    borderWidth: 1,
+    borderRadius: radius.pill,
   },
   badgeText: {
     fontSize: font.xs,
     fontWeight: weight.bold,
   },
   itemContent: {
-    color: colors.textMuted,
+    color: colors.text,
     fontSize: font.base,
     lineHeight: 24,
   },
+  itemDate: {
+    marginTop: space.sm,
+    color: colors.textFaint,
+    fontSize: font.xs,
+    fontWeight: weight.medium,
+  },
   button: {
-    marginTop: space.xs,
+    marginTop: space.lg,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     minHeight: hit.min,
