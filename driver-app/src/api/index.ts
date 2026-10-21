@@ -99,6 +99,8 @@ export const usersApi = {
 export const gpsDevicesApi = {
   /** 已登记车牌（接单时快选，避免手输和车载定位器对不上） */
   plates: () => api.get('/gps-devices/plates'),
+  /** every registered tracker with its online flag, last fix, speed and current job (staff only) */
+  list: () => api.get('/gps-devices'),
 };
 
 export const workRecordsApi = {

@@ -10,6 +10,8 @@ export type MapPos = {
   latitude: number;
   longitude: number;
   speed?: number;
+  /** Replaces the speed in the pin label (used for "Offline" trackers at their last fix) */
+  labelSuffix?: string;
 };
 
 // 转义,防止司机昵称把 HTML 注入到 WebView 标记里
@@ -135,7 +137,7 @@ function buildHtml(topInset: number, bottomInset: number, labels: MapLabels): st
     markers = {};
     var pts = [];
     list.forEach(function (p) {
-      var text = p.speed != null ? p.name + ' · ' + p.speed + ' km/h' : p.name;
+      var text = p.suffix ? p.name + ' · ' + p.suffix : (p.speed != null ? p.name + ' · ' + p.speed + ' km/h' : p.name);
       // 卡车图标原来只靠 drop-shadow 撑在瓦片上，亮底影像里几乎糊掉，改成实心圆底盘
       var label = '<div style="display:flex;flex-direction:column;align-items:center">'
         + '<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:${font.xl}px;line-height:1;border-radius:${radius.pill}px;background:${colors.surface};border:1px solid ${colors.borderStrong};box-shadow:${overlayShadow}">🚛</div>'
@@ -202,6 +204,7 @@ export default function LeafletMap({ positions, focusId, style, topInset = 0, bo
         lng: p.longitude,
         name: esc(p.driverName || t('d.driverFallback')),
         speed: p.speed != null ? Math.round(p.speed) : null,
+        suffix: p.labelSuffix ? esc(p.labelSuffix) : null,
       }));
     ref.current.injectJavaScript(`window.rnRender && window.rnRender(${JSON.stringify(data)}); true;`);
   }, [ready, positions, t]);

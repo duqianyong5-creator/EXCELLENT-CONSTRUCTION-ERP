@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import LeafletMap from '../../src/LeafletMap';
-import { gpsApi, tasksApi } from '../../src/api';
+import { gpsApi, gpsDevicesApi, tasksApi } from '../../src/api';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
 import { colors, space, font, weight, radius, hit, shadow, statusColors } from '../../src/theme';
@@ -29,6 +29,9 @@ type DriverPos = {
   longitude: number;
   speed?: number;
   timestamp?: string;
+  /** Only for the trackers view */
+  state?: 'moving' | 'parked' | 'offline';
+  labelSuffix?: string;
 };
 
 export default function TrackingScreen() {
@@ -42,6 +45,9 @@ export default function TrackingScreen() {
   const [selected, setSelected] = useState<DriverPos | null>(null);
   // The vehicle picker: with a big fleet the map fits everyone by default and this is how you follow one
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Staff can switch from trucks on a job to every registered GPS tracker, like the console's full-screen map
+  const canToggleTrackers = role === 'admin' || role === 'dispatcher';
+  const [showTrackers, setShowTrackers] = useState(false);
   const timer = useRef<any>(null);
 
   const fetchPositions = useCallback(async () => {
@@ -49,6 +55,33 @@ export default function TrackingScreen() {
       if (role === 'driver') {
         const tasks: any[] = (await tasksApi.today()) as any;
         setDriverTodayTasks(Array.isArray(tasks) ? tasks : []);
+      } else if (canToggleTrackers && showTrackers) {
+        // Every registered tracker: moving = online with a fresh fix and some speed, parked = online but
+        // still, offline = not connected (shown at its last known fix). Same rule as the console.
+        const devices: any[] = (await gpsDevicesApi.list()) as any;
+        const now = Date.now();
+        const rank = { moving: 0, parked: 1, offline: 2 } as const;
+        const list: DriverPos[] = (Array.isArray(devices) ? devices : [])
+          .filter((d) => d.enabled !== false)
+          .map((d) => {
+            const speed = Number(d.lastSpeed ?? 0) || 0;
+            const fixAt = d.lastFixAt ? new Date(d.lastFixAt).getTime() : 0;
+            const fresh = fixAt > 0 && now - fixAt <= 2 * 60_000;
+            const state: DriverPos['state'] = !d.online ? 'offline' : (fresh && speed >= 3 ? 'moving' : 'parked');
+            return {
+              driverId: String(d.id),
+              driverName: d.vehiclePlate || d.name || d.deviceNo,
+              latitude: parseFloat(d.lastLatitude),
+              longitude: parseFloat(d.lastLongitude),
+              speed: state === 'offline' ? undefined : speed,
+              timestamp: d.lastFixAt,
+              state,
+              labelSuffix: state === 'offline' ? t('trk.stOffline') : undefined,
+            };
+          })
+          .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && !(p.latitude === 0 && p.longitude === 0))
+          .sort((a, b) => rank[a.state!] - rank[b.state!] || String(a.driverName || '').localeCompare(String(b.driverName || '')));
+        setPositions(list);
       } else if (role === 'admin' || role === 'dispatcher' || role === 'client') {
         // Staff get every truck on a job; a client gets only the trucks on that client's own jobs
         // (the server scopes it, the app cannot widen it). Both carry the driver's name.
@@ -72,7 +105,7 @@ export default function TrackingScreen() {
     } finally {
       setLoading(false);
     }
-  }, [role]);
+  }, [role, canToggleTrackers, showTrackers, t]);
 
   useEffect(() => {
     fetchPositions();
@@ -174,10 +207,28 @@ export default function TrackingScreen() {
             <Text style={styles.headerSub} numberOfLines={1}>
               {selected
                 ? t('trk.following', { name: selected.driverName || t('d.driverFallback') })
-                : positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
+                : showTrackers
+                  ? t('trk.trackersSummary', {
+                      moving: positions.filter((p) => p.state === 'moving').length,
+                      parked: positions.filter((p) => p.state === 'parked').length,
+                      offline: positions.filter((p) => p.state === 'offline').length,
+                    })
+                  : positions.length > 0 ? t('trk.onlineCount', { count: positions.length }) : t('trk.noneOnline')}
             </Text>
           </View>
         </View>
+        <View style={styles.headerBtns}>
+        {canToggleTrackers && (
+          <TouchableOpacity
+            style={[styles.trackersBtn, showTrackers && styles.trackersBtnActive]}
+            onPress={() => { setSelected(null); setShowTrackers((v) => !v); }}
+            activeOpacity={0.85}
+            accessibilityLabel={t('trk.trackersBtn')}
+          >
+            <Ionicons name={showTrackers ? 'location' : 'location-outline'} size={18} color={showTrackers ? colors.onAccent : colors.text} />
+            <Text style={[styles.trackersBtnText, showTrackers && styles.trackersBtnTextActive]}>{t('trk.trackersBtn')}</Text>
+          </TouchableOpacity>
+        )}
         {positions.length > 0 && (
           <TouchableOpacity
             style={[styles.filterBtn, selected && styles.filterBtnActive]}
@@ -188,6 +239,7 @@ export default function TrackingScreen() {
             <Ionicons name={selected ? 'funnel' : 'funnel-outline'} size={20} color={selected ? colors.onAccent : colors.text} />
           </TouchableOpacity>
         )}
+        </View>
       </View>
 
       {/* Vehicle picker */}
@@ -217,7 +269,7 @@ export default function TrackingScreen() {
                 >
                   <View style={styles.sheetIcon}><Text style={{ fontSize: font.lg }}>🚛</Text></View>
                   <Text style={styles.sheetRowName} numberOfLines={1}>{item.driverName || t('d.driverFallback')}</Text>
-                  <Text style={styles.sheetRowMeta}>{item.speed != null ? `${Math.round(item.speed)} km/h` : '—'}</Text>
+                  <Text style={[styles.sheetRowMeta, item.state === 'offline' && styles.metaOffline]}>{item.labelSuffix ?? (item.speed != null ? `${Math.round(item.speed)} km/h` : '—')}</Text>
                 </TouchableOpacity>
               )}
             />
@@ -248,8 +300,8 @@ export default function TrackingScreen() {
                   <Text style={styles.driverCardName} numberOfLines={1}>
                     {item.driverName || t('d.driverFallback')}
                   </Text>
-                  <Text style={styles.driverCardSpeed}>
-                    {item.speed != null ? `${Math.round(item.speed)} km/h` : '—'}
+                  <Text style={[styles.driverCardSpeed, item.state === 'offline' && styles.metaOffline]}>
+                    {item.labelSuffix ?? (item.speed != null ? `${Math.round(item.speed)} km/h` : '—')}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -263,7 +315,7 @@ export default function TrackingScreen() {
           <View style={styles.emptyIconWrap}>
             <Ionicons name="location-outline" size={30} color={colors.textMuted} />
           </View>
-          <Text style={styles.emptyText}>{t('trk.emptyTitle')}</Text>
+          <Text style={styles.emptyText}>{showTrackers ? t('trk.noTrackers') : t('trk.emptyTitle')}</Text>
           <Text style={styles.emptySub}>{t('trk.emptySub')}</Text>
         </View>
       )}
@@ -382,6 +434,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md,
   },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  trackersBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: space.xs,
+    height: hit.min, paddingHorizontal: space.md, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
+    ...shadow.raised,
+  },
+  trackersBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  trackersBtnText: { fontSize: font.sm, fontWeight: weight.heavy, color: colors.text },
+  trackersBtnTextActive: { color: colors.onAccent },
+  metaOffline: { color: colors.textFaint },
   filterBtn: {
     width: hit.min, height: hit.min, borderRadius: radius.pill,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,

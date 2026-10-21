@@ -283,6 +283,10 @@ const zh: Dict = {
   'trk.allVehicles': '全部车辆',
   'trk.pickVehicle': '选择要跟随的车辆',
   'trk.following': '跟随：{{name}}',
+  'trk.trackersBtn': 'GPS 设备',
+  'trk.trackersSummary': '{{moving}} 辆在动 · {{parked}} 辆停着 · {{offline}} 台离线',
+  'trk.stOffline': '离线',
+  'trk.noTrackers': '还没有登记 GPS 设备',
   // map
   'map.street': '街道',
   'map.satellite': '卫星',
@@ -572,6 +576,10 @@ const en: Dict = {
   'trk.allVehicles': 'All vehicles',
   'trk.pickVehicle': 'Choose a vehicle to follow',
   'trk.following': 'Following {{name}}',
+  'trk.trackersBtn': 'GPS trackers',
+  'trk.trackersSummary': '{{moving}} moving · {{parked}} parked · {{offline}} offline',
+  'trk.stOffline': 'Offline',
+  'trk.noTrackers': 'No GPS trackers registered',
   // map
   'map.street': 'Street',
   'map.satellite': 'Satellite',
