@@ -152,7 +152,7 @@ export default function LoginScreen() {
             <Text style={styles.registerLink}>{t('login.register')}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.version}>v1.0.0</Text>
+        <Text style={styles.version}>v1.0.1</Text>
       </ScrollView>
 
       {/* 语言切换挂在右上角：它是全局开关，不该挤在"注册"旁边当第二个按钮 */}
