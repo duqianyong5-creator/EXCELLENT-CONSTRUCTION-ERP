@@ -196,6 +196,8 @@ export default function DashboardPage() {
   // whole viewport and also asks the browser for real full screen; leaving browser full screen (Esc)
   // fires fullscreenchange, which closes the overlay too.
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  // Full-screen map can switch from trucks on a job to every registered GPS tracker (state + last fix).
+  const [fsTrackers, setFsTrackers] = useState(false);
   const fullscreenRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!mapFullscreen) return;
@@ -301,11 +303,11 @@ export default function DashboardPage() {
 
   // While the trackers view is open, refresh it every 10 seconds so "moving" stays current.
   useEffect(() => {
-    if (!devicesOpen) return;
+    if (!devicesOpen && !(mapFullscreen && fsTrackers)) return;
     refreshDevices().catch(() => {});
     const timer = setInterval(() => { refreshDevices().catch(() => {}); }, 10_000);
     return () => clearInterval(timer);
-  }, [devicesOpen, refreshDevices]);
+  }, [devicesOpen, mapFullscreen, fsTrackers, refreshDevices]);
 
   // Tracker state for the view: moving = online, a fix in the last two minutes and some speed;
   // parked = online but still; offline = not connected. Offline trucks keep their last known fix.
@@ -334,6 +336,15 @@ export default function DashboardPage() {
     offline: trackerRows.filter((r) => r.state === 'offline').length,
   }), [trackerRows]);
   // The view's map shows every online tracker's latest fix, job or no job; the name on the pin is the plate.
+  const allTrackerPositions = useMemo(() => trackerRows
+    .filter((r) => r.hasFix)
+    .map((r) => ({
+      driverId: r.id,
+      driverName: `${r.label} · ${t(`dashboard.devices_state_${r.state}`)}`,
+      latitude: r.lat, longitude: r.lng, speed: r.state === 'offline' ? 0 : r.speed,
+    })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [trackerRows, i18n.language]);
   const trackerPositions = useMemo(() => trackerRows
     .filter((r) => r.state !== 'offline' && r.hasFix)
     .map((r) => ({ driverId: r.id, driverName: r.driverName ? `${r.label} · ${r.driverName}` : r.label, latitude: r.lat, longitude: r.lng, speed: r.speed })),
@@ -453,7 +464,6 @@ export default function DashboardPage() {
         : 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
       accentColor: deviceStat.offline > 0 ? '#ef4444' : '#22c55e',
       onClick: () => setDevicesOpen(true),
-      hint: t('dashboard.stat_devices_hint'),
     }] : []),
   ];
 
@@ -667,7 +677,7 @@ export default function DashboardPage() {
 
           {mapFullscreen && (
             <div ref={fullscreenRef} role="dialog" aria-modal="true" aria-label={t('dashboard.map_title')} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: '#fff' }}>
-              <DriverMap positions={positions} height="100%" radius={0} />
+              <DriverMap positions={fsTrackers ? allTrackerPositions : positions} height="100%" radius={0} />
               {/* Leaflet owns both top corners (zoom top-left, street/satellite switcher top-right), so our toolbar sits top-centre */}
               <div style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 2001, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
@@ -675,9 +685,19 @@ export default function DashboardPage() {
                   boxShadow: '0 2px 8px rgba(0,0,0,0.2)', fontWeight: 600, fontSize: 14, color: '#1a1a1a',
                   display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 5, background: positions.length > 0 ? '#22c55e' : '#d9d9d9' }} />
-                  {positions.length > 0 ? t('dashboard.trucks_moving', { n: positions.length }) : t('dashboard.no_trucks')}
+                  <span style={{ width: 10, height: 10, borderRadius: 5, background: (fsTrackers ? trackerCounts.moving : positions.length) > 0 ? '#22c55e' : '#d9d9d9' }} />
+                  {fsTrackers
+                    ? t('dashboard.devices_summary', trackerCounts)
+                    : (positions.length > 0 ? t('dashboard.trucks_moving', { n: positions.length }) : t('dashboard.no_trucks'))}
                 </div>
+                <Button
+                  type={fsTrackers ? 'primary' : 'default'}
+                  icon={<EnvironmentOutlined />}
+                  onClick={() => setFsTrackers((v) => !v)}
+                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}
+                >
+                  {t('dashboard.fs_trackers')}
+                </Button>
                 <Button autoFocus icon={<FullscreenExitOutlined />} onClick={() => setMapFullscreen(false)} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
                   {t('dashboard.map_exit_fullscreen')}
                 </Button>
