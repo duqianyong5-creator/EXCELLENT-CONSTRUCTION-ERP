@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Row, Col, Card, Typography, Spin, Button, Modal, Select, Empty, message } from 'antd';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { Row, Col, Card, Typography, Spin, Button, Modal, Select, Empty, message, Table, Tag } from 'antd';
 import {
   TruckOutlined, OrderedListOutlined, CheckCircleOutlined,
   ClockCircleOutlined, ReloadOutlined, CalendarOutlined, RocketOutlined,
@@ -34,10 +34,17 @@ interface StatCardProps {
   icon: React.ReactNode;
   gradient: string;
   accentColor: string;
+  /** Optional: makes the card a button (pointer cursor, Enter/Space) and shows a one-line hint under the value. */
+  onClick?: () => void;
+  hint?: string;
 }
-function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) {
+function StatCard({ title, value, icon, gradient, accentColor, onClick, hint }: StatCardProps) {
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       style={{
         background: gradient,
         borderRadius: 14,
@@ -48,7 +55,7 @@ function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) 
         boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
         height: '100%',
         transition: 'all 0.2s ease',
-        cursor: 'default',
+        cursor: onClick ? 'pointer' : 'default',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-2px)';
@@ -71,6 +78,7 @@ function StatCard({ title, value, icon, gradient, accentColor }: StatCardProps) 
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 2, fontWeight: 500, whiteSpace: 'nowrap' }}>{title}</div>
         <div style={{ fontSize: 23, fontWeight: 800, color: accentColor, lineHeight: 1.1 }}>{value}</div>
+        {hint && <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, lineHeight: 1.2 }}>{hint}</div>}
       </div>
     </div>
   );
@@ -211,6 +219,11 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [driverCount, setDriverCount] = useState(0);
   const [deviceStat, setDeviceStat] = useState<{ total: number; offline: number }>({ total: 0, offline: 0 });
+  // Every enabled tracker as the list endpoint returns it (online flag, last fix, current job). Clicking the
+  // GPS Trackers card opens a view built from this, so a dispatcher can see which trucks are moving even
+  // when no job has been dispatched (the live map only shows trucks on a job).
+  const [devices, setDevices] = useState<any[]>([]);
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   // 轨迹回放
   const [trackOpen, setTrackOpen] = useState(false);
@@ -277,6 +290,7 @@ export default function DashboardPage() {
     const devices: any = await gpsDevicesApi.list();
     const rows = Array.isArray(devices) ? devices : [];
     const enabled = rows.filter((d: any) => d.enabled !== false);
+    setDevices(enabled);
     // 只统计「有任务在跑却掉线」的设备：车辆熄火停放时设备本来就会断开，
     // 全算离线的话每天下班后仪表盘就一片红，真出问题反而没人看了。
     setDeviceStat({
@@ -284,6 +298,46 @@ export default function DashboardPage() {
       offline: enabled.filter((d: any) => !d.online && d.currentTask).length,
     });
   }, []);
+
+  // While the trackers view is open, refresh it every 10 seconds so "moving" stays current.
+  useEffect(() => {
+    if (!devicesOpen) return;
+    refreshDevices().catch(() => {});
+    const timer = setInterval(() => { refreshDevices().catch(() => {}); }, 10_000);
+    return () => clearInterval(timer);
+  }, [devicesOpen, refreshDevices]);
+
+  // Tracker state for the view: moving = online, a fix in the last two minutes and some speed;
+  // parked = online but still; offline = not connected. Offline trucks keep their last known fix.
+  const trackerRows = useMemo(() => {
+    const now = Date.now();
+    const rank = { moving: 0, parked: 1, offline: 2 } as const;
+    return devices.map((d: any) => {
+      const speed = Number(d.lastSpeed ?? 0) || 0;
+      const fixAt = d.lastFixAt ? new Date(d.lastFixAt).getTime() : 0;
+      const fresh = fixAt > 0 && now - fixAt <= 2 * 60_000;
+      const state: 'moving' | 'parked' | 'offline' = !d.online ? 'offline' : (fresh && speed >= 3 ? 'moving' : 'parked');
+      const lat = Number(d.lastLatitude); const lng = Number(d.lastLongitude);
+      const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+      return {
+        id: d.id, state, speed, hasFix, lat, lng, fixAt,
+        label: d.vehiclePlate || d.name || d.deviceNo,
+        sub: d.vehiclePlate ? (d.name || d.deviceNo) : (d.name ? d.deviceNo : ''),
+        driverName: d.currentTask?.driverName || '',
+        jobTitle: d.currentTask?.title || '',
+      };
+    }).sort((x, y) => rank[x.state] - rank[y.state] || String(x.label).localeCompare(String(y.label)));
+  }, [devices]);
+  const trackerCounts = useMemo(() => ({
+    moving: trackerRows.filter((r) => r.state === 'moving').length,
+    parked: trackerRows.filter((r) => r.state === 'parked').length,
+    offline: trackerRows.filter((r) => r.state === 'offline').length,
+  }), [trackerRows]);
+  // The view's map shows every online tracker's latest fix, job or no job; the name on the pin is the plate.
+  const trackerPositions = useMemo(() => trackerRows
+    .filter((r) => r.state !== 'offline' && r.hasFix)
+    .map((r) => ({ driverId: r.id, driverName: r.driverName ? `${r.label} · ${r.driverName}` : r.label, latitude: r.lat, longitude: r.lng, speed: r.speed })),
+  [trackerRows]);
 
   const loadData = useCallback(async () => {
     // 各数据源独立加载：任一接口出错也不会让整个仪表盘空白
@@ -398,6 +452,8 @@ export default function DashboardPage() {
         ? 'linear-gradient(135deg, #fee2e2, #fecaca)'
         : 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
       accentColor: deviceStat.offline > 0 ? '#ef4444' : '#22c55e',
+      onClick: () => setDevicesOpen(true),
+      hint: t('dashboard.stat_devices_hint'),
     }] : []),
   ];
 
@@ -544,6 +600,70 @@ export default function DashboardPage() {
           >
             <DriverMap positions={positions} />
           </Card>
+
+          <Modal
+            open={devicesOpen}
+            onCancel={() => setDevicesOpen(false)}
+            footer={null}
+            width={960}
+            title={t('dashboard.devices_modal_title')}
+            destroyOnClose
+          >
+            <div style={{ marginBottom: 10, color: '#475569', fontSize: 13 }}>
+              {t('dashboard.devices_summary', trackerCounts)}
+            </div>
+            {trackerRows.length === 0 ? (
+              <Empty description={t('dashboard.devices_none')} />
+            ) : (
+              <>
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey="id"
+                  dataSource={trackerRows}
+                  style={{ marginBottom: 12 }}
+                  scroll={{ y: 260 }}
+                  columns={[
+                    {
+                      title: t('dashboard.devices_col_vehicle'), key: 'vehicle',
+                      render: (_: any, r: any) => (
+                        <span>
+                          <b>{r.label}</b>
+                          {r.sub ? <Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>{r.sub}</Text> : null}
+                        </span>
+                      ),
+                    },
+                    {
+                      title: t('dashboard.devices_col_state'), key: 'state', width: 150,
+                      render: (_: any, r: any) => (
+                        <Tag color={r.state === 'moving' ? 'green' : r.state === 'parked' ? 'gold' : 'default'}>
+                          {t(`dashboard.devices_state_${r.state}`)}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: t('dashboard.devices_col_speed'), key: 'speed', width: 110,
+                      render: (_: any, r: any) => (r.state === 'offline' ? '—' : `${r.speed.toFixed(0)} km/h`),
+                    },
+                    {
+                      title: t('dashboard.devices_col_driver'), key: 'driver',
+                      render: (_: any, r: any) => (r.driverName
+                        ? <span>{r.driverName}{r.jobTitle ? <Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>{r.jobTitle}</Text> : null}</span>
+                        : <Text type="secondary">{t('dashboard.devices_no_job')}</Text>),
+                    },
+                    {
+                      title: t('dashboard.devices_col_last_fix'), key: 'fix', width: 170,
+                      render: (_: any, r: any) => (r.fixAt
+                        ? new Date(r.fixAt).toLocaleString(i18n.language === 'en' ? 'en-NZ' : 'zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : <Text type="secondary">{t('dashboard.devices_no_fix')}</Text>),
+                    },
+                  ]}
+                />
+                <DriverMap positions={trackerPositions} height={340} radius={12} />
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>{t('dashboard.devices_map_note')}</Text>
+              </>
+            )}
+          </Modal>
 
           {mapFullscreen && (
             <div ref={fullscreenRef} role="dialog" aria-modal="true" aria-label={t('dashboard.map_title')} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: '#fff' }}>
