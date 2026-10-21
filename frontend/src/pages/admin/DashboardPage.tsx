@@ -145,24 +145,30 @@ function DriverMap({ positions, height = 480, radius = 20 }: { positions: any[];
           </div>
         `;
 
-      const existing = markersRef.current.get(key);
-      if (existing) {
-        // 原地挪动并刷新气泡内容：正在看的气泡不会被关掉
-        existing.setLatLng([lat, lng]);
-        existing.setPopupContent(popupHtml);
-        return;
-      }
-
+      // The pin label carries the live speed, so a dispatcher reads it without opening the popup.
+      // A caller can replace the speed with its own text (the trackers view passes "Offline").
+      const suffix = pos.labelSuffix != null ? escapeHtml(String(pos.labelSuffix)) : `${Math.round(Number(speed))} km/h`;
+      const labelHtml = `${safeName} · ${suffix}`;
       const icon = L.divIcon({
         className: '',
         html: `<div style="display:flex;flex-direction:column;align-items:center">
           <div style="background:linear-gradient(135deg,${AMBER},${AMBER_DARK});color:#000;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(0,0,0,0.4);border:3px solid #fff;font-weight:700">${safeInitial}</div>
-          <div style="background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin-top:4px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${safeName}</div>
+          <div style="background:rgba(0,0,0,0.85);color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;margin-top:4px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3)">${labelHtml}</div>
         </div>`,
         iconSize: [100, 60],
         iconAnchor: [50, 60],
       });
+
+      const existing = markersRef.current.get(key);
+      if (existing) {
+        // 原地挪动并刷新气泡内容：正在看的气泡不会被关掉；标签上的速度也跟着刷新
+        existing.setLatLng([lat, lng]);
+        existing.setPopupContent(popupHtml);
+        if ((existing as any).__label !== labelHtml) { existing.setIcon(icon); (existing as any).__label = labelHtml; }
+        return;
+      }
       const marker = L.marker([lat, lng], { icon }).bindPopup(popupHtml).addTo(map);
+      (marker as any).__label = labelHtml;
       markersRef.current.set(key, marker);
     });
 
@@ -340,8 +346,9 @@ export default function DashboardPage() {
     .filter((r) => r.hasFix)
     .map((r) => ({
       driverId: r.id,
-      // Pin label: the plate plus the live speed for an online tracker, or "Offline" with its last known position.
-      driverName: `${r.label} · ${r.state === 'offline' ? t('dashboard.devices_state_offline') : `${r.speed.toFixed(0)} km/h`}`,
+      // Pin label: the plate, then the live speed (added by the map) or "Offline" for a tracker's last known position.
+      driverName: r.label,
+      labelSuffix: r.state === 'offline' ? t('dashboard.devices_state_offline') : undefined,
       latitude: r.lat, longitude: r.lng, speed: r.state === 'offline' ? 0 : r.speed,
     })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
