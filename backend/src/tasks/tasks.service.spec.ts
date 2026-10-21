@@ -23,6 +23,8 @@ describe('TasksService operation logging', () => {
       { delete: jest.fn() } as any,
       { create: jest.fn() } as any,
       { record: jest.fn() } as any,
+      { get: jest.fn(async () => '0') } as any,
+      { create: jest.fn((d: any) => d), save: jest.fn(async (d: any) => d) } as any,
     );
 
     return {
@@ -71,6 +73,8 @@ describe('TasksService.completeTask notes', () => {
     const service = new TasksService(
       taskRepo as any, workRepo as any, { delete: jest.fn() } as any,
       { create: jest.fn() } as any, { record: jest.fn() } as any,
+      { get: jest.fn(async () => '0') } as any,
+      { create: jest.fn((d: any) => d), save: jest.fn(async (d: any) => d) } as any,
     );
     return { service, task, record, taskRepo, workRepo };
   }
@@ -89,5 +93,45 @@ describe('TasksService.completeTask notes', () => {
     await expect(service.completeTask('t1', 'd1', { notes: 'x'.repeat(2001), imageUrls: [] })).rejects.toThrow();
     expect(task.status).toBe('in_progress');
     expect(taskRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService.completeTask default adjustment', () => {
+  // System Settings promises "time added automatically to every work record". Until now the console only
+  // remembered the choice in the browser and nothing on the server applied it, so final hours always
+  // equalled the measured hours (a 21-minute job stayed 0h21m with "+30 minutes" set).
+  function setup(minutes: string) {
+    const task: any = { id: 't1', title: 'Job', clientId: 'c1', driverId: 'd1', status: 'in_progress' };
+    const record: any = { id: 'w1', taskId: 't1', driverId: 'd1', adjustmentTime: 0, startTime: new Date(Date.now() - 21 * 60_000) };
+    const taskRepo = { findOne: jest.fn(async () => task), save: jest.fn(async (t: any) => t) };
+    const workRepo = { findOne: jest.fn(async () => record), save: jest.fn(async (r: any) => r) };
+    const adjustRepo = { create: jest.fn((d: any) => d), save: jest.fn(async (d: any) => ({ id: 'a1', ...d })) };
+    const service = new TasksService(
+      taskRepo as any, workRepo as any, { delete: jest.fn() } as any,
+      { create: jest.fn() } as any, { record: jest.fn() } as any,
+      { get: jest.fn(async () => minutes) } as any, adjustRepo as any,
+    );
+    return { service, record, adjustRepo };
+  }
+
+  it('adds the configured minutes to the final hours and logs a system adjustment', async () => {
+    const { service, record, adjustRepo } = setup('30');
+    await service.completeTask('t1', 'd1', { notes: '', imageUrls: [] });
+    expect(record.systemDuration).toBe(21);
+    expect(record.adjustmentTime).toBe(30);
+    expect(record.finalDuration).toBe(51);
+    expect(adjustRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      workRecordId: 'w1', taskId: 't1', driverId: 'd1', addedMinutes: 30, operatorId: 'd1',
+    }));
+  });
+
+  it('leaves the hours alone when the setting is 0 or unreadable', async () => {
+    for (const v of ['0', '', 'abc', '-5']) {
+      const { service, record, adjustRepo } = setup(v);
+      await service.completeTask('t1', 'd1', { notes: '', imageUrls: [] });
+      expect(record.finalDuration).toBe(21);
+      expect(record.adjustmentTime).toBe(0);
+      expect(adjustRepo.save).not.toHaveBeenCalled();
+    }
   });
 });

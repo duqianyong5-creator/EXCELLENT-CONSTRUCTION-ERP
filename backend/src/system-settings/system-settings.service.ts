@@ -17,6 +17,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   ruc_warn_km: '500',              // RUC 路税：剩余公里低于此值开始提醒
   ruc_critical_km: '200',          // RUC 路税：剩余公里低于此值紧急提醒
   ruc_warn_days: '3',              // RUC 路税：预计多少天内用完就提醒
+  work_adjust_minutes: '30',       // minutes added to every work record when a job is completed (System Settings, "default time adjustment")
 };
 
 @Injectable()

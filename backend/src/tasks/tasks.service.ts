@@ -6,8 +6,13 @@ import { WorkRecord } from '../work-records/work-record.entity';
 import { GpsLog } from '../gps/gps-log.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OperationLogsService } from '../operation-logs/operation-logs.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
+import { AdjustmentLog } from '../adjustments/adjustment-log.entity';
 import { UserRole } from '../users/user.entity';
 import { ErrorCode } from '../common/i18n/messages';
+
+const WORK_ADJUST_SETTING = 'work_adjust_minutes';
+const WORK_ADJUST_SYSTEM_REASON = 'System default adjustment';
 
 /** 完工备注上限：司机手打的几句话，不是文档 */
 const MAX_NOTES_LEN = 2000;
@@ -20,7 +25,23 @@ export class TasksService {
     @InjectRepository(GpsLog) private gpsRepo: Repository<GpsLog>,
     private notifService: NotificationsService,
     private operationLogs: OperationLogsService,
+    private settings: SystemSettingsService,
+    @InjectRepository(AdjustmentLog) private adjustRepo: Repository<AdjustmentLog>,
   ) {}
+
+  /**
+   * System Settings "default time adjustment": minutes added to every work record when the job is
+   * completed. 0, blank or unreadable means none. The console used to keep this choice only in the
+   * browser, so nothing ever applied it and final hours always equalled the measured hours.
+   */
+  private async defaultAdjustmentMinutes(): Promise<number> {
+    try {
+      const n = Number(await this.settings.get(WORK_ADJUST_SETTING));
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+    } catch {
+      return 0;
+    }
+  }
 
   private actorId(actor: any): string {
     return typeof actor === 'string' ? actor : actor?.id;
@@ -210,10 +231,23 @@ export class TasksService {
     record.endTime = endTime;
     const diffMs = endTime.getTime() - record.startTime.getTime();
     record.systemDuration = Math.round(diffMs / 60000);
-    record.finalDuration = record.systemDuration;
+    // the configured default adjustment is applied here and recorded like a manual one
+    const extraMinutes = await this.defaultAdjustmentMinutes();
+    record.adjustmentTime = extraMinutes;
+    record.finalDuration = record.systemDuration + extraMinutes;
     record.completionNotes = notes || null;
     record.imageUrls = data.imageUrls;
     const saved = await this.workRepo.save(record);
+    if (extraMinutes > 0) {
+      await this.adjustRepo.save(this.adjustRepo.create({
+        workRecordId: saved.id,
+        driverId,
+        taskId,
+        addedMinutes: extraMinutes,
+        reason: WORK_ADJUST_SYSTEM_REASON,
+        operatorId: driverId,
+      }));
+    }
 
     await this.notifService.create(task.clientId, {
       title: '任务完成',
