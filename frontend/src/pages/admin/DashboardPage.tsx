@@ -8,7 +8,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { tasksApi, gpsApi, usersApi, driverPresenceApi, gpsDevicesApi } from '../../api';
-import TrackMap from '../../components/TrackMap';
+import TrackMap, { TrackPoint } from '../../components/TrackMap';
 import { addBaseLayers, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '../../components/mapLayers';
 import { useTranslation, Trans } from 'react-i18next';
 
@@ -238,6 +238,8 @@ export default function DashboardPage() {
   const [trackTasks, setTrackTasks] = useState<any[]>([]);
   const [trackTaskId, setTrackTaskId] = useState<string | undefined>();
   const [trackPath, setTrackPath] = useState<[number, number][]>([]);
+  // the same route with time and speed per fix, for the click-to-inspect popup and the summary row
+  const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [trackStatus, setTrackStatus] = useState<string>('');
   const [trackLoading, setTrackLoading] = useState(false);
 
@@ -245,6 +247,7 @@ export default function DashboardPage() {
     setTrackOpen(true);
     setTrackTaskId(undefined);
     setTrackPath([]);
+    setTrackPoints([]);
     try {
       const list: any = await tasksApi.list();
       const usable = (Array.isArray(list) ? list : []).filter(
@@ -262,11 +265,14 @@ export default function DashboardPage() {
       const task = trackTasks.find((t) => t.id === taskId);
       setTrackStatus(task?.status || '');
       const data: any = await gpsApi.track(taskId);
-      const path: [number, number][] = (Array.isArray(data) ? data : []).map(
-        (p: any) => [Number(p.latitude), Number(p.longitude)],
-      );
-      setTrackPath(path);
-    } catch { setTrackPath([]); }
+      const rows: any[] = Array.isArray(data) ? data : [];
+      setTrackPath(rows.map((p: any) => [Number(p.latitude), Number(p.longitude)] as [number, number]));
+      setTrackPoints(rows.map((p: any) => ({
+        lat: Number(p.latitude), lng: Number(p.longitude),
+        time: p.timestamp ?? p.recordedAt ?? null,
+        speed: p.speed != null ? Number(p.speed) : null,
+      })));
+    } catch { setTrackPath([]); setTrackPoints([]); }
     setTrackLoading(false);
   };
 
@@ -757,7 +763,7 @@ export default function DashboardPage() {
           <div style={{ textAlign: 'center', padding: '80px 0' }}><Spin /></div>
         ) : trackTaskId ? (
           trackPath.length > 0 ? (
-            <TrackMap track={trackPath} status={trackStatus} height={420} />
+            <TrackMap track={trackPath} points={trackPoints} status={trackStatus} height={420} />
           ) : (
             <Empty description={t('dashboard.track_empty')} style={{ padding: '60px 0' }} />
           )
