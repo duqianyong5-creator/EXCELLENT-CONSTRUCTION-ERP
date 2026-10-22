@@ -173,6 +173,26 @@ export default function TasksScreen() {
 
   // The plate is typed by hand; the last one used is offered again so a driver on the same truck
   // only confirms it. (The list of trucks with trackers is no longer shown here.)
+  // Opens the create-job sheet with fresh client/driver lists (was the big amber bar; now a + in the header)
+  const openCreateTask = async () => {
+                    try {
+                      const [c, d]: any = await Promise.all([usersApi.clients(), usersApi.drivers()]);
+                      setClients(Array.isArray(c) ? c : []);
+                      setDrivers(Array.isArray(d) ? d : []);
+                    } catch {
+                      setClients([]);
+                      setDrivers([]);
+                    }
+                    setSelectedClient(null);
+                    setSelectedDriver(null);
+                    setEndLocation('');
+                    setCargo('');
+                    setCargoWeight('');
+                    setNotes('');
+                    setScheduledAt(null);
+                    setCreateOpen(true);
+  };
+
   const openAcceptTask = (task: any) => {
     setAcceptTask(task);
     setVehiclePlate('');
@@ -896,9 +916,14 @@ export default function TasksScreen() {
                   <Text style={styles.heroSubtitle} numberOfLines={1}>{getToday()}</Text>
                 </View>
                 {bell}
-                <TouchableOpacity style={styles.heroBtn} onPress={load} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.heroBtn} onPress={load} activeOpacity={0.8} accessibilityLabel={t('tasks.refresh')}>
                   <Ionicons name="refresh-outline" size={20} color={colors.heroText} />
                 </TouchableOpacity>
+                {canManage && (
+                  <TouchableOpacity style={[styles.heroBtn, styles.heroBtnPrimary]} onPress={openCreateTask} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={t('tasks.createTask')}>
+                    <Ionicons name="add" size={24} color={colors.onAccent} />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -906,33 +931,6 @@ export default function TasksScreen() {
               {kpiStrip(
                 { value: getInProgressCount(), label: t('tasks.inProgress') },
                 { value: getCompletedCount(), label: t('tasks.completed') },
-              )}
-              {canManage && (
-                <TouchableOpacity
-                  style={styles.createBtn}
-                  onPress={async () => {
-                    try {
-                      const [c, d]: any = await Promise.all([usersApi.clients(), usersApi.drivers()]);
-                      setClients(Array.isArray(c) ? c : []);
-                      setDrivers(Array.isArray(d) ? d : []);
-                    } catch {
-                      setClients([]);
-                      setDrivers([]);
-                    }
-                    setSelectedClient(null);
-                    setSelectedDriver(null);
-                    setEndLocation('');
-                    setCargo('');
-                    setCargoWeight('');
-                    setNotes('');
-                    setScheduledAt(null);
-                    setCreateOpen(true);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  {/* The label string already carries its own plus sign, so no icon beside it */}
-                  <Text style={styles.createBtnText}>{t('tasks.createTask')}</Text>
-                </TouchableOpacity>
               )}
             </View>
 
@@ -1408,6 +1406,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.hero,
     paddingHorizontal: space.lg,
     paddingBottom: space.lg + space.xxxl,
+    // rounded foot so the KPI card reads as resting on the header, not cut by a straight edge
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
   },
   heroRow: {
     flexDirection: 'row',
@@ -1435,6 +1436,7 @@ const styles = StyleSheet.create({
     fontSize: font.sm,
     marginTop: space.xs,
   },
+  heroBtnPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
   heroBtn: {
     width: hit.compact,
     height: hit.compact,
@@ -1505,20 +1507,6 @@ const styles = StyleSheet.create({
     fontSize: font.xs,
     letterSpacing: 0.2,
     marginTop: space.xs,
-  },
-  /** The screen's one primary action */
-  createBtn: {
-    marginTop: space.lg,
-    height: hit.min,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createBtnText: {
-    color: colors.onAccent,
-    fontSize: font.base,
-    fontWeight: weight.semibold,
   },
   filterRow: {
     paddingHorizontal: space.lg,
@@ -1634,7 +1622,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.md,
-    marginTop: space.md,
+    marginTop: space.sm,
   },
   plateChip: {
     borderWidth: 1,
