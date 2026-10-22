@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Image, Modal, TextInput, useWindowDimensions,
+  ActivityIndicator, Image, Modal, TextInput, useWindowDimensions, Platform,
+  StatusBar as RNStatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -161,8 +162,23 @@ export default function TaskDetailScreen() {
     );
   }
 
+  // Short, scannable dates ("21 Oct, 14:20") instead of the full locale string with seconds
+  const loc = t('common.dateLocale');
+  const fmtDate = (v?: string | null) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(loc, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
+  const fmtTime = (v?: string | null) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
+  };
+  const fmtMinutes = (m?: number | null) => (m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`);
+  // Android edge-to-edge can report a 0 top inset on a pushed screen: never let the back button sit under the clock
+  const topInset = Math.max(insets.top, Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) : 0);
+
   const statusStyle = statusColors[task.status as keyof typeof statusColors] || statusColors.assigned;
-  const isClosed = task.status === 'completed' || task.status === 'cancelled';
 
   // The primary action lives in a sticky bar under the scroll view so it is always reachable
   const showStart = canOperate && task.status === 'assigned';
@@ -180,7 +196,7 @@ export default function TaskDetailScreen() {
     { icon: 'business-outline', label: t('td.client'), value: task.client?.fullName || task.client?.username || '-' },
     ...(task.vehiclePlate ? [{ icon: 'car-outline' as IconName, label: t('td.plate'), value: task.vehiclePlate }] : []),
     ...(task.scheduledAt
-      ? [{ icon: 'calendar-outline' as IconName, label: t('td.scheduled'), value: new Date(task.scheduledAt).toLocaleString() }]
+      ? [{ icon: 'calendar-outline' as IconName, label: t('td.scheduled'), value: fmtDate(task.scheduledAt) }]
       : []),
   ];
 
@@ -190,12 +206,9 @@ export default function TaskDetailScreen() {
     ...(task.notes ? [{ icon: 'document-text-outline' as IconName, label: t('td.notes'), value: task.notes }] : []),
   ];
 
-  const recordRows: Row[] = workRecord ? [
-    { icon: 'play-outline', label: t('td.startTime'), value: workRecord.startTime ? new Date(workRecord.startTime).toLocaleString() : '—' },
-    { icon: 'flag-outline', label: t('td.endTime'), value: workRecord.endTime ? new Date(workRecord.endTime).toLocaleString() : '—' },
-    { icon: 'time-outline', label: t('td.duration'), value: workRecord.finalDuration != null ? `${Math.floor(workRecord.finalDuration / 60)}h ${workRecord.finalDuration % 60}m` : '—' },
-    ...(workRecord.completionNotes ? [{ icon: 'document-text-outline' as IconName, label: t('td.notes'), value: workRecord.completionNotes }] : []),
-  ] : [];
+  const recordRows: Row[] = workRecord?.completionNotes
+    ? [{ icon: 'document-text-outline' as IconName, label: t('td.notes'), value: workRecord.completionNotes }]
+    : [];
 
   const donePhotos: string[] = Array.isArray(workRecord?.imageUrls) ? workRecord.imageUrls : [];
 
@@ -203,7 +216,8 @@ export default function TaskDetailScreen() {
     <View style={styles.container}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Hero: navy block with a square back button, the job title and its status as dot + text */}
-        <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
+        <View style={[styles.hero, { paddingTop: topInset + space.md }]}>
+          <View style={styles.heroRow}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={styles.backBtn}
@@ -214,28 +228,17 @@ export default function TaskDetailScreen() {
           >
             <Ionicons name="chevron-back" size={20} color={colors.heroText} />
           </TouchableOpacity>
-          <Text style={styles.heroTitle} numberOfLines={2}>{task.title}</Text>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
-            <Text style={styles.statusText}>{t('status.' + task.status)}</Text>
+          <View style={styles.heroText}>
+            <Text style={styles.heroTitle} numberOfLines={2}>{task.title}</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
+              <Text style={styles.statusText}>{t('status.' + task.status)}</Text>
+            </View>
+          </View>
           </View>
         </View>
 
         <View style={styles.body}>
-          {/* Closed jobs: one quiet line before the details */}
-          {isClosed && (
-            <View style={[styles.card, styles.doneCard]}>
-              <Ionicons
-                name={task.status === 'completed' ? 'checkmark-circle-outline' : 'close-circle-outline'}
-                size={18}
-                color={task.status === 'completed' ? colors.success : colors.danger}
-              />
-              <Text style={styles.doneText} numberOfLines={1}>
-                {task.status === 'completed' ? t('td.taskDone') : t('td.taskCancelled')}
-              </Text>
-            </View>
-          )}
-
           {/* Job information */}
           <InfoCard title={t('td.taskInfo')} rows={infoRows} />
 
@@ -298,7 +301,24 @@ export default function TaskDetailScreen() {
 
           {/* Work record for completed jobs */}
           {task.status === 'completed' && workRecord && (
-            <InfoCard title={t('td.workRecord')} rows={recordRows}>
+            <InfoCard title={t('td.workRecord')} rows={recordRows} lead={(
+              <View style={styles.statStrip}>
+                <View style={styles.statCell}>
+                  <Text style={styles.statValue}>{fmtTime(workRecord.startTime)}</Text>
+                  <Text style={styles.statLabel}>{t('td.startTime')}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text style={styles.statValue}>{fmtTime(workRecord.endTime)}</Text>
+                  <Text style={styles.statLabel}>{t('td.endTime')}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text style={[styles.statValue, { color: colors.success }]}>{fmtMinutes(workRecord.finalDuration)}</Text>
+                  <Text style={styles.statLabel}>{t('td.finalHours')}</Text>
+                </View>
+              </View>
+            )}>
               {donePhotos.length > 0 ? (
                 <View style={styles.donePhotos}>
                   <Text style={styles.donePhotosLabel}>{t('td.donePhotos')}</Text>
@@ -352,12 +372,13 @@ export default function TaskDetailScreen() {
 }
 
 /** A white card with a plain title and label-over-value rows; `children` renders under the rows */
-function InfoCard({ title, rows, children }: { title: string; rows: Row[]; children?: React.ReactNode }) {
+function InfoCard({ title, rows, children, lead }: { title: string; rows: Row[]; children?: React.ReactNode; lead?: React.ReactNode }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
       </View>
+      {lead}
       {rows.map((row, i) => (
         <InfoRow key={i} {...row} first={i === 0} last={i === rows.length - 1} />
       ))}
@@ -368,13 +389,22 @@ function InfoCard({ title, rows, children }: { title: string; rows: Row[]; child
 
 function InfoRow({ icon, label, value, prominent, first, last }: Row & { first?: boolean; last?: boolean }) {
   return (
-    <View style={[styles.infoRow, first && styles.infoRowFirst, last && styles.infoRowLast]}>
-      <Ionicons name={icon} size={16} color={colors.textMuted} />
-      <View style={styles.infoText}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={[styles.infoValue, prominent && styles.infoValueProminent]}>{value}</Text>
+    // One line per fact (label left, value right); the destination keeps its own larger line
+    prominent ? (
+      <View style={[styles.destBlock, first && styles.infoRowFirst]}>
+        <Ionicons name={icon} size={18} color={colors.accentDark} />
+        <View style={styles.infoText}>
+          <Text style={styles.infoLabel}>{label}</Text>
+          <Text style={styles.destValue}>{value}</Text>
+        </View>
       </View>
-    </View>
+    ) : (
+      <View style={[styles.infoRow, first && styles.infoRowFirst, last && styles.infoRowLast]}>
+        <Ionicons name={icon} size={16} color={colors.textFaint} />
+        <Text style={styles.infoLabelInline}>{label}</Text>
+        <Text style={styles.infoValueInline} numberOfLines={3}>{value}</Text>
+      </View>
+    )
   );
 }
 
@@ -406,8 +436,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  heroText: { flex: 1, minWidth: 0, paddingTop: 2 },
   heroTitle: {
-    marginTop: space.lg,
     color: colors.heroText,
     fontSize: font.lg,
     lineHeight: 24,
@@ -435,11 +466,20 @@ const styles = StyleSheet.create({
   cardMeta: { fontSize: font.xs, color: colors.textFaint, letterSpacing: 0.2 },
 
   // Info rows: icon, then label over value, hairline between rows
+  destBlock: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingTop: space.sm, paddingBottom: space.md },
+  destValue: { fontSize: font.lg, lineHeight: 24, color: colors.text, fontWeight: weight.semibold },
+  infoLabelInline: { fontSize: font.sm, color: colors.textMuted },
+  infoValueInline: { flex: 1, textAlign: 'right', fontSize: font.sm, color: colors.text, fontWeight: weight.medium },
+  statStrip: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.md, paddingVertical: space.md, marginBottom: space.xs },
+  statCell: { flex: 1, alignItems: 'center', gap: 2 },
+  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border },
+  statValue: { fontSize: font.lg, fontWeight: weight.bold, color: colors.text },
+  statLabel: { fontSize: font.xs, color: colors.textFaint },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    paddingVertical: space.md,
+    gap: space.sm,
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
@@ -485,8 +525,6 @@ const styles = StyleSheet.create({
   },
 
   // Closed-job line
-  doneCard: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md },
-  doneText: { flex: 1, minWidth: 0, fontSize: font.base, color: colors.text, fontWeight: weight.semibold },
 
   // Completion photos inside the work record card
   donePhotos: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border },
