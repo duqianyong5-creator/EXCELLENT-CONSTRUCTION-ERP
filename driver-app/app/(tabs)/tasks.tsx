@@ -668,6 +668,8 @@ export default function TasksScreen() {
             <View>
               <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
                 <View style={styles.heroRow}>
+                  {/* company logo: brands every in-app screen, not only the sign-in page */}
+                  <View style={styles.heroLogo}><Image source={require('../../assets/log.png')} style={styles.heroLogoImg} resizeMode="contain" /></View>
                   <View style={styles.heroTextBlock}>
                     <Text style={styles.heroTitle} numberOfLines={1}>{t('d.greetingPrefix')}{driverName}</Text>
                     <Text style={styles.heroSubtitle} numberOfLines={1}>{driverSubtitle}</Text>
@@ -887,6 +889,8 @@ export default function TasksScreen() {
           <View>
             <View style={[styles.hero, { paddingTop: insets.top + space.md }]}>
               <View style={styles.heroRow}>
+                {/* company logo: brands every in-app screen, not only the sign-in page */}
+                <View style={styles.heroLogo}><Image source={require('../../assets/log.png')} style={styles.heroLogoImg} resizeMode="contain" /></View>
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroTitle} numberOfLines={1}>{title}</Text>
                   <Text style={styles.heroSubtitle} numberOfLines={1}>{getToday()}</Text>
@@ -1410,6 +1414,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.sm,
   },
+  heroLogo: {
+    width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  heroLogoImg: { width: 34, height: 34 },
   heroTextBlock: {
     flex: 1,
     minWidth: 0,

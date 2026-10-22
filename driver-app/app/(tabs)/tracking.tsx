@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
-  TouchableOpacity, FlatList, Modal, Pressable,
+  TouchableOpacity, FlatList, Modal, Pressable, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -213,6 +213,7 @@ export default function TrackingScreen() {
         onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
       >
         <View style={styles.headerPill}>
+          <Image source={require('../../assets/log.png')} style={styles.headerLogo} resizeMode="contain" />
           <View style={[styles.onlineDot, positions.length === 0 && styles.onlineDotOff]} />
           <View style={styles.headerTexts}>
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
@@ -449,6 +450,7 @@ const styles = StyleSheet.create({
   sheetIcon: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   sheetRowName: { flex: 1, minWidth: 0, fontSize: font.base, fontWeight: weight.medium, color: colors.text },
   sheetRowMeta: { fontSize: font.sm, fontWeight: weight.medium, color: colors.success },
+  headerLogo: { width: 28, height: 28, marginRight: space.sm },
   headerPill: {
     flexDirection: 'row', alignItems: 'center',
     maxWidth: '100%',
