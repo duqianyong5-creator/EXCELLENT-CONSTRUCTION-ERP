@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { OperationLogsService } from '../operation-logs/operation-logs.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { AdjustmentLog } from '../adjustments/adjustment-log.entity';
+import { GpsAnomaly } from '../gps/gps-anomaly.entity';
 import { UserRole } from '../users/user.entity';
 import { ErrorCode } from '../common/i18n/messages';
 
@@ -282,9 +283,16 @@ export class TasksService {
 
   async delete(id: string, actor?: any): Promise<void> {
     const task = await this.findById(id);
-    await this.gpsRepo.delete({ taskId: id });
-    await this.workRepo.delete({ taskId: id });
-    await this.taskRepo.remove(task);
+    // Everything that points at the task goes first, in one transaction, or the foreign keys refuse the
+    // delete: adjustment logs (every completed job has one now), anomalies (kept as vehicle history, just
+    // unlinked from the job), the job's GPS points and its work record.
+    await this.taskRepo.manager.transaction(async (m) => {
+      await m.delete(AdjustmentLog, { taskId: id });
+      await m.update(GpsAnomaly, { taskId: id }, { taskId: null as any });
+      await m.delete(GpsLog, { taskId: id });
+      await m.delete(WorkRecord, { taskId: id });
+      await m.remove(task);
+    });
     if (actor) {
       await this.operationLogs.record({
         actorId: this.actorId(actor),

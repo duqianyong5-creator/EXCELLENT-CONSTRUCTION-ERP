@@ -135,3 +135,35 @@ describe('TasksService.completeTask default adjustment', () => {
     }
   });
 });
+
+describe('TasksService.delete', () => {
+  // Deleting a task used to fail ("delete failed" in the console) once anything else pointed at it:
+  // adjustment_logs.task_id is NOT NULL with a foreign key, and gps_anomalies.task_id has one too.
+  // Every completed job now carries an automatic adjustment log, so every new completed job hit it.
+  it('removes the rows that reference the task, in one transaction, before the task itself', async () => {
+    const task: any = { id: 't1', title: 'Old job', status: 'completed' };
+    const calls: string[] = [];
+    const m = {
+      delete: jest.fn(async (entity: any, where: any) => { calls.push(`delete ${entity.name} ${JSON.stringify(where)}`); }),
+      update: jest.fn(async (entity: any, where: any, set: any) => { calls.push(`update ${entity.name} ${JSON.stringify(where)} ${JSON.stringify(set)}`); }),
+      remove: jest.fn(async (e: any) => { calls.push(`remove task ${e.id}`); }),
+    };
+    const taskRepo: any = {
+      findOne: jest.fn(async () => task),
+      manager: { transaction: jest.fn(async (cb: any) => cb(m)) },
+    };
+    const service = new TasksService(
+      taskRepo, {} as any, {} as any, { create: jest.fn() } as any, { record: jest.fn() } as any,
+      { get: jest.fn() } as any, {} as any,
+    );
+    await service.delete('t1', { id: 'admin', role: 'admin' });
+    expect(taskRepo.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([
+      'delete AdjustmentLog {"taskId":"t1"}',
+      'update GpsAnomaly {"taskId":"t1"} {"taskId":null}',
+      'delete GpsLog {"taskId":"t1"}',
+      'delete WorkRecord {"taskId":"t1"}',
+      'remove task t1',
+    ]);
+  });
+});

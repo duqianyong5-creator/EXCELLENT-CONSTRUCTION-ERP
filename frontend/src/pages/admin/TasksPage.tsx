@@ -137,8 +137,8 @@ export default function TasksPage() {
       await tasksApi.delete(id);
       message.success(t('tasks.deleted'));
       loadData();
-    } catch {
-      message.error(t('tasks.delete_failed'));
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || e?.message || t('tasks.delete_failed'));
     }
   };
 
