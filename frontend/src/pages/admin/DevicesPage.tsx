@@ -452,7 +452,7 @@ export default function DevicesPage() {
             rules={[{ pattern: /^[0-9A-F]{10,22}$/, message: t('devices.iccidPattern') }]}
             extra={t('devices.iccidExtra')}
           >
-            <Input placeholder="64050087230172061" maxLength={22} style={{ fontFamily: 'monospace' }} />
+            <Input placeholder="64050087230172061" maxLength={32} style={{ fontFamily: 'monospace' }} />
           </Form.Item>
           <Form.Item name="enabled" label={t('devices.fieldEnabled')} valuePropName="checked">
             <Switch />

@@ -14,6 +14,10 @@ import { ErrorCode } from '../common/i18n/messages';
 
 const WORK_ADJUST_SETTING = 'work_adjust_minutes';
 const WORK_ADJUST_SYSTEM_REASON = 'System default adjustment';
+/** Upper bound for the automatic adjustment (8 hours), whatever the stored setting says */
+const MAX_DEFAULT_ADJUST_MINUTES = 480;
+/** What PATCH /tasks/:id may change */
+const EDITABLE_TASK_FIELDS = ['endLocation', 'cargo', 'cargoWeight', 'scheduledAt', 'notes'] as const;
 
 /** 完工备注上限：司机手打的几句话，不是文档 */
 const MAX_NOTES_LEN = 2000;
@@ -38,7 +42,7 @@ export class TasksService {
   private async defaultAdjustmentMinutes(): Promise<number> {
     try {
       const n = Number(await this.settings.get(WORK_ADJUST_SETTING));
-      return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+      return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), MAX_DEFAULT_ADJUST_MINUTES) : 0;
     } catch {
       return 0;
     }
@@ -149,7 +153,17 @@ export class TasksService {
 
   async update(id: string, data: Partial<Task>, actor?: any): Promise<Task> {
     const task = await this.findById(id);
-    Object.assign(task, data);
+    // Closed jobs are history: hours and evidence hang off them
+    if (task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CANCELLED) {
+      throw new BadRequestException('A completed or cancelled task cannot be edited');
+    }
+    // Only the fields the edit dialog owns. Status, driver and client change through their own endpoints
+    // (start/complete/assign/cancel), which notify people and keep the work record consistent.
+    const patch: Partial<Task> = {};
+    for (const key of EDITABLE_TASK_FIELDS) {
+      if (key in (data ?? {})) (patch as any)[key] = (data as any)[key];
+    }
+    Object.assign(task, patch);
     const saved = await this.taskRepo.save(task);
     if (actor) {
       await this.operationLogs.record({
@@ -159,7 +173,7 @@ export class TasksService {
         targetType: 'task',
         targetId: saved.id,
         description: `Updated task ${saved.title}`,
-        details: { fields: Object.keys(data) },
+        details: { fields: Object.keys(patch) },
       });
     }
     return saved;
@@ -222,12 +236,16 @@ export class TasksService {
     const notes = String(data.notes ?? '').trim();
     if (notes.length > MAX_NOTES_LEN) throw new BadRequestException(ErrorCode.NOTES_TOO_LONG);
 
-    const endTime = new Date();
-    task.status = TaskStatus.COMPLETED;
-    await this.taskRepo.save(task);
-
+    // Find the work record before touching the task, so a missing record never leaves a "completed" job behind
     const record = await this.workRepo.findOne({ where: { taskId, driverId } });
     if (!record) throw new NotFoundException('未找到工作记录，请先开始任务');
+
+    const endTime = new Date();
+    // Claim the completion atomically: of two concurrent requests (double tap, network retry) only one moves
+    // the job out of in_progress; the other is refused instead of completing it twice.
+    const claimed = await this.taskRepo.update({ id: taskId, status: TaskStatus.IN_PROGRESS }, { status: TaskStatus.COMPLETED });
+    if (!claimed?.affected) throw new ForbiddenException('任务未在进行中');
+    task.status = TaskStatus.COMPLETED;
 
     record.endTime = endTime;
     const diffMs = endTime.getTime() - record.startTime.getTime();
@@ -240,14 +258,19 @@ export class TasksService {
     record.imageUrls = data.imageUrls;
     const saved = await this.workRepo.save(record);
     if (extraMinutes > 0) {
-      await this.adjustRepo.save(this.adjustRepo.create({
-        workRecordId: saved.id,
-        driverId,
-        taskId,
-        addedMinutes: extraMinutes,
-        reason: WORK_ADJUST_SYSTEM_REASON,
-        operatorId: driverId,
-      }));
+      // The hours are already on the work record; a failed log write must not fail the driver's completion
+      try {
+        await this.adjustRepo.save(this.adjustRepo.create({
+          workRecordId: saved.id,
+          driverId,
+          taskId,
+          addedMinutes: extraMinutes,
+          reason: WORK_ADJUST_SYSTEM_REASON,
+          operatorId: driverId,
+        }));
+      } catch (e: any) {
+        console.error(`[tasks] default adjustment log not written for task ${taskId}: ${e?.message || e}`);
+      }
     }
 
     await this.notifService.create(task.clientId, {
@@ -283,6 +306,11 @@ export class TasksService {
 
   async delete(id: string, actor?: any): Promise<void> {
     const task = await this.findById(id);
+    // A completed job carries paid hours and their adjustments: only an admin may remove it
+    if (task.status === TaskStatus.COMPLETED && actor && actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only an administrator can delete a completed task');
+    }
+    const record = await this.workRepo.findOne({ where: { taskId: id } }).catch(() => null);
     // Everything that points at the task goes first, in one transaction, or the foreign keys refuse the
     // delete: adjustment logs (every completed job has one now), anomalies (kept as vehicle history, just
     // unlinked from the job), the job's GPS points and its work record.
@@ -301,7 +329,8 @@ export class TasksService {
         targetType: 'task',
         targetId: id,
         description: `Deleted task ${task.title}`,
-        details: { status: task.status },
+        // keep the hours in the audit trail: the work record and its adjustments are deleted with the task
+        details: { status: task.status, systemDuration: record?.systemDuration ?? null, adjustmentTime: record?.adjustmentTime ?? null, finalDuration: record?.finalDuration ?? null },
       });
     }
   }

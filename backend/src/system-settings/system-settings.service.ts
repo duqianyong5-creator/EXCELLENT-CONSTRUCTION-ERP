@@ -55,6 +55,13 @@ export class SystemSettingsService {
     const entries = Object.entries(values).filter(([k]) => k in SETTING_DEFAULTS);
     for (const [key, raw] of entries) {
       let value = String(raw ?? '');
+      // payroll-relevant: whole minutes between 0 and 480 only
+      if (key === 'work_adjust_minutes') {
+        const n = Number(value);
+        if (!Number.isInteger(n) || n < 0 || n > 480) {
+          throw new BadRequestException('work_adjust_minutes must be a whole number of minutes between 0 and 480');
+        }
+      }
       // 清空数据密码永不明文落库：存 bcrypt 哈希。空串表示清除密码。
       if (key === 'clear_data_password' && value) {
         value = await bcrypt.hash(value, 12);
