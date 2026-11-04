@@ -23,8 +23,14 @@ function createWindow() {
     },
   });
 
-  // 去掉菜单栏（同时也去掉了 View → Toggle DevTools 入口）
-  Menu.setApplicationMenu(null);
+  // 去掉菜单栏（同时也去掉了 View → Toggle DevTools 入口）。
+  // macOS 例外：那里 ⌘C/⌘V/⌘X/⌘A/⌘Q 是靠菜单项生效的，没有菜单输入框就不能复制粘贴、也退不出程序。
+  // 只给应用、编辑、窗口三个菜单，没有 View，所以照样没有开发者工具入口。
+  Menu.setApplicationMenu(
+    process.platform === 'darwin'
+      ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
+      : null,
+  );
 
   // 调度台是要一直开着看的，默认铺满屏幕；上面的 width/height 作为还原尺寸保留
   win.maximize();
@@ -51,7 +57,9 @@ function createWindow() {
       const block =
         k === 'f12' ||
         (input.control && input.shift && (k === 'i' || k === 'j' || k === 'c')) ||
-        (input.control && k === 'u'); // Ctrl+U 查看源码
+        (input.control && k === 'u') || // Ctrl+U 查看源码
+        (input.meta && input.alt && (k === 'i' || k === 'j' || k === 'c')) || // macOS ⌘⌥I/J/C
+        (input.meta && input.alt && k === 'u'); // macOS ⌘⌥U 查看源码
       if (block) event.preventDefault();
     });
   }
