@@ -94,6 +94,7 @@ export const usersApi = {
     api.patch('/users/profile', data),
   changePassword: (data: { oldPassword: string; newPassword: string }) =>
     api.patch('/users/change-password', data),
+  deleteMyAccount: (password: string) => api.delete('/users/me', { data: { password } }),
 };
 
 export const gpsDevicesApi = {

@@ -15,8 +15,12 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.internal.truckdriver",
       "infoPlist": {
-        "NSCameraUsageDescription": "完成任务时需要拍摄工作照片",
-        "NSPhotoLibraryUsageDescription": "完成任务时需要选择工作照片"
+        "NSCameraUsageDescription": "The camera is used to take photos of the finished job as proof of work.",
+        "NSPhotoLibraryUsageDescription": "Photos from your library can be attached to a finished job as proof of work.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch"
+        ]
       }
     },
     "android": {
@@ -37,12 +41,6 @@
       "expo-router",
       "expo-secure-store",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "完成任务时需要拍摄工作照片"
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {
@@ -51,7 +49,15 @@
         }
       ],
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "The camera is used to take photos of the finished job as proof of work.",
+          "photosPermission": "Photos from your library can be attached to a finished job as proof of work.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "scheme": "truckdriver",
     "extra": {

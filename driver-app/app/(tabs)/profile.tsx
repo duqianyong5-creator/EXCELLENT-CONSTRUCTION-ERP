@@ -75,6 +75,10 @@ export default function ProfileScreen() {
   const [newPwd, setNewPwd] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
+  // Account deletion (App Store 5.1.1(v)): hidden until asked for, then a password field and one red button
+  const [showDelete, setShowDelete] = useState(false);
+  const [deletePwd, setDeletePwd] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // The hero sits under the status bar, so the status icons go light while this tab is on screen.
   // The <StatusBar> is mounted only while focused, so it hands the style back when the tab blurs.
@@ -130,6 +134,31 @@ export default function ProfileScreen() {
     await SecureStore.deleteItemAsync('user');
     dispatch(logout());
     router.replace('/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setDeleting(true);
+      await usersApi.deleteMyAccount(deletePwd);
+      setDeletePwd('');
+      showAppAlert(t('profile.deleteDone'));
+      handleLogout();
+    } catch (err: any) {
+      showAppAlert(t('common.fail'), err.message || t('profile.deleteFailed'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    if (!deletePwd) {
+      showAppAlert(t('common.notice'), t('profile.deletePwPh'));
+      return;
+    }
+    showAppAlert(t('profile.deleteAccount'), t('profile.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('profile.deleteAccount'), style: 'destructive', onPress: handleDeleteAccount },
+    ]);
   };
 
   const confirmLogout = () => {
@@ -269,6 +298,43 @@ export default function ProfileScreen() {
             <Ionicons name="log-out-outline" size={18} color={colors.danger} />
             <Text style={styles.logoutText}>{t('profile.logout')}</Text>
           </TouchableOpacity>
+
+          {/* Delete account: a quiet link that opens its own card; admins manage accounts on the console */}
+          {user?.role !== 'admin' && (showDelete ? (
+            <View style={styles.card}>
+              <SectionHeader icon="trash-outline" title={t('profile.deleteAccount')} />
+              <Text style={styles.deleteIntro}>{t('profile.deleteIntro')}</Text>
+              <Field
+                name="deletePwd"
+                label={t('profile.oldPw')}
+                value={deletePwd}
+                onChangeText={setDeletePwd}
+                secureTextEntry
+                placeholder={t('profile.deletePwPh')}
+                focused={focused}
+                setFocused={setFocused}
+              />
+              <TouchableOpacity
+                style={[styles.dangerBtn, deleting && styles.btnDisabled]}
+                onPress={confirmDeleteAccount}
+                disabled={deleting}
+                activeOpacity={0.85}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.dangerBtnText}>{t('profile.deleteAccount')}</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteCancel} onPress={() => { setShowDelete(false); setDeletePwd(''); }}>
+                <Text style={styles.deleteLinkText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.deleteLink} onPress={() => setShowDelete(true)} hitSlop={8}>
+              <Text style={styles.deleteLinkText}>{t('profile.deleteAccount')}</Text>
+            </TouchableOpacity>
+          ))}
 
           <Text style={styles.version}>{t('profile.version')}</Text>
         </View>
@@ -466,6 +532,36 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: font.base,
     fontWeight: weight.semibold,
+  },
+  deleteIntro: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
+    marginBottom: space.lg,
+  },
+  dangerBtn: {
+    height: hit.min,
+    borderRadius: radius.md,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerBtnText: {
+    color: '#fff',
+    fontSize: font.base,
+    fontWeight: weight.semibold,
+  },
+  deleteLink: {
+    alignSelf: 'center',
+    paddingVertical: space.xs,
+  },
+  deleteCancel: {
+    alignSelf: 'center',
+    marginTop: space.md,
+  },
+  deleteLinkText: {
+    color: colors.textFaint,
+    fontSize: font.sm,
   },
   version: {
     textAlign: 'center',

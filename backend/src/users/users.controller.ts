@@ -183,6 +183,22 @@ export class UsersController {
     return this.service.updateProfile(user.id, safe);
   }
 
+  @Delete('me')
+  @ApiOperation({ summary: 'Delete my own account (password required)' })
+  async deleteMe(@CurrentUser() user: any, @Body('password') password: string) {
+    const result = await this.service.deleteOwnAccount(user.id, password);
+    await this.operationLogs.record({
+      actorId: user.id,
+      actorName: this.actorName(user),
+      action: 'users.delete-own-account',
+      targetType: 'user',
+      targetId: user.id,
+      description: 'Deleted own account',
+      details: { role: user.role },
+    });
+    return result;
+  }
+
   @Patch('change-password')
   @ApiOperation({ summary: '修改密码' })
   async changePassword(

@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
+import { ErrorCode } from '../common/i18n/messages';
 import { User, UserRole, UserStatus } from './user.entity';
 import { Task } from '../tasks/task.entity';
 import { GpsLog } from '../gps/gps-log.entity';
@@ -126,6 +128,31 @@ export class UsersService {
     if (!match) throw new BadRequestException('原密码错误');
     user.password = await bcrypt.hash(newPassword, 12);
     await this.repo.save(user);
+  }
+
+  /**
+   * A person deletes their own account (App Store guideline 5.1.1(v)). Their name, contact details and photo are
+   * wiped and they can no longer sign in; the row stays so the tasks, work hours and GPS history it is linked to
+   * keep their owner for payroll and job records. The username and email are freed for a new sign-up.
+   */
+  async deleteOwnAccount(id: string, password: string): Promise<{ message: string }> {
+    const user = await this.findWithPassword(id);
+    if (!user) throw new NotFoundException('User not found');
+    // The administrator account runs the system: removing it from a phone would lock everyone out
+    if (user.role === UserRole.ADMIN) throw new ForbiddenException(ErrorCode.ACCOUNT_DELETE_ADMIN);
+    if (!password || !(await bcrypt.compare(password, user.password))) {
+      throw new BadRequestException(ErrorCode.AUTH_WRONG_PASSWORD);
+    }
+    const tag = `deleted-${id.slice(0, 8)}-${Date.now().toString(36)}`;
+    user.username = tag;
+    user.email = `${tag}@deleted.invalid`;
+    user.fullName = 'Deleted user';
+    user.phone = null as any;
+    user.avatarUrl = null as any;
+    user.status = UserStatus.DISABLED;
+    user.password = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
+    await this.repo.save(user);
+    return { message: 'Account deleted' };
   }
 
   async delete(id: string): Promise<{ message: string }> {
