@@ -24,8 +24,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      # hdiutil detach fails now and then with "resource busy" when Spotlight indexes the freshly mounted
+      # image (seen on the 5 Nov run); stop indexing, and give the build one more try if it still trips
+      - name: Stop Spotlight indexing
+        run: sudo mdutil -a -i off || true
       - name: Build dmg
-        run: npm run dist:mac
+        run: npm run dist:mac || (sleep 20 && npm run dist:mac)
         working-directory: frontend
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
