@@ -2,12 +2,13 @@ import {
   WebSocketGateway, WebSocketServer, SubscribeMessage,
   OnGatewayConnection, OnGatewayDisconnect, ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createCorsOriginResolver, requireConfig } from '../config/security.config';
-import { UserRole } from '../users/user.entity';
+import { UserRole, UserStatus } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
 
 type ConnectedUser = {
   role: string;
@@ -30,6 +31,8 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   constructor(
     private jwtService: JwtService,
     private config: ConfigService,
+    // the module pulls UsersModule in with forwardRef, so the provider is resolved the same way
+    @Inject(forwardRef(() => UsersService)) private users: UsersService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -45,6 +48,15 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       const payload = this.jwtService.verify(token, {
         secret: requireConfig(this.config, 'JWT_SECRET'),
       });
+      // A signed token outlives the account behind it (deleted, disabled, role changed): go by the database,
+      // as the REST guard does, or a removed dispatcher keeps receiving the fleet's live positions
+      const account = await this.users.findById(payload.sub).catch(() => null);
+      if (!account || account.status !== UserStatus.ACTIVE) {
+        this.logger.warn(`socket ${client.id} rejected: account ${payload.sub} is not active`);
+        client.disconnect();
+        return;
+      }
+      payload.role = account.role;
       client.data.userId = payload.sub;
       client.data.role = payload.role;
       const existing = this.connectedUsers.get(payload.sub);
@@ -99,6 +111,11 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
         count: driverIds.length,
         timestamp: Date.now(),
       });
+  }
+
+  /** Close every socket of one account (it was deleted, disabled, rejected or given another role) */
+  disconnectUser(userId: string) {
+    this.server?.in(`user:${userId}`).disconnectSockets(true);
   }
 
   sendToUser(userId: string, event: string, data: any) {

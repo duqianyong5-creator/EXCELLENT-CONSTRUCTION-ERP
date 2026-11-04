@@ -6,12 +6,17 @@ name: macOS installer
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   dmg:
     name: build unsigned dmg (Apple silicon + Intel)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

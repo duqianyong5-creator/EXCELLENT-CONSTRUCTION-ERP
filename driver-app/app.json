@@ -31,9 +31,9 @@
       "package": "com.internal.truckdriver",
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "android.permission.CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ]
     },

@@ -11,6 +11,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { usersApi } from '../../src/api';
+import { unregisterTaskNotifications } from '../../src/notifications';
 import { logout, updateUser } from '../../src/store/authSlice';
 import type { RootState } from '../../src/store';
 import { useLang } from '../../src/i18n';
@@ -140,14 +141,17 @@ export default function ProfileScreen() {
     try {
       setDeleting(true);
       await usersApi.deleteMyAccount(deletePwd);
-      setDeletePwd('');
-      showAppAlert(t('profile.deleteDone'));
-      handleLogout();
     } catch (err: any) {
-      showAppAlert(t('common.fail'), err.message || t('profile.deleteFailed'));
+      showAppAlert(t('common.fail'), err?.response?.data?.message || err.message || t('profile.deleteFailed'));
+      return;
     } finally {
       setDeleting(false);
     }
+    // Deleted: sign out first (the token is dead), then say so; a failed sign-out step must not read as a failed delete
+    setDeletePwd('');
+    await unregisterTaskNotifications().catch(() => {});
+    await handleLogout().catch(() => {});
+    showAppAlert(t('profile.deleteDone'));
   };
 
   const confirmDeleteAccount = () => {

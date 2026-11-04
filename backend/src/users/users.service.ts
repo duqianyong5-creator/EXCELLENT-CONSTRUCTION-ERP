@@ -7,6 +7,17 @@ import { ErrorCode } from '../common/i18n/messages';
 import { User, UserRole, UserStatus } from './user.entity';
 import { Task } from '../tasks/task.entity';
 import { GpsLog } from '../gps/gps-log.entity';
+import { OperationLog } from '../operation-logs/operation-log.entity';
+import { Notification } from '../notifications/notification.entity';
+
+/** Roles that sign up in the driver app and so must be able to delete themselves there (App Store 5.1.1(v)) */
+const SELF_DELETABLE_ROLES = [UserRole.DRIVER, UserRole.CLIENT];
+const DELETED_EMAIL_DOMAIN = '@deleted.invalid';
+
+/** A self-deleted account: kept only so its jobs keep an owner, never brought back */
+export function isDeletedAccount(user: Pick<User, 'email'> | null | undefined): boolean {
+  return !!user?.email?.endsWith(DELETED_EMAIL_DOMAIN);
+}
 
 @Injectable()
 export class UsersService {
@@ -55,8 +66,15 @@ export class UsersService {
     }
   }
 
-  async approve(id: string, operatorId: string): Promise<User> {
+  /** findById for an admin action that must not touch a deleted account */
+  private async findLiveById(id: string): Promise<User> {
     const user = await this.findById(id);
+    if (isDeletedAccount(user)) throw new BadRequestException(ErrorCode.ACCOUNT_DELETED);
+    return user;
+  }
+
+  async approve(id: string, operatorId: string): Promise<User> {
+    const user = await this.findLiveById(id);
     user.status = UserStatus.ACTIVE;
     user.approvedAt = new Date();
     user.approvedBy = operatorId;
@@ -76,13 +94,13 @@ export class UsersService {
   }
 
   async enable(id: string): Promise<User> {
-    const user = await this.findById(id);
+    const user = await this.findLiveById(id);
     user.status = UserStatus.ACTIVE;
     return this.repo.save(user);
   }
 
   async updateRole(id: string, role: UserRole): Promise<User> {
-    const user = await this.findById(id);
+    const user = await this.findLiveById(id);
     user.role = role;
     return this.repo.save(user);
   }
@@ -138,20 +156,25 @@ export class UsersService {
   async deleteOwnAccount(id: string, password: string): Promise<{ message: string }> {
     const user = await this.findWithPassword(id);
     if (!user) throw new NotFoundException('User not found');
-    // The administrator account runs the system: removing it from a phone would lock everyone out
-    if (user.role === UserRole.ADMIN) throw new ForbiddenException(ErrorCode.ACCOUNT_DELETE_ADMIN);
+    // Admin, dispatcher and the shared wall-screen account run the system: an administrator removes those
+    if (!SELF_DELETABLE_ROLES.includes(user.role)) throw new ForbiddenException(ErrorCode.ACCOUNT_DELETE_ADMIN);
     if (!password || !(await bcrypt.compare(password, user.password))) {
       throw new BadRequestException(ErrorCode.AUTH_WRONG_PASSWORD);
     }
     const tag = `deleted-${id.slice(0, 8)}-${Date.now().toString(36)}`;
     user.username = tag;
-    user.email = `${tag}@deleted.invalid`;
+    user.email = `${tag}${DELETED_EMAIL_DOMAIN}`;
     user.fullName = 'Deleted user';
     user.phone = null as any;
     user.avatarUrl = null as any;
     user.status = UserStatus.DISABLED;
     user.password = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
-    await this.repo.save(user);
+    await this.repo.manager.transaction(async (m) => {
+      await m.save(user);
+      // The audit trail keeps what was done, not who the person was
+      await m.update(OperationLog, { actorId: id }, { actorName: 'Deleted user' });
+      await m.delete(Notification, { userId: id });
+    });
     return { message: 'Account deleted' };
   }
 
@@ -177,7 +200,7 @@ export class UsersService {
   }
 
   async resetPassword(id: string, newPassword: string): Promise<{ message: string }> {
-    const user = await this.findById(id);
+    const user = await this.findLiveById(id);
     user.password = await bcrypt.hash(newPassword, 12);
     await this.repo.save(user);
     return { message: '密码已重置' };

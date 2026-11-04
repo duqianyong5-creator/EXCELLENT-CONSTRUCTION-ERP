@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 
 describe('UsersController', () => {
@@ -20,6 +20,7 @@ describe('UsersController', () => {
       delete: jest.fn(),
       changePassword: jest.fn(),
       resetPassword: jest.fn(),
+      deleteOwnAccount: jest.fn(),
     };
 
     const operationLogs = {
@@ -142,4 +143,55 @@ describe('UsersController', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+
+  describe('deleteMe', () => {
+    const driver = { id: 'driver-1', username: 'liu', fullName: 'Liu', role: 'driver' };
+
+    it('deletes the signed-in user, not an id from the request, using the password from the body', async () => {
+      const { controller, service } = createController();
+      service.deleteOwnAccount.mockResolvedValue({ message: 'Account deleted' });
+
+      const result = await controller.deleteMe(driver, 'secret1');
+
+      expect(service.deleteOwnAccount).toHaveBeenCalledWith('driver-1', 'secret1');
+      expect(result).toEqual({ message: 'Account deleted' });
+    });
+
+    it('records an operation log once the account is deleted', async () => {
+      const { controller, service, operationLogs } = createController();
+      service.deleteOwnAccount.mockResolvedValue({ message: 'Account deleted' });
+
+      await controller.deleteMe(driver, 'secret1');
+
+      expect(operationLogs.record).toHaveBeenCalledTimes(1);
+      expect(operationLogs.record).toHaveBeenCalledWith({
+        actorId: 'driver-1',
+        // the person is gone: the audit row says what happened, not who they were
+        actorName: 'Deleted user',
+        action: 'users.delete-own-account',
+        targetType: 'user',
+        targetId: 'driver-1',
+        description: 'Deleted own account',
+        details: { role: 'driver' },
+      });
+    });
+
+    it('lets a wrong-password error reach the caller and writes no operation log', async () => {
+      const { controller, service, operationLogs } = createController();
+      service.deleteOwnAccount.mockRejectedValue(new BadRequestException('AUTH_WRONG_PASSWORD'));
+
+      await expect(controller.deleteMe(driver, 'wrong')).rejects.toThrow(BadRequestException);
+      expect(operationLogs.record).not.toHaveBeenCalled();
+    });
+
+    it('lets the admin refusal reach the caller and writes no operation log', async () => {
+      const { controller, service, operationLogs } = createController();
+      service.deleteOwnAccount.mockRejectedValue(new ForbiddenException('ACCOUNT_DELETE_ADMIN'));
+
+      await expect(
+        controller.deleteMe({ id: 'admin-1', username: 'admin', role: 'admin' }, 'secret1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(operationLogs.record).not.toHaveBeenCalled();
+    });
+  });
 });

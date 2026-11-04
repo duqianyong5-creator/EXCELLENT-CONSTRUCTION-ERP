@@ -10,6 +10,9 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole, UserStatus } from './user.entity';
 import { OperationLogsService } from '../operation-logs/operation-logs.service';
+import { ModuleRef } from '@nestjs/core';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @ApiTags('用户管理 / Users')
 @ApiBearerAuth()
@@ -19,7 +22,17 @@ export class UsersController {
   constructor(
     private service: UsersService,
     private operationLogs: OperationLogsService,
+    private moduleRef?: ModuleRef,
   ) {}
+
+  /** Close the live sockets of an account that just lost access (deleted, disabled, rejected, new role) */
+  private dropSockets(userId: string) {
+    try {
+      this.moduleRef?.get(NotificationsGateway, { strict: false })?.disconnectUser(userId);
+    } catch {
+      // gateway not loaded (tests, scripts): nothing is connected
+    }
+  }
 
   private actorName(user: any): string {
     return user?.fullName || user?.username || user?.email || user?.id;
@@ -114,6 +127,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN, UserRole.DISPATCHER)
   async reject(@Param('id') id: string, @CurrentUser() user: any) {
     const updated = await this.service.reject(id);
+    this.dropSockets(id);
     await this.operationLogs.record({
       actorId: user.id,
       actorName: this.actorName(user),
@@ -130,6 +144,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   async disable(@Param('id') id: string, @CurrentUser() user: any) {
     const updated = await this.service.disable(id);
+    this.dropSockets(id);
     await this.operationLogs.record({
       actorId: user.id,
       actorName: this.actorName(user),
@@ -162,6 +177,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   async updateRole(@Param('id') id: string, @Body('role') role: UserRole, @CurrentUser() user: any) {
     const updated = await this.service.updateRole(id, role);
+    this.dropSockets(id);
     await this.operationLogs.record({
       actorId: user.id,
       actorName: this.actorName(user),
@@ -184,12 +200,15 @@ export class UsersController {
   }
 
   @Delete('me')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Delete my own account (password required)' })
   async deleteMe(@CurrentUser() user: any, @Body('password') password: string) {
     const result = await this.service.deleteOwnAccount(user.id, password);
+    this.dropSockets(user.id);
     await this.operationLogs.record({
       actorId: user.id,
-      actorName: this.actorName(user),
+      actorName: 'Deleted user',
       action: 'users.delete-own-account',
       targetType: 'user',
       targetId: user.id,
@@ -200,6 +219,8 @@ export class UsersController {
   }
 
   @Patch('change-password')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: '修改密码' })
   async changePassword(
     @CurrentUser() user: any,

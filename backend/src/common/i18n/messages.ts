@@ -18,6 +18,7 @@ export const ErrorCode = {
   AUTH_DISABLED: 'AUTH_DISABLED',
   AUTH_WRONG_PASSWORD: 'AUTH_WRONG_PASSWORD',
   ACCOUNT_DELETE_ADMIN: 'ACCOUNT_DELETE_ADMIN',
+  ACCOUNT_DELETED: 'ACCOUNT_DELETED',
 
   FORBIDDEN_ROLE: 'FORBIDDEN_ROLE',
   FORBIDDEN_TASK_TRACK: 'FORBIDDEN_TASK_TRACK',
@@ -112,8 +113,12 @@ const MESSAGES: Record<string, Record<Lang, string>> = {
     en: 'Device number must be 5-20 digits',
   },
   [ErrorCode.ACCOUNT_DELETE_ADMIN]: {
-    zh: '管理员账户不能在 App 里删除',
-    en: 'The administrator account cannot be deleted from the app',
+    zh: '这个账户不能在 App 里删除，请联系管理员',
+    en: 'This account cannot be deleted from the app — please ask an administrator',
+  },
+  [ErrorCode.ACCOUNT_DELETED]: {
+    zh: '该账户已被本人删除，不能再恢复或修改',
+    en: 'This account was deleted by its owner and cannot be restored or changed',
   },
   [ErrorCode.DEVICE_ICCID_INVALID]: {
     zh: 'SIM 卡号须为 10~22 位数字或 A~F 字母（照卡上印的号码填，空格和连字符可不填）',

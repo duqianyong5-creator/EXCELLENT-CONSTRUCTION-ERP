@@ -58,8 +58,8 @@ function createWindow() {
         k === 'f12' ||
         (input.control && input.shift && (k === 'i' || k === 'j' || k === 'c')) ||
         (input.control && k === 'u') || // Ctrl+U 查看源码
-        (input.meta && input.alt && (k === 'i' || k === 'j' || k === 'c')) || // macOS ⌘⌥I/J/C
-        (input.meta && input.alt && k === 'u'); // macOS ⌘⌥U 查看源码
+        // macOS ⌘⌥I/J/C/U：按住 Option 时 input.key 会变成 ˆ ∆ ç ¨，所以按物理键位 input.code 判断
+        (input.meta && input.alt && ['KeyI', 'KeyJ', 'KeyC', 'KeyU'].includes(input.code));
       if (block) event.preventDefault();
     });
   }

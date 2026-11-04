@@ -21,8 +21,10 @@ describe('UsersService.deleteOwnAccount', () => {
       save: jest.fn(async (u: any) => u),
       remove: jest.fn(),
     };
+    const tx = { save: jest.fn(async (u: any) => repo.save(u)), update: jest.fn(), delete: jest.fn() };
+    repo.manager = { transaction: jest.fn(async (fn: any) => fn(tx)) };
     const service = new UsersService(repo, {} as any, {} as any);
-    return { service, repo, user };
+    return { service, repo, user, tx };
   }
 
   it('wipes personal details, blocks sign-in and keeps the row for job history', async () => {
@@ -38,6 +40,33 @@ describe('UsersService.deleteOwnAccount', () => {
     expect(saved.avatarUrl).toBeNull();
     expect(await bcrypt.compare('secret1', saved.password)).toBe(false);
     expect(user.id).toBe('u1');
+  });
+
+  it('takes the name out of the audit log and drops their notifications in the same transaction', async () => {
+    const { service, tx } = await setup();
+    await service.deleteOwnAccount('u1', 'secret1');
+    expect(tx.update).toHaveBeenCalledWith(expect.anything(), { actorId: 'u1' }, { actorName: 'Deleted user' });
+    expect(tx.delete).toHaveBeenCalledWith(expect.anything(), { userId: 'u1' });
+  });
+
+  it('a dispatcher or the wall-screen account cannot delete itself from the app', async () => {
+    for (const role of [UserRole.DISPATCHER, UserRole.MONITOR]) {
+      const { service, repo } = await setup(role);
+      await expect(service.deleteOwnAccount('u1', 'secret1')).rejects.toThrow(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
+    }
+  });
+
+  it('an admin cannot bring a deleted account back (enable, approve, role, password reset)', async () => {
+    const { service, repo, user } = await setup();
+    await service.deleteOwnAccount('u1', 'secret1');
+    repo.save.mockClear();
+    await expect(service.enable('u1')).rejects.toThrow(BadRequestException);
+    await expect(service.approve('u1', 'admin')).rejects.toThrow(BadRequestException);
+    await expect(service.updateRole('u1', UserRole.DISPATCHER)).rejects.toThrow(BadRequestException);
+    await expect(service.resetPassword('u1', 'newpass1')).rejects.toThrow(BadRequestException);
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(user.status).toBe(UserStatus.DISABLED);
   });
 
   it('refuses with a wrong password', async () => {
