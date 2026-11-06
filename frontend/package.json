@@ -48,6 +48,7 @@
     "appId": "com.ect.erp",
     "productName": "ECT ERP",
     "asar": true,
+    "afterPack": "electron-build/adhoc-sign-mac.cjs",
     "directories": {
       "output": "release"
     },
